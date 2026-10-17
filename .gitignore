@@ -1,0 +1,27 @@
+# Build artifacts / large local files (not tracked)
+/apk/
+*.apkm
+*.apk
+
+# User-space toolchain (huge; keep only the setup scripts)
+/tools/dl/
+/tools/jdk/
+/tools/jadx/
+/tools/venv/
+/tools/bin/
+/tools/smoke/
+/tools/android-sdk/
+/tools/gradle-*/
+/tools/apktool.jar
+/tools/*.log
+
+# Gradle / Android
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+captures/
+
+# OS
+.DS_Store
