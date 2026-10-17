@@ -136,15 +136,18 @@ With those fixed, a full sync completed on 2026-10-17 18:20:
 
 ## Immediate next steps
 
-1. Import more than the newest activity: page through `ItemListResponse`
-   (`next_transaction_id`) and pull every `FIT_TYPE_4`, deduping by start
-   time + distance in Room (already enforced by `sourceKey`).
-2. Add laps and more fields to the detail screen (the parser already returns
+1. Avoid re-downloading an activity that is already stored: remember the
+   `ItemReference.uid` (or match the FIT `file_id`/start time) and skip the
+   `PullItemDataRequest` when Room already has it. Today the same newest
+   activity is downloaded again on every connect (import dedupe works).
+2. Import more than the newest activity: page through `ItemListResponse`
+   (`next_transaction_id`) and pull every `FIT_TYPE_4`.
+3. Add laps and more fields to the detail screen (the parser already returns
    `laps`; persist them in a `laps` table if needed).
-3. Decide whether to answer ConnectIQ HTTP requests with real network data
+4. Decide whether to answer ConnectIQ HTTP requests with real network data
    (weather) or keep the offline timeout response.
-4. Background/periodic sync and a proper connected-device state.
-5. Unit tests for the Room importer (dedupe, epoch conversion).
+5. Background/periodic sync and a proper connected-device state.
+6. Unit tests for the Room importer (dedupe, epoch conversion).
 
 ## Useful commands
 
