@@ -265,3 +265,24 @@ Still open: sleep/HRV/historical wellness ingestion (today only), WorkManager
 background sync, Room migration/importer tests, Compose visual tests, and the
 strict per-endpoint cleartext policy. `docs/PLAN.md` remains stale; `BACKLOG.md`
 is the current status source.
+
+### Activity sync fix (2026-10-17)
+
+The watch has one transfer slot. A file list arriving during a wellness
+transfer made the coordinator request the activity pull immediately; the watch
+returned `NO_AVAILABLE_RESOURCES` (3), and the old code never retried. It also
+cleared `pulledWellnessType` while a wellness pipe was open, so the wellness
+file was sometimes imported as an activity and the real activity was dropped.
+
+Fixed in `SyncCoordinator`:
+
+- queue the activity pull and defer it while a wellness transfer/pipe is active;
+- preserve the in-flight wellness type until its pipe completes;
+- retry `NO_AVAILABLE_RESOURCES` with backoff, and retry an unanswered pull
+  after 8 s;
+- prefer the queued activity once the GDI session is ready after a pipe closes;
+- process wellness afterwards.
+
+Verified on the FR255: 198,627-byte FIT downloaded and imported (`5.50 km
+Running`), then a second sync reported activities up to date while wellness
+finished.

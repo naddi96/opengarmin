@@ -75,6 +75,12 @@ Known deviations / still open:
   audits are not done. Manual device checks are recorded in `docs/testing.md`.
 - D7 (generic SQL) is intentionally not built.
 
+Bugfix after the first device pass: the activity pull could be dropped when a
+wellness transfer held the watch's single transfer slot. `SyncCoordinator` now
+defers the activity pull, preserves the wellness type, retries
+`NO_AVAILABLE_RESOURCES`/timeouts, and prioritizes the activity once the GDI
+session is ready. Verified end-to-end on the Forerunner 255.
+
 ## Delivery milestones
 
 1. **M0 — Foundation (done):** docs and mockups in place.

@@ -1,6 +1,7 @@
 package dev.opengarmin.app.sync
 
 import android.os.Handler
+import android.os.SystemClock
 import dev.opengarmin.protocol.GarminSession
 import dev.opengarmin.protocol.Gdi
 import dev.opengarmin.protocol.GdiClient
@@ -36,6 +37,10 @@ class SyncCoordinator(
     private var wellnessTransfer = false
     private var pulledWellnessType = ""
     private var inFlightWellness: Gdi.ItemReference? = null
+    private var pendingActivityItem: Gdi.ItemReference? = null
+    private var activityPullAttempts = 0
+    private var wellnessPullAttempts = 0
+    private var activityPullNotBefore = 0L
     private var activitiesUpToDate = false
 
     private var capabilitiesRequested = false
@@ -73,15 +78,32 @@ class SyncCoordinator(
             handler.postDelayed({
                 if (g == generation && !capabilitiesReceived) sendCapabilities()
             }, 1500)
-            handler.post {
-                val retry = inFlightWellness
-                if (retry != null) {
+            // The watch reopens the GDI session after a transport pipe closes.
+            // Give it a moment, then prefer a queued activity over more wellness.
+            if (pendingActivityItem != null && !done) {
+                // If a wellness transfer was interrupted by the session
+                // restart, put it back in the queue but let the activity go
+                // first once the session is ready.
+                inFlightWellness?.let { retry ->
                     inFlightWellness = null
                     wellnessTransfer = false
                     wellnessQueue.addFirst(retry)
-                    handler.postDelayed({ pullNextWellness() }, 800)
-                } else if (wellnessQueue.isNotEmpty() && !wellnessTransfer) {
-                    handler.postDelayed({ pullNextWellness() }, 800)
+                }
+                activityPullNotBefore = SystemClock.uptimeMillis() + READY_GRACE_MS
+                handler.postDelayed({
+                    if (g == generation) tryStartActivityPull()
+                }, READY_GRACE_MS)
+            } else {
+                handler.post {
+                    val retry = inFlightWellness
+                    if (retry != null) {
+                        inFlightWellness = null
+                        wellnessTransfer = false
+                        wellnessQueue.addFirst(retry)
+                        handler.postDelayed({ pullNextWellness() }, 800)
+                    } else if (wellnessQueue.isNotEmpty() && !wellnessTransfer) {
+                        handler.postDelayed({ pullNextWellness() }, 800)
+                    }
                 }
             }
         }
@@ -103,6 +125,10 @@ class SyncCoordinator(
         wellnessTransfer = false
         pulledWellnessType = ""
         inFlightWellness = null
+        pendingActivityItem = null
+        activityPullAttempts = 0
+        wellnessPullAttempts = 0
+        activityPullNotBefore = 0L
         activitiesUpToDate = false
         done = false
     }
@@ -215,6 +241,10 @@ class SyncCoordinator(
 
     private fun pullNextWellness() {
         if (wellnessTransfer || pipe != null) return
+        if (pendingActivityItem != null && !done && listReceived) {
+            tryStartActivityPull()
+            return
+        }
         val item = wellnessQueue.removeFirstOrNull()
         if (item == null) {
             if (activitiesUpToDate) {
@@ -225,6 +255,10 @@ class SyncCoordinator(
                 }
             } else if (!listReceived && !done) {
                 requestList()
+            } else {
+                // The activity pull may have been deferred while wellness was
+                // using the watch's single transfer slot.
+                tryStartActivityPull()
             }
             return
         }
@@ -331,22 +365,59 @@ class SyncCoordinator(
         }
 
         activitiesUpToDate = false
-        requestedPull = true
-        pulledWellnessType = ""
         val item = newActivityItems.firstOrNull()
             ?: list.items.firstOrNull { it.dataType?.gdxmlString == "FIT_TYPE_4" }
             ?: list.items.firstOrNull { it.dataType?.gdxmlString?.startsWith("FIT_TYPE") == true }
             ?: list.items.minByOrNull { it.dataSize }
             ?: list.items.first()
 
+        pendingActivityItem = item
         pulledItemUid = item.uid?.hex().orEmpty()
         log(
-            "PULL request uid=${item.uid?.hex()} type=${item.dataType?.gdxmlString} " +
+            "PULL queued uid=${item.uid?.hex()} type=${item.dataType?.gdxmlString} " +
                 "size=${item.dataSize} new=${newActivityItems.size}/${activityItems.size}",
+        )
+        if (wellnessTransfer || pipe != null) {
+            log("SYNC: activity pull deferred until the wellness transfer finishes")
+            return
+        }
+        activityPullNotBefore = SystemClock.uptimeMillis() + LIST_GRACE_MS
+        tryStartActivityPull()
+    }
+
+    /**
+     * Pull the queued activity only when no wellness transfer or transport pipe
+     * is active. The watch has one transfer slot and answers an overlapping
+     * request with NO_AVAILABLE_RESOURCES (3).
+     */
+    private fun tryStartActivityPull() {
+        if (done || requestedPull || wellnessTransfer || pipe != null) return
+        val item = pendingActivityItem ?: return
+        val now = SystemClock.uptimeMillis()
+        if (now < activityPullNotBefore) {
+            handler.postDelayed({ tryStartActivityPull() }, activityPullNotBefore - now)
+            return
+        }
+        requestedPull = true
+        pulledWellnessType = ""
+        val sentGeneration = generation
+        log(
+            "PULL request uid=${item.uid?.hex()} type=${item.dataType?.gdxmlString} " +
+                "size=${item.dataSize} attempt=${activityPullAttempts + 1}",
         )
         gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.pullItemRequest(item))) { response ->
             handler.post { handleSmart(response) }
         }
+        // If the watch does not answer (e.g. the request raced with a session
+        // restart), retry rather than waiting for the outer watchdog.
+        handler.postDelayed({
+            if (sentGeneration == generation && !done && requestedPull && pipe == null && !wellnessTransfer) {
+                log("PULL timeout waiting for the watch; retrying activity")
+                requestedPull = false
+                activityPullNotBefore = SystemClock.uptimeMillis() + READY_GRACE_MS
+                tryStartActivityPull()
+            }
+        }, PULL_TIMEOUT_MS)
     }
 
     private fun handlePullResponse(pr: Gdi.PullItemResponse) {
@@ -354,7 +425,31 @@ class SyncCoordinator(
             "PULL response result=${pr.result} transport=${pr.transport} " +
                 "handle=${pr.transferHandle} window=${pr.compressionWindow}",
         )
-        if (pr.result != 0 || pr.transferHandle == 0 || pipe != null) return
+        if (pr.result != 0 || pr.transferHandle == 0 || pipe != null) {
+            if (pr.result != 0) {
+                log("PULL failed: ${pullResultName(pr.result)} (${pr.result})")
+            }
+            if (pulledWellnessType.isNotEmpty()) {
+                val retry = inFlightWellness
+                pulledWellnessType = ""
+                wellnessTransfer = false
+                inFlightWellness = null
+                if (pr.result == RESULT_NO_RESOURCES && retry != null && wellnessPullAttempts < MAX_PULL_RETRIES) {
+                    wellnessPullAttempts++
+                    wellnessQueue.addFirst(retry)
+                    handler.postDelayed({ pullNextWellness() }, RETRY_DELAY_MS)
+                }
+            } else {
+                requestedPull = false
+                if (pr.result == RESULT_NO_RESOURCES && activityPullAttempts < MAX_PULL_RETRIES) {
+                    activityPullAttempts++
+                    handler.postDelayed({ tryStartActivityPull() }, RETRY_DELAY_MS)
+                }
+            }
+            return
+        }
+        activityPullAttempts = 0
+        wellnessPullAttempts = 0
 
         val raw = File(filesDir, "download_${pr.transferHandle}.bin")
         val out = FileOutputStream(raw)
@@ -382,9 +477,13 @@ class SyncCoordinator(
                         inFlightWellness = null
                         log("WELLNESS complete type=$type decoded=${decoded.size}")
                         onWellnessFile(decFile, type)
+                        if (pendingActivityItem != null && !done) {
+                            activityPullNotBefore = SystemClock.uptimeMillis() + ACTIVITY_GRACE_MS
+                        }
                         pullNextWellness()
                     } else {
                         done = true
+                        pendingActivityItem = null
                         onFinished(raw, decFile, pulledItemUid)
                         if (wellnessQueue.isNotEmpty()) pullNextWellness()
                     }
@@ -399,6 +498,29 @@ class SyncCoordinator(
 
     companion object {
         const val PIPE_SERVICE = 0x2018
+        private const val RESULT_NO_RESOURCES = 3
+        private const val MAX_PULL_RETRIES = 5
+        private const val RETRY_DELAY_MS = 2_000L
+        private const val ACTIVITY_GRACE_MS = 2_500L
+        private const val READY_GRACE_MS = 800L
+        private const val LIST_GRACE_MS = 400L
+        private const val PULL_TIMEOUT_MS = 8_000L
+
+        private fun pullResultName(result: Int): String = when (result) {
+            0 -> "SUCCESS"
+            1 -> "ITEM_TYPE_NOT_SUPPORTED"
+            2 -> "NO_SUPPORTED_TRANSPORT"
+            3 -> "NO_AVAILABLE_RESOURCES"
+            4 -> "INTERNAL_ERROR"
+            5 -> "INVALID_PARAMS"
+            6 -> "INVALID_OFFSET"
+            7 -> "AMBIGUOUS_DATA_TYPE"
+            8 -> "UNKNOWN_ITEM"
+            9 -> "NO_SPACE"
+            10 -> "DATA_TYPE_ERROR"
+            11 -> "CONFLICTING_PUSH_REQUEST"
+            else -> "UNKNOWN"
+        }
 
         fun inflateOrRaw(data: ByteArray): ByteArray {
             if (data.isEmpty()) return data

@@ -62,6 +62,9 @@ Manual matrix used for the UI/coach pass:
 - Today: real steps ring, HR chart, sleep/HRV empty states, insight.
 - Trends: Day/Week/Month, partial-history labels, goal line, resting HR.
 - Activities: filters, row selection, featured card, route trace, zones setup.
+- Sync regression: activity must download and import even when a wellness
+  transfer is active (watch returns `NO_AVAILABLE_RESOURCES` if overlapped);
+  a second sync must skip the known activity and finish wellness.
 - Activity detail: map/HR/elevation/laps/`All data`.
 - Settings: step goal, max HR, sync state, provider summary, device log.
 - Provider: presets (including DeepSeek), model add/edit/delete/default,
