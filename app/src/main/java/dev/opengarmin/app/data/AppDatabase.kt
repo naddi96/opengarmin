@@ -17,6 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import dev.opengarmin.protocol.Fit
 import dev.opengarmin.protocol.Gfdi
 import kotlinx.coroutines.flow.Flow
+import org.json.JSONObject
 import java.io.File
 import kotlin.math.roundToInt
 
@@ -99,6 +100,35 @@ data class LapEntity(
     val descentMeters: Int?,
 )
 
+/** Every FIT message/field, for the data explorer and cross-plots. */
+@Entity(
+    tableName = "fit_messages",
+    foreignKeys = [
+        ForeignKey(
+            entity = ActivityEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["activityId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("activityId"), Index(value = ["activityId", "messageName"])],
+)
+data class FitMessageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val activityId: Long,
+    val orderIndex: Int,
+    val globalNumber: Int,
+    val messageName: String,
+    /** Unix seconds, or null. */
+    val timestamp: Long?,
+    /** JSON object: field name -> scaled value. */
+    val fieldsJson: String,
+    /** JSON object: field name -> units. */
+    val unitsJson: String,
+)
+
+data class MessageCount(val messageName: String, val cnt: Int)
+
 @Dao
 interface ActivityDao {
     @Query("SELECT * FROM activities ORDER BY startTime DESC")
@@ -113,8 +143,20 @@ interface ActivityDao {
     @Insert
     suspend fun insertLaps(laps: List<LapEntity>)
 
+    @Insert
+    suspend fun insertMessages(messages: List<FitMessageEntity>)
+
     @Query("SELECT * FROM records WHERE activityId = :activityId ORDER BY timestamp")
     suspend fun records(activityId: Long): List<RecordEntity>
+
+    @Query("SELECT messageName, COUNT(*) AS cnt FROM fit_messages WHERE activityId = :activityId GROUP BY messageName ORDER BY cnt DESC")
+    suspend fun messageCounts(activityId: Long): List<MessageCount>
+
+    @Query("SELECT * FROM fit_messages WHERE activityId = :activityId ORDER BY orderIndex")
+    suspend fun allMessages(activityId: Long): List<FitMessageEntity>
+
+    @Query("SELECT COUNT(*) FROM fit_messages WHERE activityId = :activityId")
+    suspend fun messageCount(activityId: Long): Int
 
     @Query("SELECT * FROM laps WHERE activityId = :activityId ORDER BY lapIndex")
     suspend fun laps(activityId: Long): List<LapEntity>
@@ -139,8 +181,8 @@ interface ActivityDao {
 }
 
 @Database(
-    entities = [ActivityEntity::class, RecordEntity::class, LapEntity::class],
-    version = 4,
+    entities = [ActivityEntity::class, RecordEntity::class, LapEntity::class, FitMessageEntity::class],
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -186,13 +228,40 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `fit_messages` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`activityId` INTEGER NOT NULL, " +
+                        "`orderIndex` INTEGER NOT NULL, " +
+                        "`globalNumber` INTEGER NOT NULL, " +
+                        "`messageName` TEXT NOT NULL, " +
+                        "`timestamp` INTEGER, " +
+                        "`fieldsJson` TEXT NOT NULL, " +
+                        "`unitsJson` TEXT NOT NULL, " +
+                        "FOREIGN KEY(`activityId`) REFERENCES `activities`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_fit_messages_activityId` " +
+                        "ON `fit_messages` (`activityId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_fit_messages_activityId_messageName` " +
+                        "ON `fit_messages` (`activityId`, `messageName`)",
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "opengarmin.db",
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .build().also { instance = it }
             }
     }
 }
@@ -203,6 +272,10 @@ class ActivityRepository(private val dao: ActivityDao) {
     suspend fun records(activityId: Long): List<RecordEntity> = dao.records(activityId)
 
     suspend fun laps(activityId: Long): List<LapEntity> = dao.laps(activityId)
+
+    suspend fun messageCounts(activityId: Long): List<MessageCount> = dao.messageCounts(activityId)
+
+    suspend fun allMessages(activityId: Long): List<FitMessageEntity> = dao.allMessages(activityId)
 
     suspend fun clear() = dao.clear()
 
@@ -215,7 +288,8 @@ class ActivityRepository(private val dao: ActivityDao) {
         for (activity in dao.all()) {
             val needLaps = dao.lapCount(activity.id) == 0
             val needCoords = dao.coordCount(activity.id) == 0
-            if (!needLaps && !needCoords) continue
+            val needMessages = dao.messageCount(activity.id) == 0
+            if (!needLaps && !needCoords && !needMessages) continue
             val file = File(filesDir, activity.fileName)
             if (!file.exists()) continue
             val parsed = runCatching { Fit.parse(file.readBytes()) }.getOrNull() ?: continue
@@ -229,6 +303,10 @@ class ActivityRepository(private val dao: ActivityDao) {
                     dao.deleteRecords(activity.id)
                     dao.insertRecords(records)
                 }
+            }
+            if (needMessages) {
+                val messages = messageEntities(activity.id, parsed)
+                if (messages.isNotEmpty()) dao.insertMessages(messages)
             }
         }
     }
@@ -281,8 +359,35 @@ class ActivityRepository(private val dao: ActivityDao) {
         if (records.isNotEmpty()) dao.insertRecords(records)
         val laps = lapEntities(id, parsed)
         if (laps.isNotEmpty()) dao.insertLaps(laps)
+        val messages = messageEntities(id, parsed)
+        if (messages.isNotEmpty()) dao.insertMessages(messages)
         return entity.copy(id = id)
     }
+
+    private fun messageEntities(activityId: Long, parsed: Fit.Parsed): List<FitMessageEntity> =
+        parsed.messages.mapIndexed { index, message ->
+            val fields = JSONObject()
+            val units = JSONObject()
+            for (field in message.fields) {
+                when (val value = field.value) {
+                    is Double -> if (value.isFinite()) fields.put(field.name, value)
+                    is Float -> if (value.isFinite()) fields.put(field.name, value.toDouble())
+                    is Number -> fields.put(field.name, value)
+                    null -> Unit
+                    else -> fields.put(field.name, value.toString())
+                }
+                field.units?.let { units.put(field.name, it) }
+            }
+            FitMessageEntity(
+                activityId = activityId,
+                orderIndex = index,
+                globalNumber = message.globalNumber,
+                messageName = message.name,
+                timestamp = message.timestamp,
+                fieldsJson = fields.toString(),
+                unitsJson = units.toString(),
+            )
+        }
 
     private fun recordEntities(activityId: Long, parsed: Fit.Parsed): List<RecordEntity> =
         parsed.records.map { record ->

@@ -10,26 +10,34 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -49,6 +58,7 @@ import dev.opengarmin.app.ble.GarminBleClient
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.ActivityRepository
 import dev.opengarmin.app.data.AppDatabase
+import dev.opengarmin.app.data.FitMessageEntity
 import dev.opengarmin.app.data.LapEntity
 import dev.opengarmin.app.data.RecordEntity
 import dev.opengarmin.app.sync.SyncCoordinator
@@ -56,6 +66,7 @@ import dev.opengarmin.protocol.Hex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
@@ -67,6 +78,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.sqrt
 
 class MainActivity : ComponentActivity() {
 
@@ -83,6 +95,9 @@ class MainActivity : ComponentActivity() {
     private var selectedActivity by mutableStateOf<ActivityEntity?>(null)
     private var selectedRecords by mutableStateOf<List<RecordEntity>>(emptyList())
     private var selectedLaps by mutableStateOf<List<LapEntity>>(emptyList())
+    private var dataActivity by mutableStateOf<ActivityEntity?>(null)
+    private var dataMessages by mutableStateOf<List<FitMessageEntity>>(emptyList())
+    private var dataLoading by mutableStateOf(false)
     private var state by mutableStateOf("idle")
     private var lastFile by mutableStateOf("—")
     private var importing by mutableStateOf(false)
@@ -180,6 +195,9 @@ class MainActivity : ComponentActivity() {
                         selectedActivity = selectedActivity,
                         selectedRecords = selectedRecords,
                         selectedLaps = selectedLaps,
+                        dataActivity = dataActivity,
+                        dataMessages = dataMessages,
+                        dataLoading = dataLoading,
                         devices = devices,
                         logs = logs,
                         onScan = { startScan() },
@@ -199,6 +217,8 @@ class MainActivity : ComponentActivity() {
                             selectedRecords = emptyList()
                             selectedLaps = emptyList()
                         },
+                        onExploreData = { openDataExplorer(it) },
+                        onCloseData = { closeDataExplorer() },
                         deviceInfo = {
                             val s = c.session
                             listOf(
@@ -266,6 +286,25 @@ class MainActivity : ComponentActivity() {
                 selectedLaps = laps
             }
         }
+    }
+
+    private fun openDataExplorer(activity: ActivityEntity) {
+        dataActivity = activity
+        dataLoading = true
+        dataMessages = emptyList()
+        lifecycleScope.launch {
+            val messages = withContext(Dispatchers.IO) { repository.allMessages(activity.id) }
+            if (dataActivity?.id == activity.id) {
+                dataMessages = messages
+                dataLoading = false
+            }
+        }
+    }
+
+    private fun closeDataExplorer() {
+        dataActivity = null
+        dataMessages = emptyList()
+        dataLoading = false
     }
 
     private fun armWatchdog(timeoutMs: Long = 15_000) {
@@ -351,6 +390,9 @@ private fun Screen(
     selectedActivity: ActivityEntity?,
     selectedRecords: List<RecordEntity>,
     selectedLaps: List<LapEntity>,
+    dataActivity: ActivityEntity?,
+    dataMessages: List<FitMessageEntity>,
+    dataLoading: Boolean,
     devices: List<MainActivity.DeviceEntry>,
     logs: List<String>,
     onScan: () -> Unit,
@@ -360,6 +402,8 @@ private fun Screen(
     onDisconnect: () -> Unit,
     onSelect: (ActivityEntity) -> Unit,
     onClearSelection: () -> Unit,
+    onExploreData: (ActivityEntity) -> Unit,
+    onCloseData: () -> Unit,
     deviceInfo: () -> List<Pair<String, String>>,
 ) {
     var showLog by remember { mutableStateOf(false) }
@@ -390,12 +434,21 @@ private fun Screen(
             }
         }
 
-        if (selectedActivity != null) {
+        if (dataActivity != null) {
+            DataExplorer(
+                activity = dataActivity,
+                messages = dataMessages,
+                loading = dataLoading,
+                onBack = onCloseData,
+                modifier = Modifier.weight(1f),
+            )
+        } else if (selectedActivity != null) {
             ActivityDetail(
                 activity = selectedActivity,
                 records = selectedRecords,
                 laps = selectedLaps,
                 onBack = onClearSelection,
+                onExploreData = { onExploreData(selectedActivity) },
                 modifier = Modifier.weight(1f),
             )
         } else {
@@ -491,6 +544,7 @@ private fun ActivityDetail(
     records: List<RecordEntity>,
     laps: List<LapEntity>,
     onBack: () -> Unit,
+    onExploreData: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -499,6 +553,8 @@ private fun ActivityDetail(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(onClick = onBack) { Text("Back") }
+            Spacer(modifier = Modifier.width(8.dp))
+            OutlinedButton(onClick = onExploreData) { Text("All data") }
             Spacer(modifier = Modifier.weight(1f))
             Text(formatDate(activity.startTime), style = MaterialTheme.typography.bodySmall)
         }
@@ -704,6 +760,341 @@ private fun ElevationChart(records: List<RecordEntity>) {
     }
 }
 
+@Composable
+private fun DataExplorer(
+    activity: ActivityEntity,
+    messages: List<FitMessageEntity>,
+    loading: Boolean,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val groups = remember(messages) {
+        val preferred = listOf(
+            "record", "session", "lap", "activity", "event", "device_info",
+            "gps_metadata", "time_in_zone", "split",
+        )
+        messages.groupBy { it.messageName }.toList().sortedWith(
+            compareBy(
+                { (name, _) -> preferred.indexOf(name).let { if (it < 0) preferred.size else it } },
+                { (_, list) -> -list.size },
+            ),
+        )
+    }
+    var selectedType by remember { mutableStateOf("record") }
+    LaunchedEffect(groups) {
+        if (groups.isEmpty()) return@LaunchedEffect
+        if (groups.none { it.first == selectedType }) {
+            selectedType = if (groups.any { it.first == "record" }) {
+                "record"
+            } else {
+                groups.first().first
+            }
+        }
+    }
+    val selected = groups.firstOrNull { it.first == selectedType }?.second.orEmpty()
+
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = onBack) { Text("Back") }
+                Spacer(modifier = Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("All data", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "${sportName(activity.sport)} · ${formatDate(activity.startTime)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        if (loading) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.width(24.dp).height(24.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Loading FIT messages…")
+                }
+            }
+        } else if (messages.isEmpty()) {
+            item {
+                Text(
+                    "No stored FIT messages for this activity. Re-import it to populate the data explorer.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        } else {
+            item { Text("Message types", style = MaterialTheme.typography.titleMedium) }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(groups) { (name, list) ->
+                        FilterChip(
+                            selected = name == selectedType,
+                            onClick = { selectedType = name },
+                            label = { Text("$name (${list.size})") },
+                        )
+                    }
+                }
+            }
+            if (selected.size >= 2) {
+                item { MessagePlotSection(selected) }
+            }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Raw messages", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        "showing ${minOf(selected.size, 200)} of ${selected.size}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            items(selected.take(200), key = { it.id }) { message ->
+                MessageCard(message)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessagePlotSection(messages: List<FitMessageEntity>) {
+    val rows = remember(messages) { messages.map { parseMessageFields(it) } }
+    val fieldNames = remember(rows) {
+        val names = LinkedHashSet<String>()
+        rows.take(500).forEach { names.addAll(it.keys) }
+        names.sorted()
+    }
+    if (fieldNames.size < 2) {
+        Text("Not enough numeric fields to plot.", style = MaterialTheme.typography.bodySmall)
+        return
+    }
+
+    val preferred = listOf(
+        "heart_rate", "enhanced_speed", "speed", "enhanced_altitude", "altitude",
+        "cadence", "power", "temperature", "distance",
+    )
+    val availableSeries = preferred.filter { it in fieldNames }
+    var selectedSeries by remember(rows) { mutableStateOf(availableSeries.take(4)) }
+    var xField by remember(rows) {
+        mutableStateOf(if ("distance" in fieldNames) "distance" else fieldNames.first())
+    }
+    var yField by remember(rows) {
+        mutableStateOf(if ("heart_rate" in fieldNames) "heart_rate" else fieldNames.getOrElse(1) { fieldNames.first() })
+    }
+
+    Text("Cross-plot", style = MaterialTheme.typography.titleMedium)
+    if (availableSeries.isNotEmpty()) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(availableSeries) { name ->
+                FilterChip(
+                    selected = name in selectedSeries,
+                    onClick = {
+                        selectedSeries = if (name in selectedSeries) {
+                            selectedSeries - name
+                        } else {
+                            selectedSeries + name
+                        }
+                    },
+                    label = { Text(name) },
+                )
+            }
+        }
+        val series = selectedSeries.mapNotNull { name ->
+            val values = rows.mapNotNull { it[name] }
+            if (values.size >= 2) name to values else null
+        }
+        MultiSeriesChart(series)
+    }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FieldDropdown("X", fieldNames, xField) { xField = it }
+        FieldDropdown("Y", fieldNames, yField) { yField = it }
+    }
+
+    val points = rows.mapNotNull { row ->
+        val x = row[xField] ?: return@mapNotNull null
+        val y = row[yField] ?: return@mapNotNull null
+        x to y
+    }
+    ScatterChart(points)
+    val r = correlation(points)
+    Text(
+        "$xField vs $yField · n=${points.size} · r=" +
+            if (r.isNaN()) "n/a" else "%.3f".format(r),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun MultiSeriesChart(series: List<Pair<String, List<Double>>>) {
+    if (series.isEmpty()) {
+        Text("Select at least one series.", style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    val colors = listOf(
+        Color(0xFF1E88E5),
+        Color(0xFFE53935),
+        Color(0xFF43A047),
+        Color(0xFFFB8C00),
+        Color(0xFF8E24AA),
+        Color(0xFF00897B),
+    )
+    Canvas(modifier = Modifier.fillMaxWidth().height(180.dp)) {
+        series.forEachIndexed { index, (_, values) ->
+            if (values.size < 2) return@forEachIndexed
+            val min = values.min()
+            val max = values.max()
+            val range = (max - min).coerceAtLeast(1e-9)
+            val path = Path()
+            values.forEachIndexed { i, value ->
+                val x = size.width * i / (values.size - 1).toFloat()
+                val y = size.height - ((value - min) / range * size.height).toFloat()
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            drawPath(path, color = colors[index % colors.size], style = Stroke(width = 3f))
+        }
+    }
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        items(series.size) { index ->
+            val (name, values) = series[index]
+            val text = if (values.isNotEmpty()) {
+                "● $name ${formatCompact(values.min())}–${formatCompact(values.max())}"
+            } else {
+                "● $name"
+            }
+            Text(
+                text,
+                color = colors[index % colors.size],
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScatterChart(points: List<Pair<Double, Double>>) {
+    if (points.size < 2) {
+        Text("Not enough points for a scatter plot.", style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    val xs = points.map { it.first }
+    val ys = points.map { it.second }
+    val minX = xs.min()
+    val maxX = xs.max()
+    val minY = ys.min()
+    val maxY = ys.max()
+    val rangeX = (maxX - minX).coerceAtLeast(1e-9)
+    val rangeY = (maxY - minY).coerceAtLeast(1e-9)
+    val color = MaterialTheme.colorScheme.primary
+
+    Canvas(modifier = Modifier.fillMaxWidth().height(220.dp)) {
+        drawLine(Color.Gray, Offset(0f, size.height), Offset(size.width, size.height), 1f)
+        drawLine(Color.Gray, Offset(0f, 0f), Offset(0f, size.height), 1f)
+        points.forEach { (x, y) ->
+            val px = ((x - minX) / rangeX * size.width).toFloat()
+            val py = size.height - ((y - minY) / rangeY * size.height).toFloat()
+            drawCircle(color = color, radius = 3.5f, center = Offset(px, py))
+        }
+    }
+    Row {
+        Text("%.2f".format(minX), style = MaterialTheme.typography.labelSmall)
+        Spacer(modifier = Modifier.weight(1f))
+        Text("%.2f".format(maxX), style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+private fun FieldDropdown(
+    label: String,
+    options: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { expanded = true }) {
+            Text("$label: $selected", style = MaterialTheme.typography.bodySmall)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        onSelect(option)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageCard(message: FitMessageEntity) {
+    val fields = remember(message.fieldsJson) { JSONObject(message.fieldsJson) }
+    val units = remember(message.unitsJson) { JSONObject(message.unitsJson) }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Row {
+                Text(message.messageName, style = MaterialTheme.typography.titleSmall)
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    message.timestamp?.let { formatDate(it) } ?: "#${message.orderIndex}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            val text = fields.keys().asSequence().sorted().joinToString(" · ") { key ->
+                val value = formatValue(fields.opt(key))
+                val unit = units.optString(key).takeIf { it.isNotEmpty() }
+                "$key=$value" + (unit?.let { " $it" } ?: "")
+            }
+            Text(text, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+private fun parseMessageFields(message: FitMessageEntity): Map<String, Double> {
+    val out = LinkedHashMap<String, Double>()
+    val obj = JSONObject(message.fieldsJson)
+    obj.keys().forEach { key ->
+        val value = obj.opt(key)
+        if (value is Number) out[key] = value.toDouble()
+    }
+    return out
+}
+
+private fun correlation(points: List<Pair<Double, Double>>): Double {
+    if (points.size < 2) return Double.NaN
+    val n = points.size
+    val meanX = points.sumOf { it.first } / n
+    val meanY = points.sumOf { it.second } / n
+    var covariance = 0.0
+    var varianceX = 0.0
+    var varianceY = 0.0
+    for ((x, y) in points) {
+        val dx = x - meanX
+        val dy = y - meanY
+        covariance += dx * dy
+        varianceX += dx * dx
+        varianceY += dy * dy
+    }
+    val denominator = sqrt(varianceX * varianceY)
+    return if (denominator == 0.0) Double.NaN else covariance / denominator
+}
+
 internal fun sportName(sport: Int): String = when (sport) {
     0 -> "Generic"
     1 -> "Running"
@@ -746,6 +1137,24 @@ internal fun formatDate(unixSeconds: Long): String =
     SimpleDateFormat("EEE d MMM, HH:mm", Locale.getDefault()).format(Date(unixSeconds * 1000))
 
 internal fun formatDistance(meters: Double): String = "%.2f km".format(meters / 1000.0)
+
+private fun formatCompact(value: Double): String =
+    if (value.isFinite() && value == value.toLong().toDouble()) {
+        value.toLong().toString()
+    } else {
+        "%.1f".format(value)
+    }
+
+private fun formatValue(value: Any?): String = when (value) {
+    null -> "—"
+    is Double -> if (value.isFinite() && value == value.toLong().toDouble()) {
+        value.toLong().toString()
+    } else {
+        "%.3f".format(value)
+    }
+    is Float -> formatValue(value.toDouble())
+    else -> value.toString()
+}
 
 internal fun formatDuration(seconds: Double): String {
     val total = seconds.toLong().coerceAtLeast(0)

@@ -133,6 +133,20 @@ class FitTest {
         assertEquals(-395.0, second.altitudeMeters)
 
         assertEquals(5, parsed.messageCount)
+
+        assertEquals(5, parsed.messages.size)
+        val recordMessage = parsed.messages.first { it.name == "record" }
+        assertEquals(20, recordMessage.globalNumber)
+        val hr = recordMessage.fields.first { it.number == 3 }
+        assertEquals("heart_rate", hr.name)
+        assertEquals("bpm", hr.units)
+        assertEquals(120, hr.value)
+        val altitude = recordMessage.fields.first { it.number == 2 }
+        assertEquals("altitude", altitude.name)
+        assertEquals(-400.0, altitude.value)
+        val sessionMessage = parsed.messages.first { it.name == "session" }
+        val start = sessionMessage.fields.first { it.number == 2 }
+        assertEquals(1000L + 631065600L, start.value)
     }
 
     @Test

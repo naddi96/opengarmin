@@ -58,8 +58,8 @@ The tree is clean. `captures/`, `apk/`, `tools/` binary downloads are gitignored
 | M2 handshake (device info / config / time) | ✅ |
 | M3 file directory | ✅ 100 items listed (3697-byte response, 8 chunks) |
 | M4 file download + decode | ✅ **99,357 compressed bytes → 198,627 bytes** (zlib, valid FIT: `.FIT`, profile 21184) |
-| M5 FIT parser | ✅ pure-JVM parser: 7,931 messages, 2,488 records, 6 laps |
-| M6 Room → dashboard | ✅ activities + records + GPS track; list/detail UI with OSM map, HR + elevation charts, lap table |
+| M5 FIT parser | ✅ pure-JVM parser: all 7,931 messages / every field, plus typed session/lap/record |
+| M6 Room → dashboard | ✅ activities + records + laps + all FIT messages; OSM track map, HR/elevation charts, lap table, data explorer with cross-plots |
 
 The M4 download was proven end-to-end earlier: `PullItemDataRequest` →
 `transfer_handle` → MLR transport pipe on service `0x2018` → zlib stream →
@@ -93,19 +93,23 @@ protocol/src/main/kotlin/dev/opengarmin/protocol/
   MlControl/GarminSession (session, recovery, MLR GFDI, queues),
   Mlr (MLR codec + receiver), Proto (defensive protobuf reader/writer),
   Gdi (Smart, FileAccess, GdiClient handling 5043/5044/5057 + per-chunk ACKs),
-  Fit (FIT activity parser), TransportPipe (MLR pipe), Uuids, Hex
+  Fit (FIT activity parser incl. every message/field), FitProfile (generated
+  FIT SDK message/field names, units, scales, offsets), TransportPipe (MLR
+  pipe), Uuids, Hex
 
 app/src/main/java/dev/opengarmin/app/
   ble/GarminBleClient.kt   scan/connect/reconnect, MTU, pair selection,
                            dedicated GFDI subscribe, serialized write queue
   sync/SyncCoordinator.kt  capabilities → connection-ready → device requests →
                            list → pull → pipe → zlib → file
-  data/AppDatabase.kt      Room entities/DAO/database (v4: activities, records,
-                           laps) + ActivityRepository (FIT import, UID dedupe,
-                           epoch conversion, lap/coordinate backfill)
+  data/AppDatabase.kt      Room entities/DAO/database (v5: activities, records,
+                           laps, fit_messages) + ActivityRepository (FIT import,
+                           UID dedupe, epoch conversion, lap/coordinate/message
+                           backfill)
   MainActivity.kt          Compose dashboard (activity list + detail + OSM track
-                           map + HR/elevation charts + lap table),
-                           watchdog/reconnect, Sync button
+                           map + HR/elevation charts + lap table) and the
+                           "All data" explorer (message types, multi-series plot,
+                           arbitrary X/Y scatter with correlation, raw fields)
 
 docs/                      PROTOCOL, PLAN, LICENSING, samples, protos
 tools/                     parse_btsnoop.py, extract_protos.py, setup scripts
@@ -137,20 +141,21 @@ With those fixed, a full sync completed on 2026-10-17 18:20:
 → transport pipe → 99,357 compressed B → 198,627 B FIT`.
 
 A cold start (app data cleared, no cached FIT) was re-verified afterwards:
-fresh Room v4 database, 1 activity, 2,488 records, 6 laps, GPS track, dashboard
-rendered. A second connect with the same item UID skips the PULL and reports
-`SYNC up to date`.
+fresh Room v5 database, 1 activity, 2,488 records, 6 laps, 7,931 stored FIT
+messages, GPS track, dashboard rendered. A second connect with the same item UID
+skips the PULL and reports `SYNC up to date`.
 
 ## Immediate next steps
 
 1. Import more activities if the watch exposes them: the current 100-item list
    contains only one `FIT_TYPE_4`. If more appear, the existing loop already
    picks the first item whose UID is not in Room.
-2. Background/periodic sync and a proper connected-device state.
-3. Consider answering ConnectIQ HTTP requests with real network data (weather)
+2. Add units/axis labels and saved custom plots to the data explorer.
+3. Background/periodic sync and a proper connected-device state.
+4. Consider answering ConnectIQ HTTP requests with real network data (weather)
    instead of the offline timeout response.
-4. Unit tests for the Room importer/migrations (dedupe, epoch conversion,
-   laps backfill).
+5. Unit tests for the Room importer/migrations (dedupe, epoch conversion,
+   lap/coordinate/message backfill).
 
 ## Useful commands
 
@@ -185,8 +190,15 @@ pairing port (pairing needs the 6-digit code).
 - GDI frames are ACKed per chunk (`[id][offset][ok][code]`), not per message.
 - Store `ItemReference.uid` with the activity and skip the PULL when it is
   already in Room; otherwise every connect re-downloads the same FIT.
-- Room DB is version 4: `itemUid` (1→2), `laps` (2→3) and record
-  `latitude`/`longitude` (3→4) migrations live in `AppDatabase`.
+- Room DB is version 5: `itemUid` (1→2), `laps` (2→3), record
+  `latitude`/`longitude` (3→4) and `fit_messages` (4→5) migrations live in
+  `AppDatabase`.
+- `Fit.parse` retains every message/field (7,931 messages for the sample
+  activity, ~18 message types). `FitProfile.kt` is generated from the public
+  FIT SDK profile (via `fitdecode`); unknown messages/fields fall back to
+  `msg_<n>` / `field_<n>`.
+- The data explorer stores field values as scaled JSON objects per message.
+  Arrays are stored as comma-separated strings and are not plotted.
 - The track map uses osmdroid/OpenStreetMap (`org.osmdroid:osmdroid-android`).
   Tiles need `INTERNET`; the cache is under `cacheDir/osmdroid`. Without a
   network the track still draws over an empty map.

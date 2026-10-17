@@ -4,11 +4,13 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Minimal FIT activity parser.
+ * FIT activity parser.
  *
- * Only the messages needed by the dashboard are retained: file_id,
- * activity, session, lap and record. Definition messages are honoured,
- * including big-endian files, developer fields and compressed timestamps.
+ * The typed subset (file_id / activity / session / lap / record) feeds the
+ * dashboard. Every message and field is also retained in [Parsed.messages] so
+ * the data explorer can show and cross-plot the full file. Definition messages
+ * are honoured, including big-endian files, developer fields, arrays and
+ * compressed timestamps.
  */
 object Fit {
     const val FILE_ID = 0
@@ -16,6 +18,14 @@ object Fit {
     const val LAP = 19
     const val RECORD = 20
     const val ACTIVITY = 34
+
+    private val TIME_FIELDS = setOf(
+        "start_time",
+        "end_time",
+        "begin_time",
+        "local_timestamp",
+        "time_created",
+    )
 
     data class FileId(
         val type: Int?,
@@ -87,6 +97,24 @@ object Fit {
         val laps: List<Lap>,
         val records: List<Record>,
         val messageCount: Int,
+        val messages: List<Message>,
+    )
+
+    /** One decoded field in a generic FIT message. Values are already scaled. */
+    data class FieldValue(
+        val number: Int,
+        val name: String,
+        val value: Any?,
+        val units: String?,
+    )
+
+    /** A generic FIT message with every field (including unknown/developer). */
+    data class Message(
+        val globalNumber: Int,
+        val name: String,
+        /** Unix seconds, or null for messages without a timestamp. */
+        val timestamp: Long?,
+        val fields: List<FieldValue>,
     )
 
     private data class FieldDef(val number: Int, val size: Int, val baseType: Int)
@@ -146,6 +174,7 @@ object Fit {
         var session: Session? = null
         val laps = ArrayList<Lap>()
         val records = ArrayList<Record>()
+        val messages = ArrayList<Message>()
 
         while (reader.pos < end) {
             val header = reader.u8()
@@ -180,11 +209,16 @@ object Fit {
 
             val def = definitions[localType] ?: error("data message without definition (local $localType)")
             val values = HashMap<Int, Any?>(def.fields.size)
+            val rawFields = ArrayList<Pair<FieldDef, ByteArray>>(def.fields.size)
             for (field in def.fields) {
                 val raw = reader.bytes(field.size)
+                rawFields.add(field to raw)
                 values[field.number] = decode(field.baseType, raw, def.bigEndian)
             }
-            for (field in def.developerFields) reader.skip(field.size)
+            val rawDevFields = ArrayList<Pair<FieldDef, ByteArray>>(def.developerFields.size)
+            for (field in def.developerFields) {
+                rawDevFields.add(field to reader.bytes(field.size))
+            }
             messageCount++
 
             if (isCompressed) {
@@ -197,6 +231,10 @@ object Fit {
             } else {
                 (values[253] as? Number)?.let { lastTimestamp = it.toLong() }
             }
+
+            messages.add(
+                buildMessage(def, rawFields, rawDevFields, values),
+            )
 
             when (def.globalMessage) {
                 FILE_ID -> if (fileId == null) {
@@ -276,7 +314,81 @@ object Fit {
             }
         }
 
-        return Parsed(fileId, activity, session, laps, records, messageCount)
+        return Parsed(fileId, activity, session, laps, records, messageCount, messages)
+    }
+
+    private fun buildMessage(
+        def: Definition,
+        rawFields: List<Pair<FieldDef, ByteArray>>,
+        rawDevFields: List<Pair<FieldDef, ByteArray>>,
+        values: Map<Int, Any?>,
+    ): Message {
+        val tsRaw = (values[253] as? Number)?.toLong()
+        val unixTs = tsRaw?.plus(Gfdi.GARMIN_EPOCH_UNIX)
+        val fields = ArrayList<FieldValue>(rawFields.size + rawDevFields.size + 1)
+
+        for ((field, raw) in rawFields) {
+            val info = FitProfile.field(def.globalMessage, field.number)
+            val name = info?.name ?: "field_${field.number}"
+            val units = info?.units
+            val scale = info?.scale ?: 1.0
+            val offset = info?.offset ?: 0.0
+            val decoded = decodeAll(field.baseType, raw, def.bigEndian)
+            val scaled = decoded.map { scaleValue(it, scale, offset, units) }
+            val adjusted = if (name in TIME_FIELDS && field.number != 253) {
+                scaled.map { value ->
+                    if (value is Number) value.toLong() + Gfdi.GARMIN_EPOCH_UNIX else value
+                }
+            } else {
+                scaled
+            }
+            val value = if (adjusted.size == 1) adjusted[0] else adjusted.joinToString(", ")
+            val finalUnits = if (units == "semicircles") "deg" else units
+            fields.add(FieldValue(field.number, name, value, finalUnits))
+        }
+        for ((field, raw) in rawDevFields) {
+            fields.add(FieldValue(field.number, "dev_${field.number}", Hex.encode(raw), null))
+        }
+        if (unixTs != null) {
+            val index = fields.indexOfFirst { it.number == 253 }
+            if (index >= 0) {
+                fields[index] = fields[index].copy(value = unixTs, units = "s")
+            } else {
+                fields.add(FieldValue(253, "timestamp", unixTs, "s"))
+            }
+        }
+
+        val name = FitProfile.message(def.globalMessage)?.name ?: "msg_${def.globalMessage}"
+        return Message(def.globalMessage, name, unixTs, fields)
+    }
+
+    private fun scaleValue(value: Any?, scale: Double, offset: Double, units: String?): Any? {
+        if (value !is Number) return value
+        if (units == "semicircles") return value.toDouble() * 180.0 / 2147483648.0
+        if (scale == 1.0 && offset == 0.0) return value
+        return value.toDouble() / scale - offset
+    }
+
+    private fun baseSize(baseType: Int): Int = when (baseType) {
+        0x00, 0x01, 0x02, 0x07, 0x0A, 0x0D -> 1
+        0x83, 0x84, 0x8B -> 2
+        0x85, 0x86, 0x88, 0x8C -> 4
+        0x89, 0x8E, 0x8F, 0x90 -> 8
+        else -> 0
+    }
+
+    private fun decodeAll(baseType: Int, raw: ByteArray, bigEndian: Boolean): List<Any?> {
+        if (raw.isEmpty()) return emptyList()
+        if (baseType == 0x07) return listOfNotNull(decode(baseType, raw, bigEndian))
+        val size = baseSize(baseType)
+        if (size <= 0 || raw.size <= size) return listOfNotNull(decode(baseType, raw, bigEndian))
+        val out = ArrayList<Any?>()
+        var pos = 0
+        while (pos + size <= raw.size) {
+            out.add(decode(baseType, raw.copyOfRange(pos, pos + size), bigEndian))
+            pos += size
+        }
+        return out.ifEmpty { listOf(null) }
     }
 
     private fun int(values: Map<Int, Any?>, field: Int): Int? = (values[field] as? Number)?.toInt()
