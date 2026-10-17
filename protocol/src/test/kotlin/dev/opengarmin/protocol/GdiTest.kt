@@ -91,6 +91,20 @@ class GdiTest {
     }
 
     @Test
+    fun `parses a pull response`() {
+        val pr = ProtoWriter()
+            .uint32(3, 640)
+            .uint32(7, 11)
+            .toByteArray()
+        val service = ProtoWriter().bytes(2, pr).toByteArray()
+        val parsed = assertNotNull(Gdi.parseFileAccessService(service).pullItemResponse)
+        assertEquals(0, parsed.result)
+        assertEquals(0, parsed.transport)
+        assertEquals(640, parsed.transferHandle)
+        assertEquals(11, parsed.compressionWindow)
+    }
+
+    @Test
     fun `smart wrapper round-trips multiple services`() {
         val smart = ProtoWriter()
             .bytes(Gdi.SMART_CORE, Hex.decode("aabb"))

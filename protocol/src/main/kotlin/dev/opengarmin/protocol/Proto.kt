@@ -106,6 +106,15 @@ class ProtoReader(val data: ByteArray, var pos: Int = 0) {
             1 -> pos += 8
             2 -> pos += readVarint().toInt()
             5 -> pos += 4
+            3 -> { // start group: skip until matching end group
+                while (pos < data.size) {
+                    val tag = readVarint().toInt()
+                    val w = tag and 7
+                    if (w == 4) return
+                    skip(w)
+                }
+            }
+            4 -> Unit // end group
             else -> error("unsupported wire type $wire")
         }
     }

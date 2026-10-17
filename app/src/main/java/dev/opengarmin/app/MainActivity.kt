@@ -35,6 +35,9 @@ import dev.opengarmin.protocol.GdiClient
 import dev.opengarmin.protocol.Handshake
 import dev.opengarmin.protocol.Hex
 import dev.opengarmin.protocol.ServiceId
+import dev.opengarmin.protocol.TransportPipe
+import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : ComponentActivity() {
 
@@ -85,6 +88,13 @@ class MainActivity : ComponentActivity() {
         var capabilityAttempts = 0
         var listAttempts = 0
         var requestedPull = false
+        var pulledItemSize = 0L
+        var pipe: TransportPipe? = null
+
+        c.session.onServiceRegistered = { svc, h, _ ->
+            if (svc == 0x2018) pipe?.onRegistered(h)
+        }
+        c.session.onMlrFrame = { frame -> pipe?.onFrame(frame) }
 
         fun handleItemList(response: ByteArray) {
             val fields = Gdi.smartFields(response)
@@ -108,10 +118,14 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            if (!requestedPull && list.items.isNotEmpty()) {
+            if (!requestedPull && list.items.size > 1) {
                 requestedPull = true
-                val item = list.items.minByOrNull { it.dataSize } ?: list.items.first()
-                log("PULL request uid=${item.uid?.hex()} size=${item.dataSize}")
+                val item = list.items.firstOrNull { it.dataType?.gdxmlString == "FIT_TYPE_4" }
+                    ?: list.items.firstOrNull { it.dataType?.gdxmlString?.startsWith("FIT_TYPE") == true }
+                    ?: list.items.minByOrNull { it.dataSize }
+                    ?: list.items.first()
+                pulledItemSize = item.dataSize
+                log("PULL request uid=${item.uid?.hex()} type=${item.dataType?.gdxmlString} size=${item.dataSize}")
                 gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.pullItemRequest(item))) { resp ->
                     val fa = Gdi.smartFields(resp)[Gdi.SMART_FILE_ACCESS]
                     val pr = if (fa != null) Gdi.parseFileAccessService(fa).pullItemResponse else null
@@ -129,20 +143,57 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        c.session.onServiceClosed = { svc ->
+            if (svc == 0x2018) pipe?.finish()
+        }
+
+        fun handlePullResponse(pr: Gdi.PullItemResponse) {
+            log(
+                "PULL response result=${pr.result} transport=${pr.transport} handle=${pr.transferHandle} " +
+                    "path=${pr.filePath} err=${pr.errorCode} window=${pr.compressionWindow}",
+            )
+            if (pr.result != 0 || pr.transferHandle == 0 || pipe != null) return
+            val file = File(filesDir, "download_${pr.transferHandle}.bin")
+            val out = FileOutputStream(file)
+            val p = TransportPipe(
+                session = c.session,
+                serviceId = 0x2018,
+                transferHandle = pr.transferHandle,
+                expectedSize = pulledItemSize,
+                onData = { data -> out.write(data) },
+                onComplete = {
+                    out.flush()
+                    out.close()
+                    val raw = file.readBytes()
+                    val decoded = inflateOrRaw(raw)
+                    val decodedFile = File(filesDir, "download_${pr.transferHandle}.dec")
+                    decodedFile.writeBytes(decoded)
+                    main.post {
+                        log(
+                            "DOWNLOAD raw=${raw.size} decoded=${decoded.size} -> ${decodedFile.absolutePath}",
+                        )
+                    }
+                },
+                onError = { msg -> main.post { log("PIPE error: $msg") } },
+                log = { msg -> log(msg) },
+            )
+            pipe = p
+            p.start()
+        }
+
         fun requestList() {
-            if (listReceived || listAttempts >= 5) return
+            if (listReceived || listAttempts >= 1) return
             listAttempts++
-            log("GDI → ItemListRequest (attempt $listAttempts)")
+            log("GDI → ItemListRequest")
             gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.itemListRequest(maxItemCount = 100))) { response ->
                 main.post { handleItemList(response) }
             }
-            main.postDelayed({ if (!listReceived) requestList() }, 5000)
         }
 
         fun requestCapabilities() {
-            if (capabilitiesReceived || capabilityAttempts >= 5) return
+            if (capabilitiesReceived || capabilityAttempts >= 1) return
             capabilityAttempts++
-            log("GDI → FeatureCapabilitiesRequest (attempt $capabilityAttempts)")
+            log("GDI → FeatureCapabilitiesRequest")
             gdi.sendSmart(Gdi.featureCapabilitiesRequest()) { response ->
                 val caps = Gdi.coreFeatureCapabilitiesResponse(response)
                 main.post {
@@ -153,7 +204,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            main.postDelayed({ if (!capabilitiesReceived) requestCapabilities() }, 5000)
         }
 
         gdi.onSmart = { smart ->
@@ -161,17 +211,32 @@ class MainActivity : ComponentActivity() {
             main.post {
                 log("GDI smart fields=${fields.keys} sizes=${fields.mapValues { it.value.size }}")
                 if (Gdi.coreFeatureCapabilitiesResponse(smart) != null) {
-                    capabilitiesReceived = true
-                    requestList()
+                    if (!capabilitiesReceived) {
+                        capabilitiesReceived = true
+                        requestList()
+                    }
                 }
                 if (fields.containsKey(Gdi.SMART_FILE_ACCESS)) {
-                    handleItemList(smart)
+                    try {
+                        val svc = Gdi.parseFileAccessService(fields.getValue(Gdi.SMART_FILE_ACCESS))
+                        val listResponse = svc.itemListResponse
+                        val pullResponse = svc.pullItemResponse
+                        if (listResponse != null) handleItemList(smart)
+                        if (pullResponse != null) handlePullResponse(pullResponse)
+                    } catch (e: Exception) {
+                        log("GDI parse error: ${e.message}")
+                    }
                 }
             }
         }
 
         c.session.onReady = {
-            main.postDelayed({ requestCapabilities() }, 500)
+            main.postDelayed({
+                if (!capabilitiesReceived) {
+                    log("GDI → FeatureCapabilitiesRequest")
+                    requestCapabilities()
+                }
+            }, 1500)
         }
 
         setContent {
@@ -238,6 +303,23 @@ class MainActivity : ComponentActivity() {
             logs.add(0, message)
             if (logs.size > 300) logs.removeAt(logs.lastIndex)
         }
+    }
+
+    private fun inflateOrRaw(data: ByteArray): ByteArray {
+        if (data.isEmpty()) return data
+        try {
+            return java.util.zip.InflaterInputStream(java.io.ByteArrayInputStream(data))
+                .use { it.readBytes() }
+        } catch (_: Exception) {
+        }
+        try {
+            return java.util.zip.InflaterInputStream(
+                java.io.ByteArrayInputStream(data),
+                java.util.zip.Inflater(true),
+            ).use { it.readBytes() }
+        } catch (_: Exception) {
+        }
+        return data
     }
 
     override fun onDestroy() {

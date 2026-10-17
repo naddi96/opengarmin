@@ -15,7 +15,10 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.ContextCompat
+import java.util.ArrayDeque
 import dev.opengarmin.protocol.GarminSession
 import dev.opengarmin.protocol.Hex
 import dev.opengarmin.protocol.Uuids
@@ -38,6 +41,11 @@ class GarminBleClient(
 
     private var gatt: BluetoothGatt? = null
     private var writeChar: BluetoothGattCharacteristic? = null
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val writeQueue = ArrayDeque<ByteArray>()
+    private var writeInFlight = false
+    private var writeGeneration = 0
 
     val session = GarminSession(clientId = 1L, sink = { bytes -> write(bytes) }, log = onLog)
 
@@ -110,25 +118,53 @@ class GarminBleClient(
     }
 
     private fun write(bytes: ByteArray) {
+        synchronized(writeQueue) { writeQueue.addLast(bytes) }
+        drainWrites()
+    }
+
+    private fun drainWrites() {
         val g = gatt ?: return
         val c = writeChar ?: return
+        val next: ByteArray
+        synchronized(writeQueue) {
+            if (writeInFlight) return
+            next = writeQueue.pollFirst() ?: return
+            writeInFlight = true
+        }
         val writeType = if (c.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0) {
             BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         } else {
             BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val rc = g.writeCharacteristic(c, bytes, writeType)
-            onLog("TX($rc) ${Hex.encode(bytes)}")
+        val rc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            g.writeCharacteristic(c, next, writeType)
         } else {
             @Suppress("DEPRECATION")
             run {
-                c.value = bytes
+                c.value = next
                 c.writeType = writeType
-                val rc = g.writeCharacteristic(c)
-                onLog("TX($rc) ${Hex.encode(bytes)}")
+                g.writeCharacteristic(c)
             }
         }
+        onLog("TX($rc) ${Hex.encode(next)}")
+        if (rc != 0) {
+            // Controller busy: put it back and retry shortly.
+            synchronized(writeQueue) {
+                writeQueue.addFirst(next)
+                writeInFlight = false
+            }
+            handler.postDelayed({ drainWrites() }, 25)
+            return
+        }
+        // Some stacks do not deliver onCharacteristicWrite for no-response
+        // writes, so pace the queue even without a callback.
+        val gen = ++writeGeneration
+        handler.postDelayed({
+            if (gen == writeGeneration) {
+                synchronized(writeQueue) { writeInFlight = false }
+                drainWrites()
+            }
+        }, 40)
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
@@ -201,7 +237,10 @@ class GarminBleClient(
         }
 
         override fun onCharacteristicWrite(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            writeGeneration++
+            synchronized(writeQueue) { writeInFlight = false }
             if (status != BluetoothGatt.GATT_SUCCESS) onLog("write failed status=$status")
+            drainWrites()
         }
 
         override fun onCharacteristicChanged(

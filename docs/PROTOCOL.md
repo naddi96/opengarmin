@@ -415,41 +415,64 @@ Each GDI message = 14-byte header + a protobuf chunk (little-endian):
   `gdxml_string` such as `FIT_TYPE_2`, `FIT_TYPE_3`, `FIT_TYPE_29`, …
   `FIT_TYPE_4` is activity.
 
-### 10.5 Pulling a file (M4, in progress)
+### 10.5 Pulling a file — VERIFIED
 
 `PullItemDataRequest` (FileAccess.Service field 1):
 
 ```
-item                  = ItemReference { uid, data_size, ... } from the list
+item                  = ItemReference { uid, data_size, transaction_id, data_type }
 priority              = 30 (USER_INITIATED_START) .. 39
 supported_transports  = [MULTILINK_TRANSPORT_PIPE = 0]
 offset                = 0
 requested_compression_window = 15 (optional)
 ```
 
-Verified response on the FR255 for a 110-byte item:
+Verified response on the FR255:
 
 ```
 PullItemDataResponse {
-  result            = 0 (SUCCESS)
-  transport         = 0 (MULTILINK_TRANSPORT_PIPE)
-  transfer_handle   = 640
+  result             = 0 (SUCCESS)
+  transport          = 0 (MULTILINK_TRANSPORT_PIPE)
+  transfer_handle    = 683
   compression_window = 11
 }
 ```
 
-The file bytes then travel over a dedicated **Multi-Link Reliable transport pipe**:
+#### Register-response encoding (important)
 
-- The client registers one of the transport service ids
-  `0x2018, 0x4018, 0x6018, 0x8018, 0xA018, 0xC018, 0xE018` using **MLR**
-  (reliable = true). The APK rejects an unreliable pipe
-  (`"MultiLink Transport Pipe is not reliable"`).
-- It sends a *configure* command carrying the `transfer_handle`, direction and
-  size, then reads data frames from the pipe.
-- The APK classes are `com.garmin.device.filetransfer.mlr.MLRTransportPipe`
-  (obfuscated `CT/e`, `CT/e$a`) and the low-level pipe `DT/o`.
+A reliable registration response is
+`[type][clientId:8][service:2][status][handleByte][reliable][mlService]`.
 
-So M4 requires the Multi-Link Reliable state machine (section 4) plus the
-transport-pipe configure/read commands.
+- `reliable != 0` means MLR.
+- The **real MLR handle is `handleByte & 0x07`**; the `0x80` bit is a reliable
+  marker. Example: `81 01 00` → reliable handle 1; `83 01 01` → handle 3.
+- Non-reliable responses use the full byte as the ML handle.
+
+#### Transport pipe
+
+Register one of `0x2018, 0x4018, 0x6018, 0x8018, 0xA018, 0xC018, 0xE018` as
+**reliable**. Then:
+
+```
+configure request : [0x00][direction: 0=read, 1=write][transferHandle: u32 LE]
+configure response: [0x00][generalStatus][configureStatus]
+data              : zlib stream, delivered as MLR fragments
+```
+
+`generalStatus`: 0 OK, 1 unknown command, 2 invalid data.
+`configureStatus`: 0 OK, 1 unknown handle, 2 unexpected direction, 3 unexpected size.
+
+Important: **do not stop at `ItemReference.data_size`**. That is not the
+compressed length. Read until the device closes the transport-pipe service
+(`CLOSE_HANDLE` for the pipe service), then decompress the collected bytes with
+standard **zlib** (`Inflater` / `zlib.decompress`).
+
+Verified end-to-end: a 3966-byte pipe stream decompressed to **40292 bytes** of
+valid file data (an XML settings file in this run). FIT activity files use the
+same path.
+
+APK classes: `com.garmin.device.filetransfer.mlr.MLRTransportPipe`
+(obfuscated `CT/e`, `CT/e$a`) and the low-level pipe `DT/o`.
+
 
 

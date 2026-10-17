@@ -39,6 +39,8 @@ class MultiLinkTest {
         val writes = mutableListOf<ByteArray>()
         var ready = false
         val session = GarminSession(clientId, sink = { writes.add(it) })
+        session.gfdiReliable = false
+        session.registrationDelayMs = 0
         session.autoHandshake = true
         session.onReady = { ready = true }
 
@@ -73,6 +75,25 @@ class MultiLinkTest {
         session.onNotification(notify)
         assertTrue(writes.isNotEmpty(), "expected a handshake reply")
         assertEquals(0x2e, writes.first()[0].toInt() and 0xFF)
+    }
+
+    @Test
+    fun `registers GFDI as reliable when requested`() {
+        val writes = mutableListOf<ByteArray>()
+        val session = GarminSession(clientId, sink = { writes.add(it) })
+        session.gfdiReliable = true
+        session.registrationDelayMs = 0
+        session.begin()
+
+        session.onNotification(Hex.decode("0006" + "0100000000000000" + "0000" + "01"))
+        assertTrue(
+            writes.any { it.contentEquals(MlControl.registerRequest(clientId, ServiceId.GFDI, reliable = true)) },
+            "reliable GFDI register request missing",
+        )
+
+        // Watch assigns MLR handle 4 (reliable, ML service).
+        session.onNotification(Hex.decode("00" + "01" + "0100000000000000" + "0100" + "00" + "04" + "01" + "01"))
+        assertEquals(4, session.gfdiHandle)
     }
 
     @Test

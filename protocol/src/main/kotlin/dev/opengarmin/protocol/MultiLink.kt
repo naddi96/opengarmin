@@ -2,6 +2,8 @@ package dev.opengarmin.protocol
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /** Multi-Link handle-management frames (see PROTOCOL.md §3). */
 object MlControl {
@@ -43,7 +45,13 @@ object MlControl {
             .put(handle.toByte())
             .array()
 
-    data class RegisterResponse(val clientId: Long, val service: Int, val status: Int, val handle: Int)
+    data class RegisterResponse(
+        val clientId: Long,
+        val service: Int,
+        val status: Int,
+        val handle: Int,
+        val reliable: Boolean,
+    )
 
     /** `data` is the control payload (frame bytes after the leading control-handle byte). */
     fun parseRegisterResponse(data: ByteArray): RegisterResponse? {
@@ -51,8 +59,12 @@ object MlControl {
         val clientId = ByteBuffer.wrap(data, 1, 8).order(ByteOrder.LITTLE_ENDIAN).long
         val service = Gfdi.le16(data, 9)
         val status = data[11].toInt() and 0xFF
-        val handle = data[12].toInt() and 0xFF
-        return RegisterResponse(clientId, service, status, handle)
+        val handleByte = data[12].toInt() and 0xFF
+        // A reliable registration returns [handle|0x80][reliable][mlService]; the
+        // real MLR handle is the low 3 bits.
+        val reliable = if (data.size >= 14) (data[13].toInt() and 0xFF) != 0 else (handleByte and 0x80) != 0
+        val handle = if (reliable) handleByte and 0x07 else handleByte
+        return RegisterResponse(clientId, service, status, handle, reliable)
     }
 }
 
@@ -92,12 +104,29 @@ class GarminSession(
     var onGfdiMessage: ((Gfdi.Frame) -> Unit)? = null
     var onProtobuf: ((Gfdi.Frame) -> Unit)? = null
     var onMlrFrame: ((ByteArray) -> Unit)? = null
-    var onServiceRegistered: ((service: Int, handle: Int) -> Unit)? = null
+    var onServiceRegistered: ((service: Int, handle: Int, reliable: Boolean) -> Unit)? = null
+    var onServiceClosed: ((service: Int) -> Unit)? = null
     var onReady: (() -> Unit)? = null
 
     private val cobsBuffer = ArrayList<Byte>(1024)
     private var seqCounter = 0
     private var recovering = false
+    private var registerRetries = 0
+    private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "garmin-session").apply { isDaemon = true }
+    }
+
+    private fun later(ms: Long, block: () -> Unit) {
+        scheduler.schedule({ block() }, ms, TimeUnit.MILLISECONDS)
+    }
+
+    /** GFDI uses plain Multi-Link; the reliable path is used for transport pipes. */
+    var gfdiReliable: Boolean = false
+    /** Delay before re-registering after close-all (the watch needs time to release handles). */
+    var registrationDelayMs: Long = 400
+    private var mlrSendSeq = 0
+    private var gfdiMlr: MlrReceiver? = null
+    private val reliableHandles = HashSet<Int>()
 
     fun begin() {
         log("ML: close-all")
@@ -112,11 +141,22 @@ class GarminSession(
 
     fun onNotification(frame: ByteArray) {
         if (frame.isEmpty()) return
-        if (Mlr.isMlr(frame[0].toInt() and 0xFF)) {
-            onMlrFrame?.invoke(frame)
-            return
+        val first = frame[0].toInt() and 0xFF
+        if ((first and 0x80) != 0 && frame.size >= 2) {
+            val h = Mlr.decodeHeader(first, frame[1].toInt() and 0xFF).handle
+            val mlr = gfdiMlr
+            if (gfdiReliable && mlr != null && h == gfdiHandle) {
+                mlr.onFrame(frame)
+                sendMlrFrame(mlr.ackFrame(gfdiHandle))
+                return
+            }
+            if (h in reliableHandles) {
+                onMlrFrame?.invoke(frame)
+                return
+            }
+            // Otherwise it is an ordinary ML frame whose handle happens to be >= 0x80.
         }
-        val handle = frame[0].toInt() and 0xFF
+        val handle = first
         val payload = frame.copyOfRange(1, frame.size)
         if (handle == MlControl.CONTROL_HANDLE) {
             handleControl(payload)
@@ -164,18 +204,41 @@ class GarminSession(
                 val resp = MlControl.parseRegisterResponse(data) ?: return
                 if (resp.status != 0x00) {
                     log("ML: register service=0x%04x failed status=%d".format(resp.service, resp.status))
+                    if (resp.service == ServiceId.GFDI && gfdiReliable) {
+                        gfdiReliable = false
+                        log("ML: reliable GFDI rejected; falling back to ML")
+                        sink(MlControl.closeAllRequest(clientId))
+                        return
+                    }
                     if (resp.status == 0x03 && !recovering) { // ALREADY_IN_USE
                         recovering = true
-                        sink(MlControl.closeAllRequest(clientId))
+                        registerRetries++
+                        if (registerRetries <= 4) {
+                            later(600) { sink(MlControl.closeAllRequest(clientId)) }
+                        } else {
+                            log("ML: GFDI still in use after retries; will retry on next reconnect")
+                        }
                     }
                     return
                 }
                 if (resp.service == ServiceId.GFDI) recovering = false
-                onServiceRegistered?.invoke(resp.service, resp.handle)
+                if (resp.reliable) reliableHandles.add(resp.handle) else reliableHandles.remove(resp.handle)
+                onServiceRegistered?.invoke(resp.service, resp.handle, resp.reliable)
                 when (resp.service) {
                     ServiceId.GFDI -> {
                         gfdiHandle = resp.handle
-                        log("ML: GFDI on handle ${resp.handle}")
+                        gfdiReliable = resp.reliable
+                        registerRetries = 0
+                        gfdiMlr = if (resp.reliable) {
+                            MlrReceiver { _, data ->
+                                for (b in data) cobsBuffer.add(b)
+                                drainCobs()
+                            }
+                        } else {
+                            null
+                        }
+                        mlrSendSeq = 0
+                        log("ML: GFDI on handle ${resp.handle} reliable=${resp.reliable}")
                         onReady?.invoke()
                     }
                     ServiceId.REGISTRATION -> {
@@ -190,19 +253,28 @@ class GarminSession(
                 recovering = false
                 gfdiHandle = -1
                 registrationHandle = -1
-                sink(MlControl.registerRequest(clientId, ServiceId.GFDI, reliable = false))
-                sink(MlControl.registerRequest(clientId, ServiceId.REGISTRATION, reliable = false))
+                val registerAll = {
+                    sink(MlControl.registerRequest(clientId, ServiceId.GFDI, reliable = gfdiReliable))
+                    sink(MlControl.registerRequest(clientId, ServiceId.REGISTRATION, reliable = false))
+                    sink(MlControl.registerRequest(clientId, ServiceId.KEEP_ALIVE, reliable = false))
+                }
+                if (registrationDelayMs > 0) later(registrationDelayMs) { registerAll() } else registerAll()
             }
             MlControl.CLOSE_HANDLE_RESP -> {
                 if (data.size >= 13) {
                     val service = Gfdi.le16(data, 9)
-                    val handle = data[11].toInt() and 0xFF
-                    log("ML: handle closed service=0x%04x handle=%d".format(service, handle))
+                    val raw = data[11].toInt() and 0xFF
+                    val reliable = (service == ServiceId.GFDI && gfdiReliable) || (raw and 0x80) != 0
+                    val handle = if (reliable) raw and 0x07 else raw
+                    log("ML: handle closed service=0x%04x handle=%d raw=0x%02x".format(service, handle, raw))
+                    onServiceClosed?.invoke(service)
                     if (service == ServiceId.GFDI && handle == gfdiHandle && !recovering) {
                         recovering = true
                         log("ML: GFDI closed by device; cycling close-all")
+                        reliableHandles.remove(gfdiHandle)
                         gfdiHandle = -1
-                        sink(MlControl.closeAllRequest(clientId))
+                        gfdiMlr = null
+                        later(250) { sink(MlControl.closeAllRequest(clientId)) }
                     }
                 } else {
                     log("ML: handle closed")
@@ -225,6 +297,14 @@ class GarminSession(
             return
         }
         val encoded = Cobs.encode(message)
+        val mlr = gfdiMlr
+        if (gfdiReliable && mlr != null) {
+            for ((seq, frame) in Mlr.fragment(gfdiHandle, mlrSendSeq, mlr.nextRcvSeq, encoded, maxWriteSize)) {
+                sendMlrFrame(frame)
+                mlrSendSeq = (seq + 1) and 0x3F
+            }
+            return
+        }
         val perChunk = (maxWriteSize - 1).coerceAtLeast(19)
         var pos = 0
         while (pos < encoded.size) {
@@ -246,6 +326,17 @@ class GarminSession(
     /** Sends a GDI protobuf payload. The GDI data channel is GFDI message type 5044. */
     fun sendProtobuf(payload: ByteArray, seq: Int? = nextSeq()) {
         sendGfdi(Gfdi.build(Gfdi.MessageType.PROTOBUF_RESPONSE.id, payload, seq))
+    }
+
+    /** Writes a raw MLR frame (header already included) to the BLE link. */
+    fun sendMlrFrame(frame: ByteArray) {
+        var pos = 0
+        val per = maxWriteSize.coerceAtLeast(2)
+        while (pos < frame.size) {
+            val end = minOf(pos + per, frame.size)
+            sink(frame.copyOfRange(pos, end))
+            pos = end
+        }
     }
 
     /** Sends a raw payload on an arbitrary registered handle (no COBS). */

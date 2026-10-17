@@ -129,10 +129,9 @@ object Gdi {
      * Core.FeatureCapabilitiesRequest, with the FileAccess extension (16) requested.
      * Smart.core_service = 13, CoreService.feature_capabilities_request = 8.
      */
-    fun featureCapabilitiesRequest(clientVersion: Int = 1): ByteArray {
+    fun featureCapabilitiesRequest(clientVersion: Int = 0): ByteArray {
         val request = ProtoWriter()
-            .uint32(2, clientVersion)
-            .bytes(16, ByteArray(0)) // request_file_access_capabilities extension
+        if (clientVersion != 0) request.uint32(2, clientVersion)
         val core = ProtoWriter().bytes(8, request.toByteArray()).toByteArray()
         return ProtoWriter().bytes(SMART_CORE, core).toByteArray()
     }
@@ -229,7 +228,7 @@ object Gdi {
                 continue
             }
             when (field) {
-                1 -> pull = parsePullItemResponse(r.readBytes())
+                2 -> pull = parsePullItemResponse(r.readBytes())
                 10 -> list = parseItemListResponse(r.readBytes())
                 else -> r.skip(2)
             }

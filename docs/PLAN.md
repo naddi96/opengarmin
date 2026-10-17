@@ -43,7 +43,7 @@ Non-goals for v1: Connect IQ store, firmware updates, Garmin servers, iOS/deskto
 | **M1** | BLE connect & identify | ✅ app connects, registers GFDI, discovers the ML pair |
 | **M2** | Handshake | ✅ DEVICE_INFORMATION / CONFIGURATION / AUTH / time exchange works |
 | **M3** | File listing | ✅ GDI capabilities + `ItemListRequest`; 78 files listed on FR255 |
-| **M4** | FIT download | pull verified live (`SUCCESS`, handle 640); MLR transport pipe pending |
+| **M4** | FIT download | ✅ transport pipe + zlib verified (3966 → 40292 bytes) |
 | **M5** | Archive | app marks synced files ARCHIVE; no redownload; idempotent |
 | **M6** | FIT → DB | parsed activities + records in Room; dashboard shows them |
 | **M7** | Polish | background sync, error recovery, export, health summaries |
