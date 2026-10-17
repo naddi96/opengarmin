@@ -28,9 +28,15 @@ class SyncCoordinator(
     /** True when the given GDI item UID has already been imported. */
     private val isItemKnown: (String) -> Boolean,
     private val onFinished: (raw: File, decoded: File, itemUid: String) -> Unit,
+    private val onWellnessFile: (decoded: File, type: String) -> Unit,
     private val onUpToDate: () -> Unit,
 ) {
     private val gdi = GdiClient(session) { log(it) }
+    private val wellnessQueue = ArrayDeque<Gdi.ItemReference>()
+    private var wellnessTransfer = false
+    private var pulledWellnessType = ""
+    private var inFlightWellness: Gdi.ItemReference? = null
+    private var activitiesUpToDate = false
 
     private var capabilitiesRequested = false
     private var capabilitiesReceived = false
@@ -39,6 +45,7 @@ class SyncCoordinator(
     private var requestedPull = false
     private var started = false
     private var pulledItemUid = ""
+    private var cutResponseReceived = false
     private var pipe: TransportPipe? = null
     private var output: FileOutputStream? = null
     private var generation = 0
@@ -66,6 +73,17 @@ class SyncCoordinator(
             handler.postDelayed({
                 if (g == generation && !capabilitiesReceived) sendCapabilities()
             }, 1500)
+            handler.post {
+                val retry = inFlightWellness
+                if (retry != null) {
+                    inFlightWellness = null
+                    wellnessTransfer = false
+                    wellnessQueue.addFirst(retry)
+                    handler.postDelayed({ pullNextWellness() }, 800)
+                } else if (wellnessQueue.isNotEmpty() && !wellnessTransfer) {
+                    handler.postDelayed({ pullNextWellness() }, 800)
+                }
+            }
         }
     }
 
@@ -80,6 +98,12 @@ class SyncCoordinator(
         requestedPull = false
         started = false
         pulledItemUid = ""
+        cutResponseReceived = false
+        wellnessQueue.clear()
+        wellnessTransfer = false
+        pulledWellnessType = ""
+        inFlightWellness = null
+        activitiesUpToDate = false
         done = false
     }
 
@@ -87,6 +111,9 @@ class SyncCoordinator(
 
     /** True once the watch has sent any GDI message (i.e. a sync is underway). */
     fun hasStarted(): Boolean = started
+
+    /** True while a file is being pulled through the transport pipe. */
+    fun isTransferring(): Boolean = pipe != null || wellnessTransfer
 
     private fun closeOutput() {
         try {
@@ -148,6 +175,12 @@ class SyncCoordinator(
         log("GDI smart fields=${fields.keys} sizes=${fields.mapValues { it.value.size }}")
 
         if (Gdi.coreFeatureCapabilitiesResponse(smart) != null) onCapabilities()
+        if (Gdi.isWellnessThresholdMet(smart)) {
+            log("GDI: wellness threshold met")
+            listRequested = false
+            listReceived = false
+            handler.postDelayed({ requestList() }, 500)
+        }
         if (Gdi.isConnectionReady(smart) && !capabilitiesReceived && !done) {
             // The watch opens a GDI session and waits for the capability
             // exchange before it will stream a full ItemListResponse. If it
@@ -164,8 +197,44 @@ class SyncCoordinator(
         val svc = Gdi.parseFileAccessService(fa)
         val list = svc.itemListResponse
         val pull = svc.pullItemResponse
+        svc.itemAdded?.let { handleItemAdded(it) }
         if (list != null) handleItemList(list)
         if (pull != null) handlePullResponse(pull)
+    }
+
+    private fun handleItemAdded(notification: Gdi.ItemAddedNotification) {
+        if (notification.items.isEmpty()) return
+        log(
+            "GDI: items added " + notification.items.joinToString {
+                "${it.dataType?.gdxmlString ?: "unknown"}(${it.dataSize})"
+            },
+        )
+        wellnessQueue.addAll(notification.items)
+        if (pipe == null && !wellnessTransfer) pullNextWellness()
+    }
+
+    private fun pullNextWellness() {
+        if (wellnessTransfer || pipe != null) return
+        val item = wellnessQueue.removeFirstOrNull()
+        if (item == null) {
+            if (activitiesUpToDate) {
+                if (!done) {
+                    done = true
+                    log("SYNC up to date: activities and wellness synced")
+                    onUpToDate()
+                }
+            } else if (!listReceived && !done) {
+                requestList()
+            }
+            return
+        }
+        wellnessTransfer = true
+        pulledWellnessType = item.dataType?.gdxmlString ?: "unknown"
+        inFlightWellness = item
+        log("WELLNESS PULL request type=$pulledWellnessType size=${item.dataSize} left=${wellnessQueue.size}")
+        gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.pullItemRequest(item))) { response ->
+            handler.post { handleSmart(response) }
+        }
     }
 
     private fun sendCapabilities() {
@@ -183,14 +252,45 @@ class SyncCoordinator(
         if (capabilitiesReceived) return
         capabilitiesReceived = true
         log("GDI: capabilities received")
-        requestList()
+        sendCutWellnessThenList()
+    }
+
+    private fun sendCutWellnessThenList() {
+        cutResponseReceived = false
+        log("GDI → CutWellnessFilesRequest")
+        gdi.sendSmart(Gdi.cutWellnessFilesRequest()) { response ->
+            cutResponseReceived = true
+            val status = Gdi.cutWellnessFilesStatus(response)
+            handler.post {
+                log("GDI: cut wellness status=$status")
+                if (status == 0) {
+                    // Give the watch time to finalize the wellness file, then
+                    // ask for the directory again.
+                    val g = generation
+                    handler.postDelayed({
+                        if (g == generation && !done && wellnessQueue.isEmpty()) {
+                            listRequested = false
+                            listReceived = false
+                            requestList()
+                        }
+                    }, 2500)
+                } else {
+                    requestList()
+                }
+            }
+        }
+        // Fallback in case the watch does not answer the cut request.
+        val g = generation
+        handler.postDelayed({
+            if (g == generation && !cutResponseReceived && !listRequested) requestList()
+        }, 2000)
     }
 
     private fun requestList() {
         if (listReceived || listRequested || done) return
         listRequested = true
         log("GDI → ItemListRequest")
-        gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.itemListRequest(maxItemCount = 100))) { response ->
+        gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.itemListRequest(maxItemCount = 1000))) { response ->
             handler.post { handleSmart(response) }
         }
     }
@@ -218,13 +318,21 @@ class SyncCoordinator(
             !isItemKnown(uid)
         }
         if (activityItems.isNotEmpty() && newActivityItems.isEmpty()) {
+            activitiesUpToDate = true
+            if (wellnessQueue.isNotEmpty() || wellnessTransfer) {
+                log("SYNC: activities up to date; finishing wellness transfers")
+                pullNextWellness()
+                return
+            }
             done = true
             log("SYNC up to date: ${activityItems.size} activity item(s) already imported")
             onUpToDate()
             return
         }
 
+        activitiesUpToDate = false
         requestedPull = true
+        pulledWellnessType = ""
         val item = newActivityItems.firstOrNull()
             ?: list.items.firstOrNull { it.dataType?.gdxmlString == "FIT_TYPE_4" }
             ?: list.items.firstOrNull { it.dataType?.gdxmlString?.startsWith("FIT_TYPE") == true }
@@ -246,7 +354,7 @@ class SyncCoordinator(
             "PULL response result=${pr.result} transport=${pr.transport} " +
                 "handle=${pr.transferHandle} window=${pr.compressionWindow}",
         )
-        if (pr.result != 0 || pr.transferHandle == 0 || pipe != null || done) return
+        if (pr.result != 0 || pr.transferHandle == 0 || pipe != null) return
 
         val raw = File(filesDir, "download_${pr.transferHandle}.bin")
         val out = FileOutputStream(raw)
@@ -264,10 +372,22 @@ class SyncCoordinator(
                 val decoded = inflateOrRaw(compressed)
                 val decFile = File(filesDir, "download_${pr.transferHandle}.dec")
                 decFile.writeBytes(decoded)
-                done = true
+                pipe = null
                 handler.post {
                     log("DOWNLOAD raw=${compressed.size} decoded=${decoded.size} -> ${decFile.absolutePath}")
-                    onFinished(raw, decFile, pulledItemUid)
+                    if (pulledWellnessType.isNotEmpty()) {
+                        val type = pulledWellnessType
+                        pulledWellnessType = ""
+                        wellnessTransfer = false
+                        inFlightWellness = null
+                        log("WELLNESS complete type=$type decoded=${decoded.size}")
+                        onWellnessFile(decFile, type)
+                        pullNextWellness()
+                    } else {
+                        done = true
+                        onFinished(raw, decFile, pulledItemUid)
+                        if (wellnessQueue.isNotEmpty()) pullNextWellness()
+                    }
                 }
             },
             onError = { msg -> handler.post { log("PIPE error: $msg") } },

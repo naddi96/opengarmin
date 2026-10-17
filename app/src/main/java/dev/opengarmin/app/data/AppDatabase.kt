@@ -12,6 +12,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Update
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import dev.opengarmin.protocol.Fit
@@ -19,6 +20,8 @@ import dev.opengarmin.protocol.Gfdi
 import kotlinx.coroutines.flow.Flow
 import org.json.JSONObject
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
 import kotlin.math.roundToInt
 
 @Entity(
@@ -129,6 +132,49 @@ data class FitMessageEntity(
 
 data class MessageCount(val messageName: String, val cnt: Int)
 
+@Entity(
+    tableName = "wellness_days",
+    indices = [Index(value = ["date"], unique = true)],
+)
+data class WellnessDayEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** Local date, YYYY-MM-DD. */
+    val date: String,
+    val steps: Int,
+    val distanceMeters: Double,
+    val activeCalories: Int,
+    val activeSeconds: Int,
+    val restingHeartRate: Int?,
+    val avgHeartRate: Int?,
+    val maxHeartRate: Int?,
+    val stressAvg: Int?,
+    val spo2Avg: Int?,
+    val respirationAvg: Double?,
+    val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "wellness_samples",
+    foreignKeys = [
+        ForeignKey(
+            entity = WellnessDayEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["dayId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("dayId"), Index(value = ["dayId", "timestamp"])],
+)
+data class WellnessSampleEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val dayId: Long,
+    /** Unix seconds. */
+    val timestamp: Long,
+    /** hr, stress, spo2 or respiration. */
+    val kind: String,
+    val value: Double,
+)
+
 @Dao
 interface ActivityDao {
     @Query("SELECT * FROM activities ORDER BY startTime DESC")
@@ -158,6 +204,27 @@ interface ActivityDao {
     @Query("SELECT COUNT(*) FROM fit_messages WHERE activityId = :activityId")
     suspend fun messageCount(activityId: Long): Int
 
+    @Query("SELECT * FROM wellness_days ORDER BY date DESC")
+    fun observeWellnessDays(): Flow<List<WellnessDayEntity>>
+
+    @Query("SELECT * FROM wellness_days WHERE date = :date")
+    suspend fun wellnessDay(date: String): WellnessDayEntity?
+
+    @Insert
+    suspend fun insertWellnessDay(day: WellnessDayEntity): Long
+
+    @Update
+    suspend fun updateWellnessDay(day: WellnessDayEntity)
+
+    @Query("DELETE FROM wellness_samples WHERE dayId = :dayId")
+    suspend fun deleteWellnessSamples(dayId: Long)
+
+    @Insert
+    suspend fun insertWellnessSamples(samples: List<WellnessSampleEntity>)
+
+    @Query("SELECT * FROM wellness_samples WHERE dayId = :dayId ORDER BY timestamp")
+    suspend fun wellnessSamples(dayId: Long): List<WellnessSampleEntity>
+
     @Query("SELECT * FROM laps WHERE activityId = :activityId ORDER BY lapIndex")
     suspend fun laps(activityId: Long): List<LapEntity>
 
@@ -181,8 +248,15 @@ interface ActivityDao {
 }
 
 @Database(
-    entities = [ActivityEntity::class, RecordEntity::class, LapEntity::class, FitMessageEntity::class],
-    version = 5,
+    entities = [
+        ActivityEntity::class,
+        RecordEntity::class,
+        LapEntity::class,
+        FitMessageEntity::class,
+        WellnessDayEntity::class,
+        WellnessSampleEntity::class,
+    ],
+    version = 6,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -254,20 +328,69 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `wellness_days` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`date` TEXT NOT NULL, " +
+                        "`steps` INTEGER NOT NULL, " +
+                        "`distanceMeters` REAL NOT NULL, " +
+                        "`activeCalories` INTEGER NOT NULL, " +
+                        "`activeSeconds` INTEGER NOT NULL, " +
+                        "`restingHeartRate` INTEGER, " +
+                        "`avgHeartRate` INTEGER, " +
+                        "`maxHeartRate` INTEGER, " +
+                        "`stressAvg` INTEGER, " +
+                        "`spo2Avg` INTEGER, " +
+                        "`respirationAvg` REAL, " +
+                        "`updatedAt` INTEGER NOT NULL)",
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_wellness_days_date` " +
+                        "ON `wellness_days` (`date`)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `wellness_samples` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`dayId` INTEGER NOT NULL, " +
+                        "`timestamp` INTEGER NOT NULL, " +
+                        "`kind` TEXT NOT NULL, " +
+                        "`value` REAL NOT NULL, " +
+                        "FOREIGN KEY(`dayId`) REFERENCES `wellness_days`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_wellness_samples_dayId` " +
+                        "ON `wellness_samples` (`dayId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_wellness_samples_dayId_timestamp` " +
+                        "ON `wellness_samples` (`dayId`, `timestamp`)",
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "opengarmin.db",
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
-                    .build().also { instance = it }
+                ).addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                ).build().also { instance = it }
             }
     }
 }
 
 class ActivityRepository(private val dao: ActivityDao) {
     val activities: Flow<List<ActivityEntity>> = dao.observeAll()
+    val wellnessDays: Flow<List<WellnessDayEntity>> = dao.observeWellnessDays()
 
     suspend fun records(activityId: Long): List<RecordEntity> = dao.records(activityId)
 
@@ -276,6 +399,8 @@ class ActivityRepository(private val dao: ActivityDao) {
     suspend fun messageCounts(activityId: Long): List<MessageCount> = dao.messageCounts(activityId)
 
     suspend fun allMessages(activityId: Long): List<FitMessageEntity> = dao.allMessages(activityId)
+
+    suspend fun wellnessSamples(dayId: Long): List<WellnessSampleEntity> = dao.wellnessSamples(dayId)
 
     suspend fun clear() = dao.clear()
 
@@ -388,6 +513,143 @@ class ActivityRepository(private val dao: ActivityDao) {
                 unitsJson = units.toString(),
             )
         }
+
+    /**
+     * Imports a watch wellness file (monitoring_b / monitoring_daily) into the
+     * daily metrics tables. Re-cutting the same day updates the row and
+     * replaces its samples.
+     */
+    suspend fun importWellness(data: ByteArray): WellnessDayEntity? {
+        val parsed = runCatching { Fit.parse(data) }.getOrNull() ?: return null
+        val messages = parsed.messages
+
+        val baseTs = messages.mapNotNull { it.timestamp }.maxOrNull() ?: return null
+
+        val monitoring = messages.filter { message ->
+            message.name == "monitoring" && (
+                msgField(message, "steps") != null ||
+                    msgField(message, "cycles_16") != null ||
+                    msgField(message, "distance") != null ||
+                    msgField(message, "active_time") != null ||
+                    msgField(message, "active_calories") != null ||
+                    msgField(message, "calories") != null
+                )
+        }
+        val hrSamples = messages.filter { it.name == "monitoring" }.mapNotNull { message ->
+            val hr = msgInt(message, "heart_rate") ?: return@mapNotNull null
+            val ts = message.timestamp
+                ?: msgInt(message, "timestamp_16")?.let { resolveTimestamp16(baseTs, it) }
+                ?: baseTs
+            ts to hr
+        }
+        if (monitoring.isEmpty() && hrSamples.isEmpty()) return null
+
+        val date = Instant.ofEpochSecond(baseTs)
+            .atZone(ZoneId.systemDefault())
+            .toLocalDate()
+            .toString()
+
+        val lastByType = LinkedHashMap<Int, Fit.Message>()
+        for (message in monitoring) {
+            lastByType[msgInt(message, "activity_type") ?: 0] = message
+        }
+        var steps = 0
+        var distance = 0.0
+        var activeCalories = 0
+        var activeSeconds = 0
+        for (message in lastByType.values) {
+            steps += msgInt(message, "steps")
+                ?: msgInt(message, "cycles_16")?.times(2)
+                ?: msgDouble(message, "cycles")?.times(2)?.toInt()
+                ?: 0
+            distance += msgDouble(message, "distance") ?: 0.0
+            activeCalories += msgInt(message, "active_calories") ?: msgInt(message, "calories") ?: 0
+            activeSeconds += msgDouble(message, "active_time")?.toInt() ?: 0
+        }
+
+        val restingHeartRate = messages.filter { it.name == "monitoring_hr_data" }
+            .lastOrNull()
+            ?.let {
+                msgInt(it, "current_day_resting_heart_rate") ?: msgInt(it, "resting_heart_rate")
+            }
+
+        val stress = messages.filter { it.name == "stress_level" }.mapNotNull { message ->
+            val value = msgInt(message, "stress_level_value") ?: return@mapNotNull null
+            val ts = msgDouble(message, "stress_level_time")?.toLong()
+                ?: message.timestamp
+                ?: baseTs
+            WellnessSampleEntity(dayId = 0, timestamp = ts, kind = "stress", value = value.toDouble())
+        }
+        val spo2 = messages.filter { it.name == "spo2_data" }.mapNotNull { message ->
+            val value = msgInt(message, "reading_spo2") ?: return@mapNotNull null
+            WellnessSampleEntity(
+                dayId = 0,
+                timestamp = message.timestamp ?: baseTs,
+                kind = "spo2",
+                value = value.toDouble(),
+            )
+        }
+        val respiration = messages.filter { it.name == "respiration_rate" }.mapNotNull { message ->
+            val value = msgDouble(message, "respiration_rate") ?: return@mapNotNull null
+            WellnessSampleEntity(
+                dayId = 0,
+                timestamp = message.timestamp ?: baseTs,
+                kind = "respiration",
+                value = value,
+            )
+        }
+        val heartRateSamples = hrSamples.map { (ts, value) ->
+            WellnessSampleEntity(dayId = 0, timestamp = ts, kind = "hr", value = value.toDouble())
+        }
+        val samples = (heartRateSamples + stress + spo2 + respiration).sortedBy { it.timestamp }
+
+        val hrValues = hrSamples.map { it.second }
+        val entity = WellnessDayEntity(
+            date = date,
+            steps = steps,
+            distanceMeters = distance,
+            activeCalories = activeCalories,
+            activeSeconds = activeSeconds,
+            restingHeartRate = restingHeartRate,
+            avgHeartRate = hrValues.takeIf { it.isNotEmpty() }?.average()?.roundToInt(),
+            maxHeartRate = hrValues.maxOrNull(),
+            stressAvg = stress.map { it.value }.average().takeIf { !it.isNaN() }?.roundToInt(),
+            spo2Avg = spo2.map { it.value }.average().takeIf { !it.isNaN() }?.roundToInt(),
+            respirationAvg = respiration.map { it.value }.average().takeIf { !it.isNaN() },
+            updatedAt = System.currentTimeMillis() / 1000,
+        )
+
+        val existing = dao.wellnessDay(date)
+        val id = if (existing == null) {
+            dao.insertWellnessDay(entity)
+        } else {
+            dao.updateWellnessDay(entity.copy(id = existing.id))
+            existing.id
+        }
+        val existingKeys = dao.wellnessSamples(id).map { it.kind to it.timestamp }.toHashSet()
+        val freshSamples = samples
+            .filter { (it.kind to it.timestamp) !in existingKeys }
+            .map { it.copy(dayId = id) }
+        if (freshSamples.isNotEmpty()) dao.insertWellnessSamples(freshSamples)
+        return entity.copy(id = id)
+    }
+
+    private fun resolveTimestamp16(reference: Long, raw: Int): Long {
+        val mask = 0xFFFFL
+        var value = (reference and mask.inv()) or (raw.toLong() and mask)
+        if (value < reference - 0x8000L) value += 0x10000L
+        else if (value > reference + 0x8000L) value -= 0x10000L
+        return value
+    }
+
+    private fun msgField(message: Fit.Message, name: String): Any? =
+        message.fields.firstOrNull { it.name == name }?.value
+
+    private fun msgInt(message: Fit.Message, name: String): Int? =
+        (msgField(message, name) as? Number)?.toInt()
+
+    private fun msgDouble(message: Fit.Message, name: String): Double? =
+        (msgField(message, name) as? Number)?.toDouble()
 
     private fun recordEntities(activityId: Long, parsed: Fit.Parsed): List<RecordEntity> =
         parsed.records.map { record ->

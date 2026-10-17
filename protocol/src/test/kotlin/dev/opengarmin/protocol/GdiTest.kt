@@ -139,13 +139,38 @@ class GdiTest {
     }
 
     @Test
-    fun `smart wrapper round-trips multiple services`() {
-        val smart = ProtoWriter()
-            .bytes(Gdi.SMART_CORE, Hex.decode("aabb"))
-            .bytes(Gdi.SMART_FILE_ACCESS, Hex.decode("ccdd"))
-            .toByteArray()
-        val fields = Gdi.smartFields(smart)
-        assertTrue(fields[Gdi.SMART_CORE]!!.contentEquals(Hex.decode("aabb")))
-        assertTrue(fields[Gdi.SMART_FILE_ACCESS]!!.contentEquals(Hex.decode("ccdd")))
+    fun `parses an item added notification`() {
+        val smart = Hex.decode(
+            "da023462320a300a1209fd000000fc5e3645116b0300000000000112110800120b" +
+                "4649545f545950455f3332180018eb0628cedf023001",
+        )
+        val service = assertNotNull(Gdi.smartFields(smart)[Gdi.SMART_FILE_ACCESS])
+        val added = assertNotNull(Gdi.parseFileAccessService(service).itemAdded)
+        assertEquals(1, added.items.size)
+        val item = added.items.first()
+        assertEquals("FIT_TYPE_32", item.dataType?.gdxmlString)
+        assertEquals(875L, item.dataSize)
+        assertEquals(1, item.urgency)
+    }
+
+    @Test
+    fun `builds cut wellness request and parses its response`() {
+        assertEquals(
+            "fa02041a020801",
+            Hex.encode(Gdi.cutWellnessFilesRequest()),
+        )
+        val response = Hex.decode("fa020422020800")
+        assertEquals(0, Gdi.cutWellnessFilesStatus(response))
+        val notification = Hex.decode("fa02022a00")
+        assertTrue(Gdi.isWellnessThresholdMet(notification))
+    }
+
+    @Test
+    fun `feature capabilities advertise garmin connect wellness`() {
+        val smart = Gdi.featureCapabilitiesRequest()
+        val core = assertNotNull(Gdi.smartFields(smart)[Gdi.SMART_CORE])
+        val request = assertNotNull(Gdi.field(core, 8))
+        assertNotNull(Gdi.field(request, 11))
+        assertNotNull(Gdi.field(request, 16))
     }
 }

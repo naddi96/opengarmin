@@ -63,6 +63,7 @@ object Gdi {
     const val SMART_AUDIO_PROMPTS = 10
     const val SMART_SMS_NOTIFICATION = 16
     const val SMART_DEVICE_MESSAGES = 24
+    const val SMART_GARMIN_CONNECT = 47
 
     /** Returns the raw value of a top-level protobuf field, or null. */
     fun field(data: ByteArray, wanted: Int): ByteArray? {
@@ -144,7 +145,10 @@ object Gdi {
     data class FileAccessService(
         val itemListResponse: ItemListResponse? = null,
         val pullItemResponse: PullItemResponse? = null,
+        val itemAdded: ItemAddedNotification? = null,
     )
+
+    data class ItemAddedNotification(val items: List<ItemReference>)
 
     /**
      * Core.FeatureCapabilitiesRequest, with the FileAccess extension (16) requested.
@@ -154,8 +158,41 @@ object Gdi {
         val request = ProtoWriter()
         if (clientVersion != 0) request.uint32(2, clientVersion)
         request.bytes(16, ByteArray(0)) // request_file_access_capabilities extension
+        // GarminConnect.ClientFeatureCapabilities (extension field 11)
+        request.bytes(
+            11,
+            ProtoWriter().uint32(1, 2).uint32(2, 1).toByteArray(),
+        )
         val core = ProtoWriter().bytes(8, request.toByteArray()).toByteArray()
         return ProtoWriter().bytes(SMART_CORE, core).toByteArray()
+    }
+
+    /** GarminConnect.CutWellnessFilesRequest (Service field 3). */
+    fun cutWellnessFilesRequest(priority: Int = 1): ByteArray {
+        val request = ProtoWriter().uint32(1, priority).toByteArray()
+        val service = ProtoWriter().bytes(3, request).toByteArray()
+        return wrapSmart(SMART_GARMIN_CONNECT, service)
+    }
+
+    /** Returns the CutWellnessFilesResponse status, or null. */
+    fun cutWellnessFilesStatus(smart: ByteArray): Int? {
+        val service = smartFields(smart)[SMART_GARMIN_CONNECT] ?: return null
+        val response = field(service, 4) ?: return null
+        val r = ProtoReader(response)
+        while (r.hasMore()) {
+            val tag = r.readVarint().toInt()
+            val field = tag ushr 3
+            val wire = tag and 7
+            if (field == 1 && wire == 0) return r.readVarint().toInt()
+            r.skip(wire)
+        }
+        return null
+    }
+
+    /** GarminConnect.WellnessThresholdMetNotification (Service field 5). */
+    fun isWellnessThresholdMet(smart: ByteArray): Boolean {
+        val service = smartFields(smart)[SMART_GARMIN_CONNECT] ?: return false
+        return field(service, 5) != null
     }
 
     /** Returns the CoreService.feature_capabilities_response payload if present. */
@@ -261,6 +298,7 @@ object Gdi {
     fun parseFileAccessService(data: ByteArray): FileAccessService {
         var list: ItemListResponse? = null
         var pull: PullItemResponse? = null
+        var added: ItemAddedNotification? = null
         val r = ProtoReader(data)
         while (r.hasMore()) {
             val tag = r.readVarint().toInt()
@@ -273,10 +311,27 @@ object Gdi {
             when (field) {
                 2 -> pull = parsePullItemResponse(r.readBytes())
                 10 -> list = parseItemListResponse(r.readBytes())
+                12 -> added = parseItemAddedNotification(r.readBytes())
                 else -> r.skip(2)
             }
         }
-        return FileAccessService(list, pull)
+        return FileAccessService(list, pull, added)
+    }
+
+    private fun parseItemAddedNotification(data: ByteArray): ItemAddedNotification {
+        val items = ArrayList<ItemReference>()
+        val r = ProtoReader(data)
+        while (r.hasMore()) {
+            val tag = r.readVarint().toInt()
+            val field = tag ushr 3
+            val wire = tag and 7
+            if (field == 1 && wire == 2) {
+                items.add(parseItemReference(r.readBytes()))
+            } else {
+                r.skip(wire)
+            }
+        }
+        return ItemAddedNotification(items)
     }
 
     private fun parseUuid(data: ByteArray): Uuid {

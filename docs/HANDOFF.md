@@ -60,6 +60,7 @@ The tree is clean. `captures/`, `apk/`, `tools/` binary downloads are gitignored
 | M4 file download + decode | ✅ **99,357 compressed bytes → 198,627 bytes** (zlib, valid FIT: `.FIT`, profile 21184) |
 | M5 FIT parser | ✅ pure-JVM parser: all 7,931 messages / every field, plus typed session/lap/record |
 | M6 Room → dashboard | ✅ activities + records + laps + all FIT messages; OSM track map, HR/elevation charts, lap table, data explorer with cross-plots |
+| M7 daily wellness | ✅ steps, distance, active calories/time, resting HR, HR/stress/SpO2/respiration samples; Health card + daily detail |
 
 The M4 download was proven end-to-end earlier: `PullItemDataRequest` →
 `transfer_handle` → MLR transport pipe on service `0x2018` → zlib stream →
@@ -102,14 +103,13 @@ app/src/main/java/dev/opengarmin/app/
                            dedicated GFDI subscribe, serialized write queue
   sync/SyncCoordinator.kt  capabilities → connection-ready → device requests →
                            list → pull → pipe → zlib → file
-  data/AppDatabase.kt      Room entities/DAO/database (v5: activities, records,
-                           laps, fit_messages) + ActivityRepository (FIT import,
-                           UID dedupe, epoch conversion, lap/coordinate/message
-                           backfill)
-  MainActivity.kt          Compose dashboard (activity list + detail + OSM track
-                           map + HR/elevation charts + lap table) and the
-                           "All data" explorer (message types, multi-series plot,
-                           arbitrary X/Y scatter with correlation, raw fields)
+  data/AppDatabase.kt      Room entities/DAO/database (v6: activities, records,
+                           laps, fit_messages, wellness_days, wellness_samples)
+                           + ActivityRepository (FIT/wellness import, UID dedupe,
+                           epoch conversion, lap/coordinate/message backfill)
+  MainActivity.kt          Compose dashboard (Today health card + daily detail,
+                           activity list + OSM track map + HR/elevation charts +
+                           lap table, All data explorer), watchdog/reconnect
 
 docs/                      PROTOCOL, PLAN, LICENSING, samples, protos
 tools/                     parse_btsnoop.py, extract_protos.py, setup scripts
@@ -141,21 +141,51 @@ With those fixed, a full sync completed on 2026-10-17 18:20:
 → transport pipe → 99,357 compressed B → 198,627 B FIT`.
 
 A cold start (app data cleared, no cached FIT) was re-verified afterwards:
-fresh Room v5 database, 1 activity, 2,488 records, 6 laps, 7,931 stored FIT
-messages, GPS track, dashboard rendered. A second connect with the same item UID
-skips the PULL and reports `SYNC up to date`.
+fresh Room v6 database, 1 activity, 2,488 records, 6 laps, 7,931 stored FIT
+messages, GPS track and daily wellness, dashboard rendered. A second connect
+with the same item UID skips the PULL and reports `SYNC up to date`.
+
+## Daily wellness (M7)
+
+Daily steps/heart rate are not in the FileAccess directory. The flow is:
+
+1. Send `GarminConnect.CutWellnessFilesRequest` (Smart field 47 → Service
+   field 3, priority `USER_INITIATED`) after the capability exchange.
+   `FeatureCapabilitiesRequest` must advertise the GarminConnect capability
+   (Core field 11: version 2, wellness support).
+2. The watch replies `CutWellnessFilesResponse` (status 0), then sends
+   `FileAccess.ItemAddedNotification` (FileAccess field 12) for two small
+   files: `FIT_TYPE_32` (monitoring_b, ~0.9 KB) and `FIT_TYPE_41` (~287 B).
+3. Pull `FIT_TYPE_32`. It contains daily `monitoring` totals,
+   `monitoring_hr_data` (resting HR), `stress_level`, `spo2_data` and
+   `respiration_rate`.
+4. Parse it into `wellness_days` + `wellness_samples`. Steps are stored in the
+   `monitoring.cycles_16` field: **steps = 2 × cycles_16**. HR samples use
+   `timestamp_16` (16-bit truncated seconds) resolved against the last full
+   timestamp.
+5. Re-cutting the same day updates the totals. Samples are merged by
+   `(day, kind, timestamp)` so repeated cuts accumulate history.
+
+The watch closes GFDI after each file and can take ~30 s to close the second
+transport pipe. The coordinator re-queues the in-flight wellness item on GFDI
+re-registration, and the watchdog reschedules to 60 s while a transfer is
+active (normal timeout 15 s).
+
+Wellness UI: the home screen shows a Today card (steps, distance, calories,
+active time, resting/avg/max HR, stress); tapping it opens a daily detail with
+a stats grid and HR/stress charts.
 
 ## Immediate next steps
 
-1. Import more activities if the watch exposes them: the current 100-item list
-   contains only one `FIT_TYPE_4`. If more appear, the existing loop already
-   picks the first item whose UID is not in Room.
+1. Accumulate wellness history: current cuts only contain the current day's
+   delta. Sync periodically (or learn how to request older wellness days) to
+   build a multi-day steps/HR history.
 2. Add units/axis labels and saved custom plots to the data explorer.
 3. Background/periodic sync and a proper connected-device state.
 4. Consider answering ConnectIQ HTTP requests with real network data (weather)
    instead of the offline timeout response.
 5. Unit tests for the Room importer/migrations (dedupe, epoch conversion,
-   lap/coordinate/message backfill).
+   lap/coordinate/message/wellness backfill).
 
 ## Useful commands
 
@@ -190,9 +220,13 @@ pairing port (pairing needs the 6-digit code).
 - GDI frames are ACKed per chunk (`[id][offset][ok][code]`), not per message.
 - Store `ItemReference.uid` with the activity and skip the PULL when it is
   already in Room; otherwise every connect re-downloads the same FIT.
-- Room DB is version 5: `itemUid` (1→2), `laps` (2→3), record
-  `latitude`/`longitude` (3→4) and `fit_messages` (4→5) migrations live in
-  `AppDatabase`.
+- Room DB is version 6: `itemUid` (1→2), `laps` (2→3), record
+  `latitude`/`longitude` (3→4), `fit_messages` (4→5) and wellness tables
+  (5→6) migrations live in `AppDatabase`.
+- Daily wellness comes from `CutWellnessFilesRequest` → `ItemAddedNotification`
+  (FIT_TYPE_32). Use `cycles_16 * 2` for steps and resolve `timestamp_16`
+  against the last full timestamp. The watch may ignore a re-cut within its
+  cooldown (response status 1); previous samples stay stored.
 - `Fit.parse` retains every message/field (7,931 messages for the sample
   activity, ~18 message types). `FitProfile.kt` is generated from the public
   FIT SDK profile (via `fitdecode`); unknown messages/fields fall back to

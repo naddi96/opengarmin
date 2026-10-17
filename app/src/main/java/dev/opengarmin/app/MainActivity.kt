@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -61,6 +62,8 @@ import dev.opengarmin.app.data.AppDatabase
 import dev.opengarmin.app.data.FitMessageEntity
 import dev.opengarmin.app.data.LapEntity
 import dev.opengarmin.app.data.RecordEntity
+import dev.opengarmin.app.data.WellnessDayEntity
+import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.sync.SyncCoordinator
 import dev.opengarmin.protocol.Hex
 import kotlinx.coroutines.Dispatchers
@@ -76,6 +79,8 @@ import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import java.io.File
 import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import kotlin.math.sqrt
@@ -92,9 +97,12 @@ class MainActivity : ComponentActivity() {
     private val devices = mutableStateListOf<DeviceEntry>()
     private val logs = mutableStateListOf<String>()
     private val activities = mutableStateListOf<ActivityEntity>()
+    private val wellnessDays = mutableStateListOf<WellnessDayEntity>()
     private var selectedActivity by mutableStateOf<ActivityEntity?>(null)
     private var selectedRecords by mutableStateOf<List<RecordEntity>>(emptyList())
     private var selectedLaps by mutableStateOf<List<LapEntity>>(emptyList())
+    private var selectedWellnessDay by mutableStateOf<WellnessDayEntity?>(null)
+    private var wellnessSamples by mutableStateOf<List<WellnessSampleEntity>>(emptyList())
     private var dataActivity by mutableStateOf<ActivityEntity?>(null)
     private var dataMessages by mutableStateOf<List<FitMessageEntity>>(emptyList())
     private var dataLoading by mutableStateOf(false)
@@ -126,6 +134,12 @@ class MainActivity : ComponentActivity() {
             repository.activities.collect { list ->
                 activities.clear()
                 activities.addAll(list)
+            }
+        }
+        lifecycleScope.launch {
+            repository.wellnessDays.collect { list ->
+                wellnessDays.clear()
+                wellnessDays.addAll(list)
             }
         }
         lifecycleScope.launch(Dispatchers.IO) {
@@ -177,6 +191,10 @@ class MainActivity : ComponentActivity() {
                 log("SYNC complete: raw=${raw.length()} decoded=${decoded.length()} (${decoded.name})")
                 importFit(decoded, itemUid)
             },
+            onWellnessFile = { decoded, type ->
+                log("WELLNESS file $type: ${decoded.name} (${decoded.length()} bytes)")
+                importWellness(decoded, type)
+            },
             onUpToDate = {
                 cancelWatchdog()
                 state = "up to date"
@@ -195,6 +213,9 @@ class MainActivity : ComponentActivity() {
                         selectedActivity = selectedActivity,
                         selectedRecords = selectedRecords,
                         selectedLaps = selectedLaps,
+                        wellnessDays = wellnessDays,
+                        selectedWellnessDay = selectedWellnessDay,
+                        wellnessSamples = wellnessSamples,
                         dataActivity = dataActivity,
                         dataMessages = dataMessages,
                         dataLoading = dataLoading,
@@ -219,6 +240,8 @@ class MainActivity : ComponentActivity() {
                         },
                         onExploreData = { openDataExplorer(it) },
                         onCloseData = { closeDataExplorer() },
+                        onSelectWellness = { selectWellness(it) },
+                        onCloseWellness = { closeWellness() },
                         deviceInfo = {
                             val s = c.session
                             listOf(
@@ -273,6 +296,42 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun importWellness(file: File, type: String) {
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { repository.importWellness(file.readBytes()) }
+            }
+            result.onSuccess { day ->
+                if (day == null) {
+                    log("WELLNESS $type contained no daily samples")
+                } else {
+                    log(
+                        "WELLNESS imported ${day.date}: ${day.steps} steps, " +
+                            "%.2f km, resting HR ${day.restingHeartRate ?: "—"}".format(
+                                day.distanceMeters / 1000.0,
+                            ),
+                    )
+                }
+            }.onFailure { e ->
+                log("WELLNESS import failed: ${e.message}")
+            }
+        }
+    }
+
+    private fun selectWellness(day: WellnessDayEntity) {
+        selectedWellnessDay = day
+        wellnessSamples = emptyList()
+        lifecycleScope.launch {
+            val samples = withContext(Dispatchers.IO) { repository.wellnessSamples(day.id) }
+            if (selectedWellnessDay?.id == day.id) wellnessSamples = samples
+        }
+    }
+
+    private fun closeWellness() {
+        selectedWellnessDay = null
+        wellnessSamples = emptyList()
+    }
+
     private fun selectActivity(activity: ActivityEntity) {
         selectedActivity = activity
         selectedRecords = emptyList()
@@ -312,6 +371,10 @@ class MainActivity : ComponentActivity() {
         val r = Runnable {
             val co = coordinator ?: return@Runnable
             if (co.isDone()) return@Runnable
+            if (co.isTransferring()) {
+                armWatchdog(60_000)
+                return@Runnable
+            }
             if (!co.hasStarted() && syncAttempts == 0) {
                 log("awaiting watch-side sync (link stays open)")
                 state = "awaiting watch sync"
@@ -390,6 +453,9 @@ private fun Screen(
     selectedActivity: ActivityEntity?,
     selectedRecords: List<RecordEntity>,
     selectedLaps: List<LapEntity>,
+    wellnessDays: List<WellnessDayEntity>,
+    selectedWellnessDay: WellnessDayEntity?,
+    wellnessSamples: List<WellnessSampleEntity>,
     dataActivity: ActivityEntity?,
     dataMessages: List<FitMessageEntity>,
     dataLoading: Boolean,
@@ -404,6 +470,8 @@ private fun Screen(
     onClearSelection: () -> Unit,
     onExploreData: (ActivityEntity) -> Unit,
     onCloseData: () -> Unit,
+    onSelectWellness: (WellnessDayEntity) -> Unit,
+    onCloseWellness: () -> Unit,
     deviceInfo: () -> List<Pair<String, String>>,
 ) {
     var showLog by remember { mutableStateOf(false) }
@@ -451,7 +519,19 @@ private fun Screen(
                 onExploreData = { onExploreData(selectedActivity) },
                 modifier = Modifier.weight(1f),
             )
+        } else if (selectedWellnessDay != null) {
+            HealthDetail(
+                day = selectedWellnessDay,
+                samples = wellnessSamples,
+                days = wellnessDays,
+                onBack = onCloseWellness,
+                modifier = Modifier.weight(1f),
+            )
         } else {
+            if (wellnessDays.isNotEmpty()) {
+                val today = wellnessDays.first()
+                HealthCard(today) { onSelectWellness(today) }
+            }
             Text(
                 "Activities (${activities.size})",
                 style = MaterialTheme.typography.titleMedium,
@@ -499,6 +579,209 @@ private fun Screen(
         }
     }
 }
+
+@Composable
+private fun HealthCard(day: WellnessDayEntity, onClick: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (day.date == LocalDate.now().toString()) {
+                        "Today"
+                    } else {
+                        formatWellnessDate(day.date)
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    formatWellnessDate(day.date),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    "%,d".format(day.steps),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(" steps", style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.weight(1f))
+                Text(formatDistance(day.distanceMeters), style = MaterialTheme.typography.bodyMedium)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("${day.activeCalories} kcal", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "${formatDuration(day.activeSeconds.toDouble())} active",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                day.restingHeartRate?.let {
+                    Text("Resting HR $it bpm", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                day.avgHeartRate?.let { Text("Avg HR $it", style = MaterialTheme.typography.bodySmall) }
+                day.maxHeartRate?.let { Text("Max HR $it", style = MaterialTheme.typography.bodySmall) }
+                day.stressAvg?.let { Text("Stress $it", style = MaterialTheme.typography.bodySmall) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HealthDetail(
+    day: WellnessDayEntity,
+    samples: List<WellnessSampleEntity>,
+    days: List<WellnessDayEntity>,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val heartRate = remember(samples) {
+        samples.filter { it.kind == "hr" }.sortedBy { it.timestamp }
+    }
+    val stress = remember(samples) {
+        samples.filter { it.kind == "stress" }.sortedBy { it.timestamp }
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = onBack) { Text("Back") }
+            Spacer(modifier = Modifier.weight(1f))
+            Text(formatWellnessDate(day.date), style = MaterialTheme.typography.bodySmall)
+        }
+
+        Text("Daily health", style = MaterialTheme.typography.headlineSmall)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                "%,d".format(day.steps),
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(" steps", style = MaterialTheme.typography.bodyLarge)
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row {
+                    Stat("Distance", formatDistance(day.distanceMeters))
+                    Stat("Active time", formatDuration(day.activeSeconds.toDouble()))
+                }
+                Row {
+                    Stat("Calories", "${day.activeCalories} kcal")
+                    Stat("Resting HR", day.restingHeartRate?.let { "$it bpm" } ?: "—")
+                }
+                Row {
+                    Stat("Avg HR", day.avgHeartRate?.let { "$it bpm" } ?: "—")
+                    Stat("Max HR", day.maxHeartRate?.let { "$it bpm" } ?: "—")
+                }
+                Row {
+                    Stat("Stress", day.stressAvg?.let { "$it" } ?: "—")
+                    Stat("SpO2", day.spo2Avg?.let { "$it%" } ?: "—")
+                }
+                Row {
+                    Stat(
+                        "Respiration",
+                        day.respirationAvg?.let { "%.1f br/min".format(it) } ?: "—",
+                    )
+                    Stat("Updated", formatDate(day.updatedAt))
+                }
+            }
+        }
+
+        if (heartRate.size >= 2) {
+            Text("Heart rate", style = MaterialTheme.typography.titleMedium)
+            SampleLineChart(heartRate.map { it.value }, MaterialTheme.colorScheme.primary)
+            Row {
+                Text(
+                    "${heartRate.minOf { it.value }.toInt()} bpm",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    "${heartRate.maxOf { it.value }.toInt()} bpm",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+
+        if (stress.size >= 2) {
+            Text("Stress", style = MaterialTheme.typography.titleMedium)
+            SampleLineChart(stress.map { it.value }, MaterialTheme.colorScheme.tertiary)
+        }
+
+        if (days.size >= 2) {
+            Text("Steps history", style = MaterialTheme.typography.titleMedium)
+            DailyStepsChart(days.take(7).reversed())
+        }
+    }
+}
+
+@Composable
+private fun SampleLineChart(values: List<Double>, color: Color) {
+    if (values.size < 2) {
+        Text(
+            "Not enough samples.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+    val min = values.min()
+    val max = values.max()
+    val range = (max - min).coerceAtLeast(1e-9)
+    Canvas(modifier = Modifier.fillMaxWidth().height(150.dp)) {
+        val path = Path()
+        values.forEachIndexed { index, value ->
+            val x = size.width * index / (values.size - 1).toFloat()
+            val y = size.height - ((value - min) / range * size.height).toFloat()
+            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        drawPath(path, color = color, style = Stroke(width = 3f))
+    }
+}
+
+@Composable
+private fun DailyStepsChart(days: List<WellnessDayEntity>) {
+    if (days.isEmpty()) return
+    val max = days.maxOf { it.steps }.coerceAtLeast(1)
+    val color = MaterialTheme.colorScheme.primary
+    Canvas(modifier = Modifier.fillMaxWidth().height(110.dp)) {
+        val barWidth = size.width / (days.size * 1.6f)
+        days.forEachIndexed { index, day ->
+            val height = day.steps.toFloat() / max * size.height
+            val center = size.width * (index + 0.5f) / days.size
+            drawRect(
+                color = color,
+                topLeft = Offset(center - barWidth / 2, size.height - height),
+                size = Size(barWidth, height),
+            )
+        }
+    }
+    Row {
+        days.forEach { day ->
+            Text(
+                "${day.steps}",
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+private fun formatWellnessDate(date: String): String = runCatching {
+    LocalDate.parse(date).format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault()))
+}.getOrDefault(date)
 
 @Composable
 private fun ActivityCard(activity: ActivityEntity, onClick: () -> Unit) {

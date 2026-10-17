@@ -25,6 +25,7 @@ object Fit {
         "begin_time",
         "local_timestamp",
         "time_created",
+        "stress_level_time",
     )
 
     data class FileId(
