@@ -88,6 +88,10 @@ class SyncCoordinator(
         log("GDI smart fields=${fields.keys} sizes=${fields.mapValues { it.value.size }}")
 
         if (Gdi.coreFeatureCapabilitiesResponse(smart) != null) onCapabilities()
+        if (Gdi.isConnectionReady(smart) && !listRequested && !done) {
+            log("GDI: connection ready")
+            requestList()
+        }
 
         val fa = fields[Gdi.SMART_FILE_ACCESS] ?: return
         try {

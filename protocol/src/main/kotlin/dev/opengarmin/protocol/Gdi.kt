@@ -158,6 +158,20 @@ object Gdi {
         return ProtoWriter().bytes(SMART_CORE, core).toByteArray()
     }
 
+    /** Returns true if the Smart contains CoreService.ConnectionReadyNotification. */
+    fun isConnectionReady(smart: ByteArray): Boolean {
+        val core = smartFields(smart)[SMART_CORE] ?: return false
+        val r = ProtoReader(core)
+        while (r.hasMore()) {
+            val tag = r.readVarint().toInt()
+            val field = tag ushr 3
+            val wire = tag and 7
+            if (field == 14 && wire == 2) return true
+            r.skip(wire)
+        }
+        return false
+    }
+
     fun itemListRequest(
         sessionId: Int = 0,
         transactionId: Int = 0,
@@ -405,6 +419,13 @@ class GdiClient(
     }
 
     private fun onProtobuf(frame: Gfdi.Frame) {
+        if (frame.type == Gfdi.MessageType.PROTOBUF_NOTIFICATION.id) {
+            // Type 5057 carries a 2-byte id/flags prefix followed by a Smart message.
+            if (frame.payload.size > 2) {
+                onSmart?.invoke(frame.payload.copyOfRange(2, frame.payload.size))
+            }
+            return
+        }
         if (frame.type == Gfdi.MessageType.PROTOBUF_REQUEST.id) {
             // Cancellation / unsupported notice: [id: u16] ...
             if (frame.payload.size >= 2) {

@@ -388,7 +388,8 @@ class GarminSession(
     private fun dispatch(frame: Gfdi.Frame) {
         onGfdiMessage?.invoke(frame)
         if (frame.type == Gfdi.MessageType.PROTOBUF_REQUEST.id ||
-            frame.type == Gfdi.MessageType.PROTOBUF_RESPONSE.id
+            frame.type == Gfdi.MessageType.PROTOBUF_RESPONSE.id ||
+            frame.type == Gfdi.MessageType.PROTOBUF_NOTIFICATION.id
         ) {
             onProtobuf?.invoke(frame)
         }
