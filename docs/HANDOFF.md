@@ -58,7 +58,8 @@ The tree is clean. `captures/`, `apk/`, `tools/` binary downloads are gitignored
 | M2 handshake (device info / config / time) | ✅ |
 | M3 file directory | ✅ 100 items listed (3697-byte response, 8 chunks) |
 | M4 file download + decode | ✅ **99,357 compressed bytes → 198,627 bytes** (zlib, valid FIT: `.FIT`, profile 21184) |
-| M5–M6 FIT parsing → Room → dashboard | not started |
+| M5 FIT parser | ✅ pure-JVM parser: 7,931 messages, 2,488 records, 6 laps |
+| M6 Room → dashboard | ✅ activity + record samples stored; list/detail UI with HR chart |
 
 The M4 download was proven end-to-end earlier: `PullItemDataRequest` →
 `transfer_handle` → MLR transport pipe on service `0x2018` → zlib stream →
@@ -91,16 +92,18 @@ protocol/src/main/kotlin/dev/opengarmin/protocol/
   Crc16, Cobs, Gfdi (framing + MessageType incl. 5057), Handshake,
   MlControl/GarminSession (session, recovery, MLR GFDI, queues),
   Mlr (MLR codec + receiver), Proto (defensive protobuf reader/writer),
-  Gdi (Smart, FileAccess, GdiClient handling 5043/5044/5057),
-  TransportPipe (MLR pipe), Uuids, Hex
+  Gdi (Smart, FileAccess, GdiClient handling 5043/5044/5057 + per-chunk ACKs),
+  Fit (FIT activity parser), TransportPipe (MLR pipe), Uuids, Hex
 
 app/src/main/java/dev/opengarmin/app/
   ble/GarminBleClient.kt   scan/connect/reconnect, MTU, pair selection,
                            dedicated GFDI subscribe, serialized write queue
-  sync/SyncCoordinator.kt  capabilities → connection-ready → list → pull →
-                           pipe → zlib → file
-  MainActivity.kt          Compose UI, watchdog/reconnect, Sync button
-  sync/...                 (all sync state is per-connection, resettable)
+  sync/SyncCoordinator.kt  capabilities → connection-ready → device requests →
+                           list → pull → pipe → zlib → file
+  data/AppDatabase.kt      Room entities/DAO/database + ActivityRepository
+                           (FIT import, dedupe, epoch conversion)
+  MainActivity.kt          Compose dashboard (activity list + detail + HR chart),
+                           watchdog/reconnect, Sync button
 
 docs/                      PROTOCOL, PLAN, LICENSING, samples, protos
 tools/                     parse_btsnoop.py, extract_protos.py, setup scripts
@@ -133,14 +136,15 @@ With those fixed, a full sync completed on 2026-10-17 18:20:
 
 ## Immediate next steps
 
-1. Parse the FIT file (M5): definition messages + data messages, map activity,
-   session, lap, record, event to a model.
-2. Persist to Room, then build the Compose dashboard (M6).
-3. Wire the `Sync` button and dashboard to the stored activities.
-4. Consider fetching the remaining 99-item page (`next_transaction_id`), and
-   pulling more than one activity.
-5. Decide whether to answer ConnectIQ HTTP requests with real network data
+1. Import more than the newest activity: page through `ItemListResponse`
+   (`next_transaction_id`) and pull every `FIT_TYPE_4`, deduping by start
+   time + distance in Room (already enforced by `sourceKey`).
+2. Add laps and more fields to the detail screen (the parser already returns
+   `laps`; persist them in a `laps` table if needed).
+3. Decide whether to answer ConnectIQ HTTP requests with real network data
    (weather) or keep the offline timeout response.
+4. Background/periodic sync and a proper connected-device state.
+5. Unit tests for the Room importer (dedupe, epoch conversion).
 
 ## Useful commands
 
