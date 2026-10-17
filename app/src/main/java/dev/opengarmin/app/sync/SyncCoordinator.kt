@@ -4,6 +4,7 @@ import android.os.Handler
 import dev.opengarmin.protocol.GarminSession
 import dev.opengarmin.protocol.Gdi
 import dev.opengarmin.protocol.GdiClient
+import dev.opengarmin.protocol.Handshake
 import dev.opengarmin.protocol.TransportPipe
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -46,14 +47,14 @@ class SyncCoordinator(
         }
         session.onMlrFrame = { frame -> pipe?.onFrame(frame) }
         session.onReady = {
-            // Ask the device to start a sync session, then probe capabilities.
             val g = generation
             handler.postDelayed({
                 if (g == generation) {
-                    log("GDI → SyncRequest")
-                    gdi.sendSmart(Gdi.syncRequest()) { }
+                    log("GDI: DEVICE_SETTINGS + SYNC_READY")
+                    session.sendGfdi(Handshake.deviceSettings())
+                    session.sendGfdi(Handshake.systemEventSyncReady())
                 }
-            }, 400)
+            }, 300)
             handler.postDelayed({
                 if (g == generation && !capabilitiesReceived) sendCapabilities()
             }, 1500)

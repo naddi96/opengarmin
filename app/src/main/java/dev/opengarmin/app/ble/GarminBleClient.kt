@@ -219,12 +219,15 @@ class GarminBleClient(
                 return
             }
             var pair: Pair<BluetoothGattCharacteristic, BluetoothGattCharacteristic>? = null
-            for (i in Uuids.ML_READ.indices) {
-                val recv = mlService.getCharacteristic(java.util.UUID.fromString(Uuids.ML_READ[i]))
-                val send = mlService.getCharacteristic(java.util.UUID.fromString(Uuids.ML_WRITE[i]))
+            // Prefer pair 2 (2811/2821), which the official app uses.
+            val order = intArrayOf(1, 0, 2, 3, 4)
+            for (idx in order) {
+                if (idx >= Uuids.ML_READ.size) continue
+                val recv = mlService.getCharacteristic(java.util.UUID.fromString(Uuids.ML_READ[idx]))
+                val send = mlService.getCharacteristic(java.util.UUID.fromString(Uuids.ML_WRITE[idx]))
                 if (recv != null && send != null) {
                     pair = recv to send
-                    onLog("using pair ${Uuids.ML_READ[i]} / ${Uuids.ML_WRITE[i]}")
+                    onLog("using pair ${Uuids.ML_READ[idx]} / ${Uuids.ML_WRITE[idx]}")
                     break
                 }
             }
@@ -245,6 +248,27 @@ class GarminBleClient(
                         g.writeDescriptor(cccd)
                     }
                 }
+            }
+
+            // The official app also subscribes to the dedicated GFDI notify
+            // characteristic; log anything it carries.
+            val dedicated = g.getService(java.util.UUID.fromString(Uuids.GFDI_DEDICATED_SERVICE))
+            val dedicatedRead = dedicated?.getCharacteristic(java.util.UUID.fromString(Uuids.GFDI_DEDICATED_READ))
+            if (dedicatedRead != null) {
+                g.setCharacteristicNotification(dedicatedRead, true)
+                val dcccd = dedicatedRead.getDescriptor(java.util.UUID.fromString(CLIENT_CHARACTERISTIC_CONFIG))
+                if (dcccd != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        g.writeDescriptor(dcccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        run {
+                            dcccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                            g.writeDescriptor(dcccd)
+                        }
+                    }
+                }
+                onLog("subscribed dedicated GFDI notify")
             }
             if (cccd == null) {
                 onLog("no CCCD descriptor; starting session anyway")
@@ -272,8 +296,7 @@ class GarminBleClient(
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray,
         ) {
-            onLog("RX ${Hex.encode(value)}")
-            session.onNotification(value)
+            handleNotification(characteristic, value)
         }
 
         @Deprecated("Deprecated in API 33")
@@ -281,10 +304,18 @@ class GarminBleClient(
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                 @Suppress("DEPRECATION")
                 val value = characteristic.value ?: return
-                onLog("RX ${Hex.encode(value)}")
-                session.onNotification(value)
+                handleNotification(characteristic, value)
             }
         }
+    }
+
+    private fun handleNotification(characteristic: BluetoothGattCharacteristic, value: ByteArray) {
+        if (characteristic.uuid == java.util.UUID.fromString(Uuids.GFDI_DEDICATED_READ)) {
+            onLog("CD28 RX ${Hex.encode(value)}")
+            return
+        }
+        onLog("RX ${Hex.encode(value)}")
+        session.onNotification(value)
     }
 
     companion object {
