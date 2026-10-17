@@ -415,18 +415,41 @@ Each GDI message = 14-byte header + a protobuf chunk (little-endian):
   `gdxml_string` such as `FIT_TYPE_2`, `FIT_TYPE_3`, `FIT_TYPE_29`, …
   `FIT_TYPE_4` is activity.
 
-### 10.5 Pulling a file (next)
+### 10.5 Pulling a file (M4, in progress)
+
+`PullItemDataRequest` (FileAccess.Service field 1):
 
 ```
-PullItemDataRequest (FileAccess.Service field 1)
-  item              = the ItemReference from the list
-  priority          = e.g. STANDARD (20..29) / USER_INITIATED (30..39)
-  supported_transports = [MULTILINK_TRANSPORT_PIPE = 0]
-  offset            = 0
+item                  = ItemReference { uid, data_size, ... } from the list
+priority              = 30 (USER_INITIATED_START) .. 39
+supported_transports  = [MULTILINK_TRANSPORT_PIPE = 0]
+offset                = 0
+requested_compression_window = 15 (optional)
 ```
 
-The watch answers `PullItemDataResponse` (field 2) with a `transfer_handle` and
-`transport`; the bytes then arrive over the DataTransfer service
-(`Smart.data_transfer_service = 7`, `DataDownloadRequest`/`DataDownloadResponse`)
-or as GFDI FIT messages, depending on firmware. This is milestone M4.
+Verified response on the FR255 for a 110-byte item:
+
+```
+PullItemDataResponse {
+  result            = 0 (SUCCESS)
+  transport         = 0 (MULTILINK_TRANSPORT_PIPE)
+  transfer_handle   = 640
+  compression_window = 11
+}
+```
+
+The file bytes then travel over a dedicated **Multi-Link Reliable transport pipe**:
+
+- The client registers one of the transport service ids
+  `0x2018, 0x4018, 0x6018, 0x8018, 0xA018, 0xC018, 0xE018` using **MLR**
+  (reliable = true). The APK rejects an unreliable pipe
+  (`"MultiLink Transport Pipe is not reliable"`).
+- It sends a *configure* command carrying the `transfer_handle`, direction and
+  size, then reads data frames from the pipe.
+- The APK classes are `com.garmin.device.filetransfer.mlr.MLRTransportPipe`
+  (obfuscated `CT/e`, `CT/e$a`) and the low-level pipe `DT/o`.
+
+So M4 requires the Multi-Link Reliable state machine (section 4) plus the
+transport-pipe configure/read commands.
+
 

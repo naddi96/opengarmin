@@ -80,8 +80,11 @@ class MainActivity : ComponentActivity() {
         }
 
         val gdi = GdiClient(c.session) { log(it) }
-        var requestedCapabilities = false
-        var requestedList = false
+        var capabilitiesReceived = false
+        var listReceived = false
+        var capabilityAttempts = 0
+        var listAttempts = 0
+        var requestedPull = false
 
         fun handleItemList(response: ByteArray) {
             val fields = Gdi.smartFields(response)
@@ -104,15 +107,53 @@ class MainActivity : ComponentActivity() {
                         "str=${dt?.gdxmlString} size=${item.dataSize} flags=${item.requestedFlags} tx=${item.transactionId}",
                 )
             }
+
+            if (!requestedPull && list.items.isNotEmpty()) {
+                requestedPull = true
+                val item = list.items.minByOrNull { it.dataSize } ?: list.items.first()
+                log("PULL request uid=${item.uid?.hex()} size=${item.dataSize}")
+                gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.pullItemRequest(item))) { resp ->
+                    val fa = Gdi.smartFields(resp)[Gdi.SMART_FILE_ACCESS]
+                    val pr = if (fa != null) Gdi.parseFileAccessService(fa).pullItemResponse else null
+                    main.post {
+                        if (pr != null) {
+                            log(
+                                "PULL response result=${pr.result} transport=${pr.transport} " +
+                                    "handle=${pr.transferHandle} path=${pr.filePath} err=${pr.errorCode} window=${pr.compressionWindow}",
+                            )
+                        } else {
+                            log("PULL response had no pull_item_response, fields=${Gdi.smartFields(resp).keys}")
+                        }
+                    }
+                }
+            }
         }
 
         fun requestList() {
-            if (requestedList) return
-            requestedList = true
-            log("GDI → ItemListRequest (FileAccess)")
+            if (listReceived || listAttempts >= 5) return
+            listAttempts++
+            log("GDI → ItemListRequest (attempt $listAttempts)")
             gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.itemListRequest(maxItemCount = 100))) { response ->
                 main.post { handleItemList(response) }
             }
+            main.postDelayed({ if (!listReceived) requestList() }, 5000)
+        }
+
+        fun requestCapabilities() {
+            if (capabilitiesReceived || capabilityAttempts >= 5) return
+            capabilityAttempts++
+            log("GDI → FeatureCapabilitiesRequest (attempt $capabilityAttempts)")
+            gdi.sendSmart(Gdi.featureCapabilitiesRequest()) { response ->
+                val caps = Gdi.coreFeatureCapabilitiesResponse(response)
+                main.post {
+                    if (caps != null) {
+                        capabilitiesReceived = true
+                        log("GDI: capabilities response ${caps.size} bytes")
+                        requestList()
+                    }
+                }
+            }
+            main.postDelayed({ if (!capabilitiesReceived) requestCapabilities() }, 5000)
         }
 
         gdi.onSmart = { smart ->
@@ -120,6 +161,7 @@ class MainActivity : ComponentActivity() {
             main.post {
                 log("GDI smart fields=${fields.keys} sizes=${fields.mapValues { it.value.size }}")
                 if (Gdi.coreFeatureCapabilitiesResponse(smart) != null) {
+                    capabilitiesReceived = true
                     requestList()
                 }
                 if (fields.containsKey(Gdi.SMART_FILE_ACCESS)) {
@@ -129,19 +171,7 @@ class MainActivity : ComponentActivity() {
         }
 
         c.session.onReady = {
-            main.postDelayed({
-                if (!requestedCapabilities) {
-                    requestedCapabilities = true
-                    log("GFDI ready → FeatureCapabilitiesRequest")
-                    gdi.sendSmart(Gdi.featureCapabilitiesRequest()) { response ->
-                        val caps = Gdi.coreFeatureCapabilitiesResponse(response)
-                        main.post {
-                            log("GDI: capabilities response ${caps?.size ?: -1} bytes")
-                            requestList()
-                        }
-                    }
-                }
-            }, 1000)
+            main.postDelayed({ requestCapabilities() }, 500)
         }
 
         setContent {

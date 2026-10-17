@@ -38,6 +38,13 @@ class ProtoWriter {
 
     fun enumField(field: Int, value: Int): ProtoWriter = uint32(field, value)
 
+    /** Writes a varint field even when the value is zero (needed for repeated enums). */
+    fun enumAlways(field: Int, value: Int): ProtoWriter {
+        tag(field, 0)
+        varint(value.toLong())
+        return this
+    }
+
     fun bytes(field: Int, value: ByteArray): ProtoWriter {
         tag(field, 2)
         varint(value.size.toLong())

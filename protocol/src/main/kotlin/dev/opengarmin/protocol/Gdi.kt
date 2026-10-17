@@ -166,11 +166,29 @@ object Gdi {
         return ProtoWriter().bytes(9, req.toByteArray()).toByteArray()
     }
 
-    fun pullItemRequest(item: ItemReference, priority: Int = 30, offset: Long = 0, compressionWindow: Int = 0): ByteArray {
+    fun encodeItemReference(item: ItemReference): ByteArray {
+        val w = ProtoWriter()
+        item.uid?.let { w.bytes(1, encodeUuid(it)) }
+        item.dataType?.let { w.bytes(2, encodeDataType(it)) }
+        w.uint64(3, item.dataSize)
+        w.uint32(4, item.requestedFlags)
+        w.uint32(5, item.transactionId)
+        w.uint32(6, item.urgency)
+        return w.toByteArray()
+    }
+
+    fun pullItemRequest(
+        item: ItemReference,
+        priority: Int = 30,
+        offset: Long = 0,
+        compressionWindow: Int = 15,
+        transports: List<Int> = listOf(0), // MULTILINK_TRANSPORT_PIPE
+    ): ByteArray {
         val body = ProtoWriter()
-        if (item.uid != null) body.bytes(1, encodeUuid(item.uid))
-        body.uint32(2, priority)
-        body.uint32(4, offset.toInt()) // uint64 field but small offsets fit
+            .bytes(1, encodeItemReference(item))
+            .uint32(2, priority)
+        for (t in transports) body.enumAlways(3, t)
+        body.uint64(4, offset)
         body.uint32(5, compressionWindow)
         // FileAccess.Service.pull_item_request = 1
         return ProtoWriter().bytes(1, body.toByteArray()).toByteArray()

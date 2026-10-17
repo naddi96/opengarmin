@@ -74,6 +74,23 @@ class GdiTest {
     }
 
     @Test
+    fun `pull item request encodes the full item reference`() {
+        val item = Gdi.ItemReference(
+            uid = Gdi.Uuid(1L, 2L),
+            dataType = null,
+            dataSize = 110,
+            requestedFlags = 0,
+            transactionId = 5,
+            urgency = 0,
+        )
+        val req = Gdi.pullItemRequest(item, priority = 30, offset = 0, compressionWindow = 15)
+        assertEquals(
+            "0a200a180a12090100000000000000110200000000000000186e2805101e1800280f",
+            Hex.encode(req),
+        )
+    }
+
+    @Test
     fun `smart wrapper round-trips multiple services`() {
         val smart = ProtoWriter()
             .bytes(Gdi.SMART_CORE, Hex.decode("aabb"))
