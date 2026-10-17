@@ -33,16 +33,18 @@ object PulseColors {
 
     val SportRun = Coral
     val SportRide = Teal
+    val SportCardio = Orange
     val SportStrength = Blue
     val SportWalk = Accent
 
     val ZoneColors = listOf(Teal, Accent, Yellow, Zone4, Zone5)
 
-    fun sportColor(sport: Int): Color = when (sport) {
-        1 -> SportRun
-        2, 21 -> SportRide
-        10, 62 -> SportStrength
-        9, 11 -> SportWalk
+    fun sportColor(sport: Int, subSport: Int = 0): Color = when {
+        sport == 10 && subSport == 26 -> SportCardio
+        sport in setOf(4, 62) || (sport == 10 && subSport == 20) -> SportStrength
+        sport == 1 -> SportRun
+        sport in setOf(2, 21) -> SportRide
+        sport in setOf(9, 11, 17) -> SportWalk
         else -> TextMuted
     }
 }

@@ -28,8 +28,10 @@ class SyncCoordinator(
     private val log: (String) -> Unit,
     /** True when the given GDI item UID has already been imported. */
     private val isItemKnown: (String) -> Boolean,
+    /** True when a non-activity wellness file (sleep/HRV/monitoring) is known. */
+    private val isWellnessItemKnown: (String) -> Boolean = { false },
     private val onFinished: (raw: File, decoded: File, itemUid: String) -> Unit,
-    private val onWellnessFile: (decoded: File, type: String) -> Unit,
+    private val onWellnessFile: (decoded: File, type: String, itemUid: String) -> Unit,
     private val onUpToDate: () -> Unit,
     private val onActivityProgress: (ActivitySyncProgress) -> Unit = {},
 ) {
@@ -52,7 +54,14 @@ class SyncCoordinator(
     private var capabilitiesRequested = false
     private var capabilitiesReceived = false
     private var listRequested = false
+    private var listRequestQueued = false
     private var listReceived = false
+    private var listPagePending = false
+    private var listPageCount = 0
+    private var listCursor = 0
+    private val listItems = ArrayList<Gdi.ItemReference>()
+    private var activityListProbeRequested = false
+    private var activityListProbePending = false
     private var requestedPull = false
     private var started = false
     private var pulledItemUid = ""
@@ -122,7 +131,14 @@ class SyncCoordinator(
         capabilitiesRequested = false
         capabilitiesReceived = false
         listRequested = false
+        listRequestQueued = false
         listReceived = false
+        listPagePending = false
+        listPageCount = 0
+        listCursor = 0
+        listItems.clear()
+        activityListProbeRequested = false
+        activityListProbePending = false
         requestedPull = false
         started = false
         pulledItemUid = ""
@@ -149,6 +165,14 @@ class SyncCoordinator(
 
     /** True once the watch has sent any GDI message (i.e. a sync is underway). */
     fun hasStarted(): Boolean = started
+
+    /**
+     * The watch accepted the BLE connection and sent GDI traffic, but never
+     * opened the GDI session (capability exchange). On a watch with a single
+     * session slot this usually means Garmin Connect is holding it.
+     */
+    fun stalledBeforeCapabilities(): Boolean =
+        started && !capabilitiesReceived && !listReceived && !done
 
     /** True while a file is being pulled through the transport pipe. */
     fun isTransferring(): Boolean = pipe != null || wellnessTransfer
@@ -200,6 +224,10 @@ class SyncCoordinator(
                 Gdi.getLocationResponse()
             core != null && Gdi.field(core, 5) != null ->
                 Gdi.locationUpdatedSetEnabledResponse(Gdi.field(core, 5)!!)
+            core != null && Gdi.field(core, 17) != null -> {
+                log("GDI: time sync request → phone time")
+                Gdi.timeSyncResponse(System.currentTimeMillis() / 1000)
+            }
             sms != null && Gdi.field(sms, 4) != null ->
                 Gdi.smsCannedListResponse(Gdi.field(sms, 4)!!)
             deviceMessages != null && Gdi.field(deviceMessages, 3) != null ->
@@ -258,7 +286,19 @@ class SyncCoordinator(
                 "${gdxmlLookup.typeOf(it) ?: "unknown"}(${it.dataSize})"
             },
         )
-        wellnessQueue.addAll(notification.items)
+        val queuedUids = wellnessQueue.mapNotNull { it.uid?.hex() }.toHashSet()
+        val newItems = notification.items.filter { item ->
+            val uid = item.uid?.hex().orEmpty()
+            val type = gdxmlLookup.typeOf(item)
+            val immutable = type in IMMUTABLE_HEALTH_FILE_TYPES
+            // SETTINGS_CHANGE carries no health samples and costs the watch a
+            // full transfer slot; skipping it makes the subsequent directory
+            // request much faster.
+            type != "FIT_TYPE_41" &&
+                uid.isNotEmpty() && uid !in queuedUids &&
+                !(immutable && isWellnessItemKnown(uid))
+        }
+        wellnessQueue.addAll(newItems)
         if (pipe == null && !wellnessTransfer) pullNextWellness()
     }
 
@@ -270,7 +310,20 @@ class SyncCoordinator(
         }
         val item = wellnessQueue.removeFirstOrNull()
         if (item == null) {
-            if (activitiesUpToDate) {
+            if (pendingActivityItem == null && activityQueue.isNotEmpty() &&
+                !requestedPull && pipe == null
+            ) {
+                pendingActivityItem = activityQueue.removeFirstOrNull()
+                pendingActivityItem?.let { next ->
+                    pulledItemUid = next.uid?.hex().orEmpty()
+                    activityTotal = activityDone + activityQueue.size + 1
+                    reportActivityProgress()
+                    activitiesUpToDate = false
+                    tryStartActivityPull()
+                    return
+                }
+            }
+            if (activitiesUpToDate && !activityListProbePending) {
                 if (!done) {
                     done = true
                     log("SYNC up to date: activities and wellness synced")
@@ -345,15 +398,144 @@ class SyncCoordinator(
 
     private fun requestList() {
         if (listReceived || listRequested || done) return
+        // The watch has one transfer slot. Asking for the directory while a
+        // wellness file is still streaming makes the list request disappear.
+        if (wellnessTransfer || pipe != null || wellnessQueue.isNotEmpty()) {
+            if (!listRequestQueued) {
+                listRequestQueued = true
+                log("FILE LIST deferred until wellness transfers finish")
+                handler.postDelayed({
+                    listRequestQueued = false
+                    requestList()
+                }, 1_000)
+            }
+            return
+        }
         listRequested = true
-        log("GDI → ItemListRequest")
-        gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.itemListRequest(maxItemCount = 1000))) { response ->
+        listItems.clear()
+        listCursor = 0
+        listPageCount = 0
+        requestListPage(0)
+    }
+
+    /**
+     * The watch caps each ItemListResponse at 100 entries and sets
+     * next_transaction_id to 0, so the only reliable way to reach the rest of
+     * the directory is to use the highest transaction id from the page as the
+     * cursor for the next request.
+     */
+    private fun requestListPage(transactionId: Int) {
+        if (listPageCount >= 20) {
+            log("FILE LIST stopped after $listPageCount pages")
+            listReceived = true
+            processListItems(listItems.toList())
+            return
+        }
+        listPageCount++
+        listPagePending = true
+        log("GDI → ItemListRequest page $listPageCount tx=$transactionId")
+        gdi.sendSmart(
+            Gdi.wrapSmart(
+                Gdi.SMART_FILE_ACCESS,
+                Gdi.itemListRequest(transactionId = transactionId, maxItemCount = 100),
+            ),
+        ) { response ->
             handler.post { handleSmart(response) }
         }
     }
 
+    /**
+     * The watch returns at most 100 directory entries per list. When the
+     * unfiltered list is exactly full, activities can be hidden behind the
+     * workout/settings entries. Ask for a FIT_TYPE_4-only list so every
+     * activity the watch has is considered.
+     */
+    private fun requestActivityListProbe() {
+        if (activityListProbeRequested || done) return
+        activityListProbeRequested = true
+        activityListProbePending = true
+        val type = Gdi.DataTypeInfo(
+            format = 0,
+            gdxmlString = "FIT_TYPE_4",
+            gdxmlStringKey = 0,
+            gdxmlFileIdentifier = null,
+            softwareUpdatePath = null,
+            specialCase = 0,
+            updatePartNumber = null,
+        )
+        log("GDI → ItemListRequest (activities only)")
+        gdi.sendSmart(
+            Gdi.wrapSmart(
+                Gdi.SMART_FILE_ACCESS,
+                Gdi.itemListRequest(maxItemCount = 1000, includedDataTypes = listOf(type)),
+            ),
+        ) { response ->
+            handler.post { handleSmart(response) }
+        }
+        val g = generation
+        handler.postDelayed({
+            if (g == generation && activityListProbePending) {
+                activityListProbePending = false
+                log("ACTIVITY LIST probe timeout")
+                maybeFinish()
+            }
+        }, 6_000)
+    }
+
+    private fun handleActivityProbe(items: List<Gdi.ItemReference>) {
+        val queued = activityQueue.mapNotNull { it.uid?.hex() }.toHashSet()
+        val pendingUid = pendingActivityItem?.uid?.hex()
+        val newItems = items.filter { item ->
+            gdxmlLookup.typeOf(item) == "FIT_TYPE_4" &&
+                item.uid?.hex()?.let { uid ->
+                    uid != pendingUid &&
+                        uid !in completedActivityUids &&
+                        uid !in queued &&
+                        !isItemKnown(uid)
+                } == true
+        }
+        if (newItems.isEmpty()) {
+            log("ACTIVITY LIST probe: no additional activity files")
+            maybeFinish()
+            return
+        }
+        log("ACTIVITY LIST probe: ${newItems.size} additional activity file(s)")
+        activitiesUpToDate = false
+        activityQueue.addAll(newItems)
+        if (pendingActivityItem == null && !requestedPull && pipe == null && !wellnessTransfer) {
+            pendingActivityItem = activityQueue.removeFirstOrNull()
+            val item = pendingActivityItem
+            if (item != null) {
+                pulledItemUid = item.uid?.hex().orEmpty()
+                activityTotal = activityDone + activityQueue.size + 1
+                reportActivityProgress()
+                tryStartActivityPull()
+            } else {
+                maybeFinish()
+            }
+        } else {
+            activityTotal = activityDone + activityQueue.size + (if (pendingActivityItem != null) 1 else 0)
+            reportActivityProgress()
+        }
+    }
+
+    private fun maybeFinish() {
+        if (done || !activitiesUpToDate) return
+        if (pendingActivityItem != null || requestedPull || pipe != null ||
+            wellnessTransfer || activityQueue.isNotEmpty()
+        ) {
+            return
+        }
+        if (wellnessQueue.isNotEmpty()) {
+            pullNextWellness()
+            return
+        }
+        done = true
+        log("SYNC up to date: activities and wellness synced")
+        onUpToDate()
+    }
+
     private fun handleItemList(list: Gdi.ItemListResponse) {
-        listReceived = true
         // The watch omits the gdxml string on repeat items of the same type and
         // sends only its numeric key, so learn the pairs before classifying.
         gdxmlLookup.learn(list.items)
@@ -371,13 +553,68 @@ class SyncCoordinator(
                 )
             }
         }
-        if (list.items.size <= 1) return
+
+        if (listPagePending) {
+            listPagePending = false
+            val seen = listItems.mapNotNull { it.uid?.hex() }.toHashSet()
+            var added = 0
+            for (item in list.items) {
+                val uid = item.uid?.hex() ?: continue
+                if (uid !in seen) {
+                    listItems.add(item)
+                    seen.add(uid)
+                    added++
+                }
+            }
+            val previousCursor = listCursor
+            val pageMax = list.items.maxOfOrNull { it.transactionId } ?: previousCursor
+            listCursor = maxOf(listCursor, pageMax)
+            log("FILE LIST page tx=$previousCursor..$listCursor added=$added total=${listItems.size}")
+            if (list.items.size >= 100 && listCursor > previousCursor) {
+                requestListPage(listCursor)
+                return
+            }
+            listReceived = true
+            processListItems(listItems.toList())
+            return
+        }
+
+        if (activityListProbePending) {
+            activityListProbePending = false
+            handleActivityProbe(list.items)
+            return
+        }
+        listReceived = true
+        processListItems(list.items)
+    }
+
+    private fun processListItems(items: List<Gdi.ItemReference>) {
+        if (items.size <= 1) return
+
+        // Pull sleep/HRV/biometric/monitoring files that are present in the
+        // directory but were not pushed by CutWellnessFilesRequest. Skip files
+        // this app already imported so a normal sync stays incremental.
+        val queuedUids = wellnessQueue.mapNotNull { it.uid?.hex() }.toHashSet()
+        val healthItems = items.filter { item ->
+            val type = gdxmlLookup.typeOf(item) ?: return@filter false
+            val uid = item.uid?.hex() ?: return@filter false
+            val immutable = type in IMMUTABLE_HEALTH_FILE_TYPES
+            type in HEALTH_FILE_TYPES &&
+                uid !in queuedUids &&
+                !(immutable && isWellnessItemKnown(uid)) &&
+                item.uid?.hex() != pendingActivityItem?.uid?.hex()
+        }
+        if (healthItems.isNotEmpty()) {
+            log("SYNC: queued ${healthItems.size} health file(s) from the directory")
+            wellnessQueue.addAll(healthItems)
+        }
+
         if (requestedPull || (pipe != null && !wellnessTransfer)) {
             log("SYNC: activity transfer already active; keeping the queued activity")
             return
         }
 
-        val activityItems = list.items.filter { gdxmlLookup.typeOf(it) == "FIT_TYPE_4" }
+        val activityItems = items.filter { gdxmlLookup.typeOf(it) == "FIT_TYPE_4" }
         val newActivityItems = activityItems.filter { item ->
             val uid = item.uid?.hex() ?: return@filter true
             uid !in completedActivityUids && !isItemKnown(uid)
@@ -393,6 +630,7 @@ class SyncCoordinator(
                 pullNextWellness()
                 return
             }
+            if (activityListProbePending) return
             done = true
             log(
                 if (activityItems.isEmpty()) {
@@ -524,11 +762,12 @@ class SyncCoordinator(
                     log("DOWNLOAD raw=${compressed.size} decoded=${decoded.size} -> ${decFile.absolutePath}")
                     if (pulledWellnessType.isNotEmpty()) {
                         val type = pulledWellnessType
+                        val wellnessUid = inFlightWellness?.uid?.hex().orEmpty()
                         pulledWellnessType = ""
                         wellnessTransfer = false
                         inFlightWellness = null
                         log("WELLNESS complete type=$type decoded=${decoded.size}")
-                        onWellnessFile(decFile, type)
+                        onWellnessFile(decFile, type, wellnessUid)
                         if (pendingActivityItem != null && !done) {
                             activityPullNotBefore = SystemClock.uptimeMillis() + ACTIVITY_GRACE_MS
                         }
@@ -578,6 +817,28 @@ class SyncCoordinator(
         private const val READY_GRACE_MS = 800L
         private const val LIST_GRACE_MS = 400L
         private const val PULL_TIMEOUT_MS = 8_000L
+
+        /**
+         * Immutable health history files we pull from the directory. The
+         * current monitoring (FIT_TYPE_32) delta is pushed by
+         * CutWellnessFilesRequest, so it is intentionally excluded here to
+         * avoid downloading dozens of historical monitoring files on every
+         * activity sync.
+         */
+        private val HEALTH_FILE_TYPES = setOf(
+            "FIT_TYPE_44",
+            "FIT_TYPE_49",
+        )
+
+        /**
+         * Only sleep/biometric files are immutable. Monitoring files are
+         * rewritten by every wellness cut, so their UID must not be cached as
+         * "already imported" or future deltas would be skipped.
+         */
+        private val IMMUTABLE_HEALTH_FILE_TYPES = setOf(
+            "FIT_TYPE_44",
+            "FIT_TYPE_49",
+        )
 
         private fun pullResultName(result: Int): String = when (result) {
             0 -> "SUCCESS"

@@ -70,7 +70,7 @@ fun ActivitiesScreen(
     val filtered = if (filter == "All") {
         sorted
     } else {
-        sorted.filter { categoryForSport(it.sport).label == filter }
+        sorted.filter { categoryForSport(it.sport, it.subSport).label == filter }
     }
     val featured = filtered.firstOrNull { it.id == selectedActivity?.id } ?: filtered.firstOrNull()
     LaunchedEffect(filtered.firstOrNull()?.id) {
@@ -124,7 +124,7 @@ fun ActivitiesScreen(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md),
             ) {
-                listOf("All", "Run", "Ride", "Strength", "Walk").forEach { label ->
+                (listOf("All") + SportCategory.entries.map { it.label }).forEach { label ->
                     PillChip(
                         label = label,
                         selected = filter == label,
@@ -186,7 +186,7 @@ private fun FeaturedActivity(
     onOpen: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    val color = PulseColors.sportColor(activity.sport)
+    val color = PulseColors.sportColor(activity.sport, activity.subSport)
     val zones = zoneSummary(records, maxHeartRate)
     PulseCard(modifier = Modifier.fillMaxWidth(), onClick = onOpen) {
         Column(
@@ -209,7 +209,7 @@ private fun FeaturedActivity(
                     )
                 }
                 Text(
-                    text = categoryForSport(activity.sport).label,
+                    text = categoryForSport(activity.sport, activity.subSport).label,
                     modifier = Modifier
                         .clip(RoundedCornerShape(999.dp))
                         .background(PulseColors.SurfaceElevated)
@@ -283,7 +283,7 @@ private fun ActivityRow(
     onClick: () -> Unit,
     onOpen: () -> Unit,
 ) {
-    val color = PulseColors.sportColor(activity.sport)
+    val color = PulseColors.sportColor(activity.sport, activity.subSport)
     CompactCard(
         modifier = Modifier.fillMaxWidth(),
         selected = selected,

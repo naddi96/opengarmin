@@ -68,3 +68,34 @@ class GfdiTest {
         assertEquals("09000898280110d7f5", Hex.encode(msg))
     }
 }
+
+class CurrentTimeHandshakeTest {
+    @Test
+    fun `current time reply includes offset and dst transitions`() {
+        val original = java.util.TimeZone.getDefault()
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Rome"))
+            val now = java.time.Instant.parse("2026-07-01T12:00:00Z").epochSecond
+            val frame = assertNotNull(
+                Gfdi.parse(
+                    Handshake.currentTimeRequest(
+                        payload = Hex.decode("01000000"),
+                        nowUnixSeconds = now,
+                        localOffsetSeconds = 7200,
+                    ),
+                ),
+            )
+            val response = assertNotNull(Gfdi.parseResponse(frame))
+            assertEquals(5052, response.originalType)
+            assertEquals(0, response.status)
+            val data = java.nio.ByteBuffer.wrap(response.data).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            assertEquals(1, data.int)
+            assertEquals(Gfdi.garminTimestamp(now).toInt(), data.int)
+            assertEquals(7200, data.int)
+            assertTrue(data.int != 0)
+            assertTrue(data.int != 0)
+        } finally {
+            java.util.TimeZone.setDefault(original)
+        }
+    }
+}

@@ -57,6 +57,7 @@ fun TodayScreen(
     syncColor: Color,
     activitySyncProgress: ActivitySyncProgress?,
     lastImportedLabel: String?,
+    syncError: String?,
     onSync: () -> Unit,
     onOpenSettings: () -> Unit,
     onAskCoach: () -> Unit,
@@ -111,6 +112,27 @@ fun TodayScreen(
 
         activitySyncProgress?.let { progress ->
             ActivitySyncCard(progress = progress, lastImported = lastImportedLabel)
+        }
+
+        if (!syncError.isNullOrBlank()) {
+            PulseCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(PulseSpacing.xlPlus),
+                    verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+                ) {
+                    Text(
+                        "Sync needs attention",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = PulseColors.Coral,
+                    )
+                    Text(
+                        syncError,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                    )
+                    dev.opengarmin.app.ui.components.PrimaryButton("Try again", onSync)
+                }
+            }
         }
 
         if (day == null) {
@@ -243,20 +265,20 @@ fun TodayScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.lg)) {
             StatTile(
                 label = "Sleep",
-                value = "—",
-                unit = null,
+                value = day.sleepScore?.toString() ?: "—",
+                unit = if (day.sleepScore != null) "score" else null,
                 icon = Icons.Outlined.Bedtime,
                 iconColor = PulseColors.Blue,
-                footnote = "Not synced yet",
+                footnote = day.sleepQuality ?: "Not synced yet",
                 modifier = Modifier.weight(1f),
             )
             StatTile(
                 label = "HRV",
-                value = "—",
-                unit = null,
+                value = day.hrvLastNight?.let { "%.0f".format(it) } ?: "—",
+                unit = if (day.hrvLastNight != null) "ms" else null,
                 icon = Icons.Outlined.MonitorHeart,
                 iconColor = PulseColors.Teal,
-                footnote = "Not synced yet",
+                footnote = day.hrvStatus ?: "Not synced yet",
                 modifier = Modifier.weight(1f),
             )
         }

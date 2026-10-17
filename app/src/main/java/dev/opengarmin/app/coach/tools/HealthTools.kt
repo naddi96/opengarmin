@@ -399,7 +399,7 @@ private class ListActivitiesTool(
         }
         val range = epochRange(from, to)
         val all = dataSource.workouts(scope, range.first, range.last, limit = 500, offset = 0)
-        val filtered = all.filter { category == null || categoryForSport(it.sport) == category }
+        val filtered = all.filter { category == null || categoryForSport(it.sport, it.subSport) == category }
         val page = filtered.drop(offset).take(limit)
         val json = JSONObject().apply {
             put("from", from.toString())
@@ -416,7 +416,7 @@ private class ListActivitiesTool(
                                 put("date", unixToLocalDate(workout.startTime).toString())
                                 put("startTime", workout.startTime)
                                 put("sport", sportLabel(workout.sport))
-                                put("category", categoryForSport(workout.sport).label)
+                                put("category", categoryForSport(workout.sport, workout.subSport).label)
                                 put("distanceKm", round1(workout.distanceMeters / 1000.0))
                                 put("durationMin", (workout.durationSeconds / 60.0).roundToInt())
                                 put("avgHr", workout.avgHeartRate ?: JSONObject.NULL)
@@ -607,7 +607,7 @@ private fun workoutDetailJson(
         put("date", unixToLocalDate(summary.startTime).toString())
         put("startTime", summary.startTime)
         put("sport", sportLabel(summary.sport))
-        put("category", categoryForSport(summary.sport).label)
+        put("category", categoryForSport(summary.sport, summary.subSport).label)
         put("distanceKm", round1(summary.distanceMeters / 1000.0))
         put("durationMin", (summary.durationSeconds / 60.0).roundToInt())
         put("elapsedMin", (summary.elapsedSeconds / 60.0).roundToInt())

@@ -331,3 +331,119 @@ Also fixed in the tool loop: the model was receiving `ToolResult(json=…,
 evidence=[…]).toString()` instead of the JSON payload. It now receives the pure
 compact JSON inside `<untrusted_data>`, with evidence kept separately. This was
 the main reason a capable model could still behave as if the data were absent.
+
+### Health + Training tabs (2026-10-17)
+
+The bottom bar now matches the five-tab mockups: Today, Health, Training,
+Activities, Coach. The old Trends screen moved behind the Health header so the
+bar stays at five 44 dp targets.
+
+Data audit and ingestion changes:
+
+- **Body Battery** was present but ignored: `stress_level` field 3 carries the
+  current level. It is now imported as `wellness_samples(kind = body_battery)`,
+  and daily start/min/max/latest are stored on `wellness_days`. Existing
+  wellness `.dec` files are re-imported once (`imported_wellness_files`) so the
+  upgrade backfills the current day without another download.
+- **Activity Body Battery**: record field 143 is now decoded into
+  `records.bodyBattery` for new activity imports (not yet displayed).
+- **Training metrics** come from two Garmin-proprietary FIT messages that were
+  already stored as `msg_140`/`msg_79`: `activity_metrics` (VO₂ max, recovery
+  time, aerobic/anaerobic TE, performance condition, primary benefit, training
+  load, final Body Battery) and `user_metrics` (VO₂ max, LTHR, LT speed,
+  recovery snapshot, profile values). `GarminProfile` names/scales these fields;
+  `TrainingMetrics` supports both the new names and legacy `field_<n>` JSON.
+- **Sleep and HRV**: `SLEEP_DATA` (`FIT_TYPE_49`) and biometric
+  (`FIT_TYPE_44`) files are now pulled from the directory/notifications and
+  parsed (`sleep_level`, `sleep_assessment`, `hrv_status_summary`,
+  `hrv_value`). Sleep stages are stored in `sleep_stages`. The development
+  FR255 did not expose a sleep file during daytime syncs, so both cards show an
+  explicit "not synced yet" state; nothing is inferred from heart rate.
+- **Training readiness** is intentionally not scored: readiness needs sleep and
+  HRV, and Garmin's model is not in the FIT file. The card shows the real
+  factors (recovery, acute load, sleep, HRV, stress, VO₂ trend) and says why a
+  score is unavailable. Load focus is labelled as derived from the watch's
+  training-effect category, not Garmin's proprietary load-focus model.
+
+Database version 7 adds the sleep/HRV/Body Battery columns, `sleep_stages`, and
+`imported_wellness_files`. Unit tests cover the wellness parser (monitoring,
+Body Battery, cross-midnight sleep, HRV) and both legacy/new training-metric
+encodings.
+
+### Activity category fix (2026-10-17)
+
+Garmin's "Cardio" activity is recorded as FIT sport 10 (training) + subSport
+26 (cardio_training). The old category map treated every sport-10 session as
+strength, so 46 cardio workouts on the device appeared under the wrong filter.
+`categoryForSport(sport, subSport)` now maps cardio explicitly, keeps
+strength_training (10/20) and HIIT/fitness-equipment as Strength, and puts every
+unmapped sport in an explicit Other filter. The Activities tab derives its chips
+from `SportCategory.entries`, so Run, Ride, Cardio, Strength, Walk and Other are
+all reachable. Verified against the watch directory: 92 `FIT_TYPE_4` items and
+92 activities in Room, all with item UIDs. Cardio filter shows the 46 sessions
+with their HR traces and zone bars.
+
+### Sync stall fix (2026-10-17)
+
+A failed sync was traced to the watch's single GDI session being held by another
+client. `dumpsys bluetooth_manager` showed three simultaneous
+`dev.opengarmin.app` GATT clients (left over from reconnect attempts) plus the
+official Garmin Connect client. Capability exchange never completed, so the app
+retried five times and failed.
+
+Fixes:
+
+- `GarminBleClient.connect()` now closes the previous GATT client, clears the
+  write queue and resets the session before opening a new connection; callbacks
+  from a replaced client are ignored. A short delay is left before reconnecting.
+- Retries increased to eight attempts.
+- When the watch connects but never answers the capability exchange, the app now
+  says so explicitly: "Garmin Connect can hold that single session — close or
+  force-stop it and try again." The message is persisted as `lastSyncError` and
+  shown both in Settings and in a "Sync needs attention" card on Today with a
+  Try again button.
+- Verified: after force-stopping Garmin Connect and restarting the app, the
+  capability exchange, wellness cut, file list and Body Battery import complete;
+  `dumpsys` now reports one `dev.opengarmin.app` GATT client instead of three.
+
+### Activity directory pagination (2026-10-17)
+
+The FR255 returns at most 100 `ItemListResponse` entries per request and sets
+`next_transaction_id = 0`. Two recently recorded activities were therefore
+missing: the directory actually held 200 entries, and the first 100 only
+contained activities through 11 October.
+
+`SyncCoordinator` now pages the directory using the highest `transaction_id`
+seen as the cursor (`ItemListRequest.transaction_id`) until a page returns fewer
+than 100 entries or the cursor stops advancing. Pages are merged by UID, then
+the combined list is classified once. A page cap of 20 prevents a pathological
+loop. The activities-only filter was left unused because the watch answers
+`FAIL_INVALID_DATA_TYPE` (status 6) for `included_data_types` filters.
+
+Verified on the watch: 200 directory entries across two pages; the second page
+contained an extra `FIT_TYPE_4` activity (15 October) that was absent from the
+first page. It was pulled and imported. Historical `FIT_TYPE_32` files are **not**
+queued from the directory (only the current cut is pulled) so pagination does
+not trigger dozens of wellness transfers.
+
+### Manual FIT import (2026-10-17)
+
+The watch can retain an activity summary after its FIT export file has been
+removed (for example after an upload). To recover an activity that the watch no
+longer exposes in its directory, Settings now has **Import FIT file**. It uses
+the Android document picker, reads the selected file locally, and calls the
+normal `ActivityRepository.importFit` path (dedupe by start time/distance/sport).
+No Garmin account, API, or network request is involved. The imported activity
+appears in Activities and the Cardio/Strength/etc. filters like a synced one.
+
+### Watch reboot exposes missing activity files (2026-10-17)
+
+After the phone/directory pagination fixes, three recorded workouts (Mon 12 Oct,
+Thu 15 Oct run, Fri 16 Oct cardio) were still absent from the GDI directory even
+though the watch history showed them. A **watch reboot** (not a phone reboot)
+rebuilt the watch's file index: the next sync returned 102 activity entries and
+27 files that had not been visible before. The app imported all three missing
+workouts (Thu 15 Oct: 7.72 km Running; Fri 16 Oct and Mon 12 Oct: Cardio
+sessions). The directory is incremental after that, so the pagination cursor
+plus a routine watch reboot is the reliable recovery path when history and the
+FIT directory disagree.

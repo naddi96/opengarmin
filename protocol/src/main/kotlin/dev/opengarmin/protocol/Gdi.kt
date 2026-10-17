@@ -338,10 +338,12 @@ object Gdi {
     fun encodeDataType(dt: DataTypeInfo): ByteArray {
         val w = ProtoWriter().uint32(1, dt.format)
         dt.gdxmlString?.let { w.string(2, it) }
-        w.uint32(3, dt.gdxmlStringKey)
+        // proto2 defaults: omit zero values so the watch sees the same shape
+        // as the official client's DataType builder.
+        if (dt.gdxmlStringKey != 0) w.uint32(3, dt.gdxmlStringKey)
         dt.gdxmlFileIdentifier?.let { w.string(4, it) }
         dt.softwareUpdatePath?.let { w.string(5, it) }
-        w.uint32(6, dt.specialCase)
+        if (dt.specialCase != 0) w.uint32(6, dt.specialCase)
         dt.updatePartNumber?.let { w.string(7, it) }
         return w.toByteArray()
     }
@@ -584,6 +586,17 @@ object Gdi {
             SMART_CORE,
             ProtoWriter().bytes(4, ProtoWriter().uint32(1, 2).toByteArray()).toByteArray(),
         )
+
+    /**
+     * CoreService.time_sync_response (field 18) with the phone's current time.
+     * The watch sends an empty TimeSyncRequest (field 17); answering it is what
+     * actually aligns the watch clock with the phone.
+     */
+    fun timeSyncResponse(nowUnixSeconds: Long): ByteArray {
+        val garminSeconds = (nowUnixSeconds - Gfdi.GARMIN_EPOCH_UNIX).coerceAtLeast(0)
+        val response = ProtoWriter().uint64(1, garminSeconds).toByteArray()
+        return wrapSmart(SMART_CORE, ProtoWriter().bytes(18, response).toByteArray())
+    }
 
     /** ConnectIQHTTP.ConnectIQHTTPResponse: offline / timed out. */
     fun connectIqHttpResponse(): ByteArray =

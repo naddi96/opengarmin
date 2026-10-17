@@ -19,10 +19,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import android.net.Uri
 import dev.opengarmin.app.BuildConfig
 import dev.opengarmin.app.llm.ProviderConfig
 import dev.opengarmin.app.llm.ProviderPresets
@@ -51,11 +54,15 @@ fun SettingsScreen(
     onScan: () -> Unit,
     onDisconnect: () -> Unit,
     onShowLog: () -> Unit,
+    onImportFit: (Uri) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var goalText by remember(settings.stepGoal) { mutableStateOf(settings.stepGoal.toString()) }
     var maxHrText by remember(settings.maxHeartRate) { mutableStateOf(settings.maxHeartRate?.toString() ?: "") }
     var savedMessage by remember { mutableStateOf<String?>(null) }
+    val fitPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onImportFit(uri)
+    }
 
     Column(
         modifier = modifier
@@ -210,6 +217,15 @@ fun SettingsScreen(
                     PrimaryButton("Disconnect", onDisconnect, enabled = true)
                 }
                 PrimaryButton("Show device log", onShowLog)
+                Text(
+                    "Recovery: import a FIT file that is no longer exposed by the watch. The file stays on this device.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                )
+                PrimaryButton(
+                    "Import FIT file",
+                    onClick = { fitPicker.launch(arrayOf("*/*")) },
+                )
             }
         }
 

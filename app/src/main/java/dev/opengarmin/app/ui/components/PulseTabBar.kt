@@ -12,9 +12,10 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.DirectionsRun
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,7 +32,8 @@ import dev.opengarmin.app.ui.theme.PulseSpacing
 
 enum class PulseTab(val label: String, val icon: ImageVector) {
     Today("Today", Icons.Outlined.Home),
-    Trends("Trends", Icons.Outlined.TrendingUp),
+    Health("Health", Icons.Outlined.FavoriteBorder),
+    Training("Training", Icons.Outlined.BarChart),
     Activities("Activities", Icons.Outlined.DirectionsRun),
     Coach("Coach", Icons.Outlined.AutoAwesome),
 }

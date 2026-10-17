@@ -10,8 +10,9 @@ documented in [`docs/PROTOCOL.md`](docs/PROTOCOL.md) and re-implemented from
 scratch in the `protocol/` module.
 
 > **Status:** working local pipeline. BLE/GFDI sync, FIT + wellness ingestion,
-> the Pulse UI (Today, Trends, Activities, Coach), and an OpenAI-compatible AI
-> coach are implemented. See [`BACKLOG.md`](BACKLOG.md) for the remaining
+> the five-tab Pulse UI (Today, Health, Training, Activities, Coach), and an
+> OpenAI-compatible AI coach are implemented. All health data comes from the
+> watch's own FIT files; no Garmin Connect account or REST API is used. See [`BACKLOG.md`](BACKLOG.md) for the remaining
 > data-coverage items (sleep/HRV/history) and [`docs/HANDOFF.md`](docs/HANDOFF.md)
 > for the protocol notes.
 
@@ -32,11 +33,21 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
 - **Today:** steps ring and goal, resting/current heart rate with an intraday
   chart, active time, calories, and explicit empty states for not-yet-ingested
   sleep/HRV.
+- **Health:** real Body Battery (stress-topic field 3), stress distribution,
+  SpO₂, respiration, resting HR, movement, weekly active minutes, and sleep/HRV
+  cards that populate when the watch exposes its SLEEP_DATA/HRV files.
+- **Training:** recovery time, VO₂ max and six-week trend, 7-day acute load and
+  load focus, lactate threshold, performance condition, and the latest training
+  effect, all decoded from the watch's `activity_metrics`/`user_metrics` FIT
+  messages.
 - **Trends:** Day/Week/Month views over real wellness days, partial-history
-  labels (never zero-filled), goal line, resting-HR trend.
-- **Activities:** weekly summary, sport filters, row-to-featured selection,
-  real GPS/HR trace, heart-rate zone bar, full activity detail with map,
-  HR/elevation charts, laps, and the FIT data explorer.
+  labels (never zero-filled), goal line, resting-HR trend. Reachable from the
+  Health header.
+- **Recovery:** Settings → **Import FIT file** imports a local FIT activity that the watch no longer exposes, without using Garmin Connect or any API.
+- **Activities:** weekly summary, sport filters (Run, Ride, Cardio, Strength,
+  Walk, and an Other bucket for every remaining sport), row-to-featured
+  selection, real GPS/HR trace, heart-rate zone bar, full activity detail with
+  map, HR/elevation charts, laps, and the FIT data explorer.
 - **Coach:** OpenAI-compatible provider presets (OpenAI, DeepSeek, OpenRouter,
   Ollama, LM Studio, vLLM, Custom), encrypted API keys, model management,
   connection test, streaming chat with cancel, typed read-only health tools,

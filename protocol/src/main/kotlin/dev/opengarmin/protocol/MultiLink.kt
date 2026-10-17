@@ -412,8 +412,11 @@ class GarminSession(
             Gfdi.MessageType.DEVICE_INFORMATION.id -> Handshake.deviceInformation(frame.payload, frame.seq)
             Gfdi.MessageType.CONFIGURATION.id -> Handshake.configuration(frame.payload, frame.seq)
             Gfdi.MessageType.AUTH_NEGOTIATION.id -> Handshake.authNegotiation(frame.payload, frame.seq)
-            Gfdi.MessageType.CURRENT_TIME_REQUEST.id ->
-                Handshake.currentTimeRequest(frame.payload, System.currentTimeMillis() / 1000, 0, frame.seq)
+            Gfdi.MessageType.CURRENT_TIME_REQUEST.id -> {
+                val now = java.time.Instant.now()
+                val offset = java.time.ZoneId.systemDefault().rules.getOffset(now).totalSeconds
+                Handshake.currentTimeRequest(frame.payload, now.epochSecond, offset, frame.seq)
+            }
             Gfdi.MessageType.NOTIFICATION_SUBSCRIPTION.id -> Handshake.notificationSubscription(frame.payload, frame.seq)
             // 5043 is a protobuf cancellation/unsupported notice from the device; it needs no reply.
             else -> null

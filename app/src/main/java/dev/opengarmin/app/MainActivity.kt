@@ -3,6 +3,7 @@ package dev.opengarmin.app
 import android.Manifest
 import android.bluetooth.BluetoothDevice
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -109,6 +110,7 @@ class MainActivity : ComponentActivity() {
     private var client: GarminBleClient? = null
     private var coordinator: SyncCoordinator? = null
     private var syncAttempts = 0
+    private val maxSyncAttempts = 8
     private var watchdog: Runnable? = null
     private lateinit var repository: ActivityRepository
     private lateinit var settings: PulseSettings
@@ -128,6 +130,8 @@ class MainActivity : ComponentActivity() {
     private var selectedWellnessDay by mutableStateOf<WellnessDayEntity?>(null)
     private var wellnessSamples by mutableStateOf<List<WellnessSampleEntity>>(emptyList())
     private var latestHrSamples by mutableStateOf<List<WellnessSampleEntity>>(emptyList())
+    private var latestSleepStages by mutableStateOf<List<dev.opengarmin.app.data.SleepStageEntity>>(emptyList())
+    private var trainingSummary by mutableStateOf(dev.opengarmin.app.data.TrainingSummary())
     private var dataActivity by mutableStateOf<ActivityEntity?>(null)
     private var dataMessages by mutableStateOf<List<FitMessageEntity>>(emptyList())
     private var dataLoading by mutableStateOf(false)
@@ -138,6 +142,7 @@ class MainActivity : ComponentActivity() {
     private var lastImportedLabel by mutableStateOf<String?>(null)
     private var importedThisSync = 0
     private var syncNotificationActive = false
+    private var knownWellnessUids: Set<String> = emptySet()
 
     data class DeviceEntry(val device: BluetoothDevice, val rssi: Int) {
         val label: String get() = "${device.name ?: "(unnamed)"}  ${device.address}  ${rssi} dBm"
@@ -179,6 +184,8 @@ class MainActivity : ComponentActivity() {
             repository.activities.collect { list ->
                 activities.clear()
                 activities.addAll(list)
+                val rows = withContext(Dispatchers.IO) { runCatching { repository.trainingRows() }.getOrDefault(emptyList()) }
+                trainingSummary = dev.opengarmin.app.data.TrainingMetrics.build(list, rows)
             }
         }
         lifecycleScope.launch {
@@ -187,14 +194,23 @@ class MainActivity : ComponentActivity() {
                 wellnessDays.addAll(list)
                 val latest = list.firstOrNull()
                 if (latest != null) {
-                    val samples = withContext(Dispatchers.IO) { repository.wellnessSamples(latest.id) }
+                    val (samples, stages) = withContext(Dispatchers.IO) {
+                        repository.wellnessSamples(latest.id) to repository.sleepStages(latest.date)
+                    }
                     latestHrSamples = samples
+                    latestSleepStages = stages
                 } else {
                     latestHrSamples = emptyList()
+                    latestSleepStages = emptyList()
                 }
             }
         }
         lifecycleScope.launch(Dispatchers.IO) {
+            knownWellnessUids = runCatching { repository.importedWellnessFileIds() }
+                .getOrDefault(emptySet())
+            runCatching { repository.backfillWellnessFiles(filesDir) }
+            knownWellnessUids = runCatching { repository.importedWellnessFileIds() }
+                .getOrDefault(knownWellnessUids)
             runCatching { repository.backfillDerived(filesDir) }
         }
 
@@ -227,9 +243,10 @@ class MainActivity : ComponentActivity() {
                             armWatchdog()
                         }
                         "failed" -> {
-                            settings.recordSyncError("Sync failed")
+                            val reason = syncFailureReason()
+                            settings.recordSyncError(reason)
                             cancelWatchdog()
-                            finishSyncNotification("Sync failed", "Could not finish syncing")
+                            finishSyncNotification("Sync failed", reason)
                         }
                         "reconnecting" -> {
                             cancelWatchdog()
@@ -267,15 +284,16 @@ class MainActivity : ComponentActivity() {
             handler = main,
             log = { log(it) },
             isItemKnown = { uid -> uid.isNotEmpty() && activities.any { it.itemUid == uid } },
+            isWellnessItemKnown = { uid -> uid.isNotEmpty() && uid in knownWellnessUids },
             onFinished = { raw, decoded, itemUid ->
                 cancelWatchdog()
                 lastFile = "${decoded.name} (${decoded.length()} bytes)"
                 log("SYNC complete: raw=${raw.length()} decoded=${decoded.length()} (${decoded.name})")
                 importFit(decoded, itemUid)
             },
-            onWellnessFile = { decoded, type ->
+            onWellnessFile = { decoded, type, itemUid ->
                 log("WELLNESS file $type: ${decoded.name} (${decoded.length()} bytes)")
-                importWellness(decoded, type)
+                importWellness(decoded, type, itemUid)
             },
             onUpToDate = {
                 cancelWatchdog()
@@ -316,6 +334,8 @@ class MainActivity : ComponentActivity() {
                     activities = activities,
                     wellnessDays = wellnessDays,
                     hrSamples = latestHrSamples,
+                    sleepStages = latestSleepStages,
+                    trainingSummary = trainingSummary,
                     selectedActivity = selectedActivity,
                     selectedRecords = selectedRecords,
                     selectedLaps = selectedLaps,
@@ -360,6 +380,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onExploreData = { openDataExplorer(it) },
                     onCloseData = { closeDataExplorer() },
+                    onImportFit = { uri -> importFitFromUri(uri) },
                 )
             }
         }
@@ -424,21 +445,68 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun importWellness(file: File, type: String) {
+    private fun importFitFromUri(uri: Uri) {
         lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { repository.importWellness(file.readBytes()) }
+            val bytes = withContext(Dispatchers.IO) {
+                runCatching {
+                    contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                }.getOrNull()
             }
-            result.onSuccess { day ->
-                if (day == null) {
-                    log("WELLNESS $type contained no daily samples")
+            if (bytes == null) {
+                log("FIT import failed: could not read the selected file")
+                return@launch
+            }
+            val name = uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+                ?: "imported.fit"
+            val result = withContext(Dispatchers.IO) {
+                runCatching { repository.importFit(name, bytes, itemUid = "") }
+            }
+            result.onSuccess { entity ->
+                if (entity == null) {
+                    log("FIT import: no session found or activity already exists")
                 } else {
-                    log(
-                        "WELLNESS imported ${day.date}: ${day.steps} steps, " +
-                            "%.2f km, resting HR ${day.restingHeartRate ?: "—"}".format(
-                                day.distanceMeters / 1000.0,
-                            ),
-                    )
+                    importedThisSync++
+                    lastImportedLabel = buildString {
+                        append(formatDate(entity.startTime))
+                        append(" · ")
+                        append(sportName(entity.sport))
+                        if (entity.distanceMeters > 0) {
+                            append(" · ")
+                            append("%.2f km".format(entity.distanceMeters / 1000.0))
+                        }
+                    }
+                    log("IMPORTED from file: ${entity.fileName}")
+                }
+            }.onFailure { e ->
+                log("FIT import failed: ${e.message}")
+            }
+        }
+    }
+
+    private fun importWellness(file: File, type: String, itemUid: String) {
+        lifecycleScope.launch {
+            val immutable = type == "FIT_TYPE_44" || type == "FIT_TYPE_49"
+            val result = withContext(Dispatchers.IO) {
+                val days = runCatching { repository.importWellness(file.readBytes()) }
+                if (days.isSuccess && immutable) {
+                    runCatching { repository.markWellnessFileImported(itemUid, type) }
+                }
+                days
+            }
+            result.onSuccess { days ->
+                if (days.isEmpty()) {
+                    log("WELLNESS $type contained no health samples")
+                } else {
+                    if (immutable) knownWellnessUids = knownWellnessUids + itemUid
+                    days.forEach { day ->
+                        val distance = "%.2f".format(day.distanceMeters / 1000.0)
+                        log(
+                            "WELLNESS imported ${day.date}: ${day.steps} steps, " +
+                                "$distance km, resting HR ${day.restingHeartRate ?: "—"}, " +
+                                "sleep score ${day.sleepScore ?: "—"}, " +
+                                "Body Battery ${day.bodyBatteryLatest ?: "—"}",
+                        )
+                    }
                 }
             }.onFailure { e ->
                 log("WELLNESS import failed: ${e.message}")
@@ -517,16 +585,18 @@ class MainActivity : ComponentActivity() {
                 armWatchdog(60_000)
                 return@Runnable
             }
-            if (syncAttempts < 5) {
+            if (syncAttempts < maxSyncAttempts) {
                 syncAttempts++
-                log("sync stalled; reconnecting ($syncAttempts/5)")
+                log("sync stalled; reconnecting ($syncAttempts/$maxSyncAttempts)")
                 state = "reconnecting"
                 updateSyncNotification(status = "Reconnecting to watch…", progress = null)
                 client?.reconnect()
             } else {
-                log("sync failed after $syncAttempts attempts")
+                val reason = syncFailureReason()
+                log("sync failed after $syncAttempts attempts: $reason")
                 state = "failed"
-                finishSyncNotification("Sync failed", "Could not finish syncing")
+                settings.recordSyncError(reason)
+                finishSyncNotification("Sync failed", reason)
             }
         }
         watchdog = r
@@ -537,6 +607,14 @@ class MainActivity : ComponentActivity() {
         watchdog?.let { main.removeCallbacks(it) }
         watchdog = null
     }
+
+    private fun syncFailureReason(): String =
+        if (coordinator?.stalledBeforeCapabilities() == true) {
+            "The watch accepted the connection but did not open its GDI session. " +
+                "Garmin Connect can hold that single session — close/force-stop it and try again."
+        } else {
+            "Could not finish syncing. Keep the watch nearby and try again."
+        }
 
     private fun ensureNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&

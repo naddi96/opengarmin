@@ -118,18 +118,23 @@ tested migration.
 
 ### Wellness ingestion
 
-`CutWellnessFilesRequest` makes the watch emit `FIT_TYPE_32`
-(monitoring_b, ~0.9 KB) and `FIT_TYPE_41` (~287 B). The app pulls both, parses
-`monitoring`, `monitoring_hr_data`, `stress_level`, `spo2_data`, and
-`respiration_rate`, and stores one row per local day plus merged samples.
+`CutWellnessFilesRequest` makes the watch emit monitoring and settings-change
+files (FR255: `FIT_TYPE_29/32`, `FIT_TYPE_41`). The app pulls them and parses
+`monitoring`, `monitoring_hr_data`, `stress_level` (including the undocumented
+Body Battery field 3), `spo2_data`, `respiration_rate`, and `hrv_value`. Any
+non-activity file of type `FIT_TYPE_49` (SLEEP_DATA) or `FIT_TYPE_44`
+(BIOMETRIC) found in the item list is pulled too, and `sleep_level`,
+`sleep_assessment`, `hrv_status_summary` are parsed into the daily row and the
+`sleep_stages` table. Already-imported wellness UIDs are recorded in
+`imported_wellness_files` so normal syncs stay incremental.
 
 Important limitations:
 
 - A cut contains the **current day's delta**. Multi-day history is only built by
   syncing repeatedly; the app cannot yet request older wellness days.
-- Sleep and HRV messages are understood by `FitProfile` (`sleep_level`,
-  `sleep_assessment`, `hrv_status_summary`, `hrv_value`, …), but the importer
-  ignores them and the sync flow does not pull the files that contain them.
+- Sleep/HRV depend on the watch emitting a SLEEP_DATA/biometric file. The FR255
+  used for development did not have one in its directory after daytime syncs;
+  the UI says so explicitly instead of estimating sleep from heart rate.
 - Floors are not stored.
 - Watch battery level and connection freshness are not tracked. `lastFile` and
   `state` are ephemeral UI state, not persisted sync metadata.
@@ -143,15 +148,17 @@ Important limitations:
 | Resting / avg / max HR | ✅ | `wellness_days` + `wellness_samples(kind = hr)` |
 | Intraday HR chart | ✅ | `wellness_samples(kind = hr)` |
 | Stress, SpO2, respiration | ✅ | `wellness_samples` |
-| Workouts, laps, GPS, HR/elevation traces | ✅ | `activities`, `records`, `laps` |
-| **Sleep duration / stages / score** | ❌ | not ingested (profile supports messages) |
-| **HRV (nightly/status)** | ❌ | not ingested (profile supports messages) |
+| **Body Battery** | ✅ | `stress_level` field 3 → `wellness_samples(kind = body_battery)` |
+| **Sleep duration / stages / score** | ⚠️ | parsed from SLEEP_DATA when the watch exposes it; empty state otherwise |
+| **HRV (nightly/status)** | ⚠️ | parsed from `hrv_status_summary`/`hrv_value` when present; empty state otherwise |
+| **VO₂ max / recovery / training load / LT** | ✅ | `activity_metrics` (140) and `user_metrics` (79) in each activity FIT |
+| **Training effect / performance condition** | ✅ | `activity_metrics` fields |
 | **Floors** | ❌ | not stored |
-| **HR zones** | ⚠️ derivable | compute from `records.heartRate`; needs a max-HR/zone model |
+| **HR zones** | ⚠️ | derivable from `records.heartRate`; needs a max-HR/zone model |
 | **Step goal** | ❌ | no goal setting; mockup's 10,000 is a placeholder |
 | **Watch battery / "Synced 2 min ago"** | ❌ / ⚠️ | battery not read; last-sync timestamp not persisted |
 | Weekly/monthly aggregates | ⚠️ | computable, but Week/Month trends need accumulated wellness history |
-| AI insight cards | ❌ | no LLM layer yet; decide deterministic vs. model-generated |
+| AI insight cards | ⚠️ | deterministic summaries from local data; Ask Coach opens the LLM chat |
 
 ## 5. Auth and multi-user implications
 

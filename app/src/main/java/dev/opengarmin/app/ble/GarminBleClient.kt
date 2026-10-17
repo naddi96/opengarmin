@@ -105,15 +105,9 @@ class GarminBleClient(
 
     fun connect(device: BluetoothDevice) {
         stopScan()
-        lastDevice = device
-        onStateChanged("connecting")
-        onLog("connecting to ${device.address}")
-        gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
-    }
-
-    fun reconnect() {
-        val device = lastDevice ?: return
-        onLog("reconnecting to ${device.address}")
+        // A reconnect can otherwise leave the previous GATT client open until
+        // the stack times it out. The watch has a small connection/session
+        // budget, so close it explicitly before opening a new one.
         gatt?.disconnect()
         gatt?.close()
         gatt = null
@@ -123,8 +117,18 @@ class GarminBleClient(
             writeInFlight = false
         }
         session.reset()
+        lastDevice = device
+        onStateChanged("connecting")
+        onLog("connecting to ${device.address}")
+        gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+    }
+
+    fun reconnect() {
+        val device = lastDevice ?: return
+        onLog("reconnecting to ${device.address}")
         onStateChanged("reconnecting")
-        handler.postDelayed({ connect(device) }, 1000)
+        // connect() closes the previous GATT client and resets the session.
+        handler.postDelayed({ connect(device) }, 1_500)
     }
 
     fun disconnect() {
@@ -192,6 +196,11 @@ class GarminBleClient(
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
+            if (g !== gatt) {
+                // Callback from a client we already replaced/closed.
+                g.close()
+                return
+            }
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     onStateChanged("connected")
@@ -200,19 +209,24 @@ class GarminBleClient(
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     session.reset()
+                    writeChar = null
+                    if (g === gatt) gatt = null
+                    g.close()
                     onStateChanged("disconnected")
-                    onLog("disconnected")
+                    onLog("disconnected (status=$status)")
                 }
             }
         }
 
         override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) {
+            if (g !== gatt) return
             onLog("MTU=$mtu")
             session.maxWriteSize = (mtu - 3).coerceAtLeast(20)
             g.discoverServices()
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
+            if (g !== gatt) return
             val mlService = g.getService(java.util.UUID.fromString(Uuids.MULTI_LINK))
             if (mlService == null) {
                 onLog("Multi-Link service not found on this device")
@@ -277,6 +291,7 @@ class GarminBleClient(
         }
 
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+            if (g !== gatt) return
             onLog("notifications enabled (status=$status)")
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 onLog("starting GFDI session")
@@ -285,6 +300,7 @@ class GarminBleClient(
         }
 
         override fun onCharacteristicWrite(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            if (g !== gatt) return
             writeGeneration++
             synchronized(writeQueue) { writeInFlight = false }
             if (status != BluetoothGatt.GATT_SUCCESS) onLog("write failed status=$status")
@@ -296,6 +312,7 @@ class GarminBleClient(
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray,
         ) {
+            if (g !== gatt) return
             handleNotification(characteristic, value)
         }
 

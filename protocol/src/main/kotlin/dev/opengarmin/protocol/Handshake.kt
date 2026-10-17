@@ -48,18 +48,42 @@ object Handshake {
     fun authNegotiation(payload: ByteArray, seq: Int? = null): ByteArray =
         Gfdi.buildResponse(Gfdi.MessageType.AUTH_NEGOTIATION.id, Gfdi.Status.ACK.code, byteArrayOf(0, 0, 0, 0, 0), seq)
 
-    /** Reply to CURRENT_TIME_REQUEST (5052). */
+    /**
+     * Reply to CURRENT_TIME_REQUEST (5052).
+     *
+     * The official client answers with the request reference id, the current
+     * time in Garmin epoch seconds, the UTC offset in seconds, and the next two
+     * daylight-saving transitions (also in Garmin epoch). The watch uses this
+     * exchange to align its clock; sending zero for the DST fields can make it
+     * ignore the update.
+     */
     fun currentTimeRequest(payload: ByteArray, nowUnixSeconds: Long, localOffsetSeconds: Int, seq: Int? = null): ByteArray {
         val referenceId = if (payload.size >= 4) Gfdi.le16(payload, 0) or (Gfdi.le16(payload, 2) shl 16) else 0
         val garminTs = Gfdi.garminTimestamp(nowUnixSeconds)
+        val (dstStart, dstEnd) = dstTransitions(nowUnixSeconds)
         val body = ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN)
             .putInt(referenceId)
             .putInt(garminTs.toInt())
             .putInt(localOffsetSeconds)
-            .putInt(0)
-            .putInt(0)
+            .putInt(dstStart.toInt())
+            .putInt(dstEnd.toInt())
             .array()
         return Gfdi.buildResponse(Gfdi.MessageType.CURRENT_TIME_REQUEST.id, Gfdi.Status.ACK.code, body, seq)
+    }
+
+    /** Next DST start/end as Garmin epoch seconds, or (0, 0) if the zone has none. */
+    private fun dstTransitions(nowUnixSeconds: Long): Pair<Long, Long> {
+        val rules = java.time.ZoneId.systemDefault().rules
+        val now = java.time.Instant.ofEpochSecond(nowUnixSeconds)
+        val next = rules.nextTransition(now) ?: return 0L to 0L
+        val after = rules.nextTransition(next.instant.plusSeconds(86_400)) ?: return 0L to 0L
+        fun garmin(instant: java.time.Instant): Long =
+            (instant.epochSecond - Gfdi.GARMIN_EPOCH_UNIX).coerceAtLeast(0)
+        return if (rules.isDaylightSavings(next.instant)) {
+            garmin(next.instant) to garmin(after.instant)
+        } else {
+            garmin(after.instant) to garmin(next.instant)
+        }
     }
 
     /** Reply to NOTIFICATION_SUBSCRIPTION (5036). */

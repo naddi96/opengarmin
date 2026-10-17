@@ -20,8 +20,6 @@ import dev.opengarmin.protocol.Gfdi
 import kotlinx.coroutines.flow.Flow
 import org.json.JSONObject
 import java.io.File
-import java.time.Instant
-import java.time.ZoneId
 import kotlin.math.roundToInt
 
 @Entity(
@@ -73,6 +71,8 @@ data class RecordEntity(
     val cadence: Int?,
     val latitude: Double? = null,
     val longitude: Double? = null,
+    /** Garmin Body Battery (undocumented FIT record field 143), 0-100. */
+    val bodyBattery: Int? = null,
 )
 
 @Entity(
@@ -151,6 +151,33 @@ data class WellnessDayEntity(
     val spo2Avg: Int?,
     val respirationAvg: Double?,
     val updatedAt: Long,
+    // Body Battery (from stress_level field 3 and/or activity records).
+    val bodyBatteryStart: Int? = null,
+    val bodyBatteryMin: Int? = null,
+    val bodyBatteryMax: Int? = null,
+    val bodyBatteryLatest: Int? = null,
+    // Sleep (from a SLEEP_DATA file when the watch exposes one).
+    val sleepStart: Long? = null,
+    val sleepEnd: Long? = null,
+    val sleepScore: Int? = null,
+    val sleepQuality: String? = null,
+    val deepSleepSeconds: Int? = null,
+    val lightSleepSeconds: Int? = null,
+    val remSleepSeconds: Int? = null,
+    val awakeSleepSeconds: Int? = null,
+    val sleepAvgSpo2: Int? = null,
+    val sleepLowestSpo2: Int? = null,
+    val sleepAvgRespiration: Double? = null,
+    val sleepLowestHeartRate: Int? = null,
+    // HRV status (from hrv_status_summary / hrv_value).
+    val hrvLastNight: Double? = null,
+    val hrvWeeklyAvg: Double? = null,
+    val hrvStatus: String? = null,
+    val hrvBaselineLow: Double? = null,
+    val hrvBaselineHigh: Double? = null,
+    // Intensity minutes reported by the watch monitoring file, when available.
+    val moderateMinutes: Int? = null,
+    val vigorousMinutes: Int? = null,
 )
 
 @Entity(
@@ -170,9 +197,34 @@ data class WellnessSampleEntity(
     val dayId: Long,
     /** Unix seconds. */
     val timestamp: Long,
-    /** hr, stress, spo2 or respiration. */
+    /** hr, stress, spo2, respiration, body_battery or hrv. */
     val kind: String,
     val value: Double,
+)
+
+/** One sleep-stage transition from a watch SLEEP_DATA file. */
+@Entity(
+    tableName = "sleep_stages",
+    indices = [Index("date")],
+)
+data class SleepStageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** Local wake-up date, YYYY-MM-DD. */
+    val date: String,
+    /** Unix seconds. */
+    val startTime: Long,
+    /** Unix seconds. */
+    val endTime: Long,
+    /** awake, light, deep, rem or unmeasurable. */
+    val stage: String,
+)
+
+/** Files already imported so a sync can skip them without re-downloading. */
+@Entity(tableName = "imported_wellness_files")
+data class ImportedWellnessFileEntity(
+    @PrimaryKey val itemUid: String,
+    val type: String,
+    val importedAt: Long,
 )
 
 @Dao
@@ -234,11 +286,38 @@ interface ActivityDao {
     @Query("SELECT * FROM wellness_samples WHERE dayId = :dayId ORDER BY timestamp")
     suspend fun wellnessSamples(dayId: Long): List<WellnessSampleEntity>
 
+    @Query("SELECT * FROM wellness_samples WHERE dayId = :dayId AND kind = :kind ORDER BY timestamp")
+    suspend fun wellnessSamples(dayId: Long, kind: String): List<WellnessSampleEntity>
+
+    @Query("DELETE FROM sleep_stages WHERE date = :date")
+    suspend fun deleteSleepStages(date: String)
+
+    @Insert
+    suspend fun insertSleepStages(stages: List<SleepStageEntity>)
+
+    @Query("SELECT * FROM sleep_stages WHERE date = :date ORDER BY startTime")
+    suspend fun sleepStages(date: String): List<SleepStageEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertImportedWellnessFile(file: ImportedWellnessFileEntity)
+
+    @Query("SELECT itemUid FROM imported_wellness_files")
+    suspend fun importedWellnessFileIds(): List<String>
+
     @Query("SELECT * FROM laps WHERE activityId = :activityId ORDER BY lapIndex")
     suspend fun laps(activityId: Long): List<LapEntity>
 
     @Query("SELECT * FROM activities")
     suspend fun all(): List<ActivityEntity>
+
+    @Query(
+        "SELECT a.id AS activityId, a.startTime AS startTime, " +
+            "f.messageName AS messageName, f.fieldsJson AS fieldsJson " +
+            "FROM fit_messages f JOIN activities a ON a.id = f.activityId " +
+            "WHERE f.messageName IN ('activity_metrics','msg_140','user_metrics','msg_79','session','zones_target') " +
+            "ORDER BY a.startTime",
+    )
+    suspend fun trainingRows(): List<TrainingRow>
 
     @Query("SELECT * FROM activities WHERE id = :id")
     suspend fun activityById(id: Long): ActivityEntity?
@@ -270,8 +349,10 @@ interface ActivityDao {
         FitMessageEntity::class,
         WellnessDayEntity::class,
         WellnessSampleEntity::class,
+        SleepStageEntity::class,
+        ImportedWellnessFileEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -386,6 +467,57 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf(
+                    "bodyBatteryStart INTEGER",
+                    "bodyBatteryMin INTEGER",
+                    "bodyBatteryMax INTEGER",
+                    "bodyBatteryLatest INTEGER",
+                    "sleepStart INTEGER",
+                    "sleepEnd INTEGER",
+                    "sleepScore INTEGER",
+                    "sleepQuality TEXT",
+                    "deepSleepSeconds INTEGER",
+                    "lightSleepSeconds INTEGER",
+                    "remSleepSeconds INTEGER",
+                    "awakeSleepSeconds INTEGER",
+                    "sleepAvgSpo2 INTEGER",
+                    "sleepLowestSpo2 INTEGER",
+                    "sleepAvgRespiration REAL",
+                    "sleepLowestHeartRate INTEGER",
+                    "hrvLastNight REAL",
+                    "hrvWeeklyAvg REAL",
+                    "hrvStatus TEXT",
+                    "hrvBaselineLow REAL",
+                    "hrvBaselineHigh REAL",
+                    "moderateMinutes INTEGER",
+                    "vigorousMinutes INTEGER",
+                ).forEach { column ->
+                    db.execSQL("ALTER TABLE `wellness_days` ADD COLUMN $column")
+                }
+                db.execSQL("ALTER TABLE `records` ADD COLUMN `bodyBattery` INTEGER")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `sleep_stages` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`date` TEXT NOT NULL, " +
+                        "`startTime` INTEGER NOT NULL, " +
+                        "`endTime` INTEGER NOT NULL, " +
+                        "`stage` TEXT NOT NULL)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_sleep_stages_date` ON `sleep_stages` (`date`)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `imported_wellness_files` (" +
+                        "`itemUid` TEXT NOT NULL, " +
+                        "`type` TEXT NOT NULL, " +
+                        "`importedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`itemUid`))",
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -398,6 +530,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_3_4,
                     MIGRATION_4_5,
                     MIGRATION_5_6,
+                    MIGRATION_6_7,
                 ).build().also { instance = it }
             }
     }
@@ -420,6 +553,13 @@ class ActivityRepository(private val dao: ActivityDao) {
 
     suspend fun wellnessSamples(dayId: Long): List<WellnessSampleEntity> = dao.wellnessSamples(dayId)
 
+    suspend fun wellnessSamples(dayId: Long, kind: String): List<WellnessSampleEntity> =
+        dao.wellnessSamples(dayId, kind)
+
+    suspend fun sleepStages(date: String): List<SleepStageEntity> = dao.sleepStages(date)
+
+    suspend fun importedWellnessFileIds(): Set<String> = dao.importedWellnessFileIds().toHashSet()
+
     suspend fun wellnessDaysBetween(start: String, end: String): List<WellnessDayEntity> =
         dao.wellnessDaysBetween(start, end)
 
@@ -428,6 +568,8 @@ class ActivityRepository(private val dao: ActivityDao) {
 
     suspend fun activitiesBetween(start: Long, end: Long, limit: Int): List<ActivityEntity> =
         dao.activitiesBetween(start, end, limit)
+
+    suspend fun trainingRows(): List<TrainingRow> = dao.trainingRows()
 
     suspend fun activity(id: Long): ActivityEntity? = dao.activityById(id)
 
@@ -544,145 +686,194 @@ class ActivityRepository(private val dao: ActivityDao) {
         }
 
     /**
-     * Imports a watch wellness file (monitoring_b / monitoring_daily) into the
-     * daily metrics tables. Re-cutting the same day updates the row and
-     * replaces its samples.
+     * Imports any watch wellness file: monitoring (steps/HR/stress/SpO2/
+     * respiration/Body Battery), sleep data, or HRV. Re-importing a file
+     * updates the same day and merges samples by (kind, timestamp).
+     *
+     * Returns the days that were created or updated.
      */
-    suspend fun importWellness(data: ByteArray): WellnessDayEntity? {
-        val parsed = runCatching { Fit.parse(data) }.getOrNull() ?: return null
-        val messages = parsed.messages
+    suspend fun importWellness(data: ByteArray): List<WellnessDayEntity> {
+        val parsed = runCatching { Fit.parse(data) }.getOrNull() ?: return emptyList()
+        val drafts = WellnessParser.parse(parsed.messages)
+        if (drafts.isEmpty()) return emptyList()
 
-        val baseTs = messages.mapNotNull { it.timestamp }.maxOrNull() ?: return null
-
-        val monitoring = messages.filter { message ->
-            message.name == "monitoring" && (
-                msgField(message, "steps") != null ||
-                    msgField(message, "cycles_16") != null ||
-                    msgField(message, "distance") != null ||
-                    msgField(message, "active_time") != null ||
-                    msgField(message, "active_calories") != null ||
-                    msgField(message, "calories") != null
+        val result = ArrayList<WellnessDayEntity>()
+        for (draft in drafts) {
+            val existing = dao.wellnessDay(draft.date)
+            val entity = if (existing == null) {
+                WellnessDayEntity(
+                    date = draft.date,
+                    steps = draft.steps,
+                    distanceMeters = draft.distanceMeters,
+                    activeCalories = draft.activeCalories,
+                    activeSeconds = draft.activeSeconds,
+                    restingHeartRate = draft.restingHeartRate,
+                    avgHeartRate = draft.avgHeartRate,
+                    maxHeartRate = draft.maxHeartRate,
+                    stressAvg = draft.stressAvg,
+                    spo2Avg = draft.spo2Avg,
+                    respirationAvg = draft.respirationAvg,
+                    updatedAt = System.currentTimeMillis() / 1000,
+                    bodyBatteryStart = draft.bodyBatteryStart,
+                    bodyBatteryMin = draft.bodyBatteryMin,
+                    bodyBatteryMax = draft.bodyBatteryMax,
+                    bodyBatteryLatest = draft.bodyBatteryLatest,
+                    sleepStart = draft.sleepStart,
+                    sleepEnd = draft.sleepEnd,
+                    sleepScore = draft.sleepScore,
+                    sleepQuality = draft.sleepQuality,
+                    deepSleepSeconds = draft.deepSleepSeconds,
+                    lightSleepSeconds = draft.lightSleepSeconds,
+                    remSleepSeconds = draft.remSleepSeconds,
+                    awakeSleepSeconds = draft.awakeSleepSeconds,
+                    sleepAvgSpo2 = draft.sleepAvgSpo2,
+                    sleepLowestSpo2 = draft.sleepLowestSpo2,
+                    sleepAvgRespiration = draft.sleepAvgRespiration,
+                    sleepLowestHeartRate = draft.sleepLowestHeartRate,
+                    hrvLastNight = draft.hrvLastNight,
+                    hrvWeeklyAvg = draft.hrvWeeklyAvg,
+                    hrvStatus = draft.hrvStatus,
+                    hrvBaselineLow = draft.hrvBaselineLow,
+                    hrvBaselineHigh = draft.hrvBaselineHigh,
+                    moderateMinutes = draft.moderateMinutes,
+                    vigorousMinutes = draft.vigorousMinutes,
                 )
-        }
-        val hrSamples = messages.filter { it.name == "monitoring" }.mapNotNull { message ->
-            val hr = msgInt(message, "heart_rate")?.takeIf { it in 1..250 } ?: return@mapNotNull null
-            val ts = message.timestamp
-                ?: msgInt(message, "timestamp_16")?.let { resolveTimestamp16(baseTs, it) }
-                ?: baseTs
-            ts to hr
-        }
-        if (monitoring.isEmpty() && hrSamples.isEmpty()) return null
-
-        val date = Instant.ofEpochSecond(baseTs)
-            .atZone(ZoneId.systemDefault())
-            .toLocalDate()
-            .toString()
-
-        val lastByType = LinkedHashMap<Int, Fit.Message>()
-        for (message in monitoring) {
-            lastByType[msgInt(message, "activity_type") ?: 0] = message
-        }
-        var steps = 0
-        var distance = 0.0
-        var activeCalories = 0
-        var activeSeconds = 0
-        for (message in lastByType.values) {
-            steps += msgInt(message, "steps")
-                ?: msgInt(message, "cycles_16")?.times(2)
-                ?: msgDouble(message, "cycles")?.times(2)?.toInt()
-                ?: 0
-            distance += msgDouble(message, "distance") ?: 0.0
-            activeCalories += msgInt(message, "active_calories") ?: msgInt(message, "calories") ?: 0
-            activeSeconds += msgDouble(message, "active_time")?.toInt() ?: 0
-        }
-
-        val restingHeartRate = messages.filter { it.name == "monitoring_hr_data" }
-            .lastOrNull()
-            ?.let {
-                (msgInt(it, "current_day_resting_heart_rate") ?: msgInt(it, "resting_heart_rate"))
-                    ?.takeIf { value -> value in 1..250 }
+            } else {
+                // Separate files carry separate metrics. Only replace a value
+                // when this file actually contains one; never zero-fill.
+                existing.copy(
+                    steps = if (draft.hasMonitoring) draft.steps else existing.steps,
+                    distanceMeters = if (draft.hasMonitoring) draft.distanceMeters else existing.distanceMeters,
+                    activeCalories = if (draft.hasMonitoring) draft.activeCalories else existing.activeCalories,
+                    activeSeconds = if (draft.hasMonitoring) draft.activeSeconds else existing.activeSeconds,
+                    restingHeartRate = draft.restingHeartRate ?: existing.restingHeartRate,
+                    avgHeartRate = draft.avgHeartRate ?: existing.avgHeartRate,
+                    maxHeartRate = draft.maxHeartRate ?: existing.maxHeartRate,
+                    stressAvg = draft.stressAvg ?: existing.stressAvg,
+                    spo2Avg = draft.spo2Avg ?: existing.spo2Avg,
+                    respirationAvg = draft.respirationAvg ?: existing.respirationAvg,
+                    bodyBatteryStart = draft.bodyBatteryStart ?: existing.bodyBatteryStart,
+                    bodyBatteryMin = draft.bodyBatteryMin ?: existing.bodyBatteryMin,
+                    bodyBatteryMax = draft.bodyBatteryMax ?: existing.bodyBatteryMax,
+                    bodyBatteryLatest = draft.bodyBatteryLatest ?: existing.bodyBatteryLatest,
+                    sleepStart = draft.sleepStart ?: existing.sleepStart,
+                    sleepEnd = draft.sleepEnd ?: existing.sleepEnd,
+                    sleepScore = draft.sleepScore ?: existing.sleepScore,
+                    sleepQuality = draft.sleepQuality ?: existing.sleepQuality,
+                    deepSleepSeconds = draft.deepSleepSeconds ?: existing.deepSleepSeconds,
+                    lightSleepSeconds = draft.lightSleepSeconds ?: existing.lightSleepSeconds,
+                    remSleepSeconds = draft.remSleepSeconds ?: existing.remSleepSeconds,
+                    awakeSleepSeconds = draft.awakeSleepSeconds ?: existing.awakeSleepSeconds,
+                    sleepAvgSpo2 = draft.sleepAvgSpo2 ?: existing.sleepAvgSpo2,
+                    sleepLowestSpo2 = draft.sleepLowestSpo2 ?: existing.sleepLowestSpo2,
+                    sleepAvgRespiration = draft.sleepAvgRespiration ?: existing.sleepAvgRespiration,
+                    sleepLowestHeartRate = draft.sleepLowestHeartRate ?: existing.sleepLowestHeartRate,
+                    hrvLastNight = draft.hrvLastNight ?: existing.hrvLastNight,
+                    hrvWeeklyAvg = draft.hrvWeeklyAvg ?: existing.hrvWeeklyAvg,
+                    hrvStatus = draft.hrvStatus ?: existing.hrvStatus,
+                    hrvBaselineLow = draft.hrvBaselineLow ?: existing.hrvBaselineLow,
+                    hrvBaselineHigh = draft.hrvBaselineHigh ?: existing.hrvBaselineHigh,
+                    moderateMinutes = draft.moderateMinutes ?: existing.moderateMinutes,
+                    vigorousMinutes = draft.vigorousMinutes ?: existing.vigorousMinutes,
+                    updatedAt = System.currentTimeMillis() / 1000,
+                )
             }
 
-        val stress = messages.filter { it.name == "stress_level" }.mapNotNull { message ->
-            val value = msgInt(message, "stress_level_value")?.takeIf { it in 0..100 }
-                ?: return@mapNotNull null
-            val ts = msgDouble(message, "stress_level_time")?.toLong()
-                ?: message.timestamp
-                ?: baseTs
-            WellnessSampleEntity(dayId = 0, timestamp = ts, kind = "stress", value = value.toDouble())
-        }
-        val spo2 = messages.filter { it.name == "spo2_data" }.mapNotNull { message ->
-            val value = msgInt(message, "reading_spo2")?.takeIf { it in 1..100 }
-                ?: return@mapNotNull null
-            WellnessSampleEntity(
-                dayId = 0,
-                timestamp = message.timestamp ?: baseTs,
-                kind = "spo2",
-                value = value.toDouble(),
-            )
-        }
-        val respiration = messages.filter { it.name == "respiration_rate" }.mapNotNull { message ->
-            val value = msgDouble(message, "respiration_rate")?.takeIf { it > 0.0 }
-                ?: return@mapNotNull null
-            WellnessSampleEntity(
-                dayId = 0,
-                timestamp = message.timestamp ?: baseTs,
-                kind = "respiration",
-                value = value,
-            )
-        }
-        val heartRateSamples = hrSamples.map { (ts, value) ->
-            WellnessSampleEntity(dayId = 0, timestamp = ts, kind = "hr", value = value.toDouble())
-        }
-        val samples = (heartRateSamples + stress + spo2 + respiration).sortedBy { it.timestamp }
+            val id = if (existing == null) {
+                dao.insertWellnessDay(entity)
+            } else {
+                dao.updateWellnessDay(entity)
+                existing.id
+            }
+            val existingSamples = dao.wellnessSamples(id)
+            val existingKeys = existingSamples.map { it.kind to it.timestamp }.toHashSet()
+            val freshSamples = draft.samples
+                .filter { (it.kind to it.timestamp) !in existingKeys }
+                .map { WellnessSampleEntity(dayId = id, timestamp = it.timestamp, kind = it.kind, value = it.value) }
+            if (freshSamples.isNotEmpty()) dao.insertWellnessSamples(freshSamples)
+            if (draft.sleepStages.isNotEmpty()) {
+                dao.deleteSleepStages(draft.date)
+                dao.insertSleepStages(
+                    draft.sleepStages.map {
+                        SleepStageEntity(
+                            date = draft.date,
+                            startTime = it.startTime,
+                            endTime = it.endTime,
+                            stage = it.stage,
+                        )
+                    },
+                )
+            }
 
-        val hrValues = hrSamples.map { it.second }
-        val entity = WellnessDayEntity(
-            date = date,
-            steps = steps,
-            distanceMeters = distance,
-            activeCalories = activeCalories,
-            activeSeconds = activeSeconds,
-            restingHeartRate = restingHeartRate,
-            avgHeartRate = hrValues.takeIf { it.isNotEmpty() }?.average()?.roundToInt(),
-            maxHeartRate = hrValues.maxOrNull(),
-            stressAvg = stress.map { it.value }.average().takeIf { !it.isNaN() }?.roundToInt(),
-            spo2Avg = spo2.map { it.value }.average().takeIf { !it.isNaN() }?.roundToInt(),
-            respirationAvg = respiration.map { it.value }.average().takeIf { !it.isNaN() },
-            updatedAt = System.currentTimeMillis() / 1000,
+            // Recompute sample-derived aggregates across every file imported
+            // for this day, so the result does not depend on import order.
+            val allSamples = if (freshSamples.isEmpty()) existingSamples else dao.wellnessSamples(id)
+            val bodyBattery = allSamples
+                .filter { it.kind == "body_battery" }
+                .sortedBy { it.timestamp }
+                .map { it.value.roundToInt() }
+            val stress = allSamples.filter { it.kind == "stress" }.map { it.value }
+            val spo2 = allSamples.filter { it.kind == "spo2" }.map { it.value }
+            val respiration = allSamples.filter { it.kind == "respiration" }.map { it.value }
+            val hr = allSamples.filter { it.kind == "hr" }.map { it.value }
+            val merged = entity.copy(
+                id = id,
+                avgHeartRate = hr.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
+                    ?: entity.avgHeartRate,
+                maxHeartRate = hr.maxOrNull()?.roundToInt() ?: entity.maxHeartRate,
+                stressAvg = stress.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
+                    ?: entity.stressAvg,
+                spo2Avg = spo2.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
+                    ?: entity.spo2Avg,
+                respirationAvg = respiration.takeIf { it.isNotEmpty() }?.average()
+                    ?: entity.respirationAvg,
+                bodyBatteryStart = bodyBattery.firstOrNull() ?: entity.bodyBatteryStart,
+                bodyBatteryMin = bodyBattery.minOrNull() ?: entity.bodyBatteryMin,
+                bodyBatteryMax = bodyBattery.maxOrNull() ?: entity.bodyBatteryMax,
+                bodyBatteryLatest = bodyBattery.lastOrNull() ?: entity.bodyBatteryLatest,
+            )
+            if (merged != entity) dao.updateWellnessDay(merged)
+            result.add(merged)
+        }
+        return result
+    }
+
+    /**
+     * Re-imports wellness files left in the app's directory by earlier
+     * versions. Files are tiny (monitoring/sleep), so this is limited to
+     * small decoded files and skips anything that is not a known wellness
+     * FIT type. This is what backfills Body Battery for the current day after
+     * upgrading without asking the user to re-sync.
+     */
+    suspend fun backfillWellnessFiles(filesDir: File) {
+        val files = filesDir.listFiles()?.filter { file ->
+            file.isFile && file.name.endsWith(".dec") && file.length() in 64..200_000
+        } ?: return
+        val known = dao.importedWellnessFileIds().toHashSet()
+        for (file in files) {
+            val key = "file:${file.name}"
+            if (key in known) continue
+            val bytes = runCatching { file.readBytes() }.getOrNull() ?: continue
+            val parsed = runCatching { Fit.parse(bytes) }.getOrNull() ?: continue
+            if (parsed.fileId?.type !in setOf(29, 32, 44, 49)) {
+                markWellnessFileImported(key, "not-wellness")
+                continue
+            }
+            val days = runCatching { importWellness(bytes) }.getOrDefault(emptyList())
+            if (days.isNotEmpty()) markWellnessFileImported(key, "backfill")
+        }
+    }
+
+    suspend fun markWellnessFileImported(itemUid: String, type: String) {
+        if (itemUid.isEmpty()) return
+        dao.insertImportedWellnessFile(
+            ImportedWellnessFileEntity(
+                itemUid = itemUid,
+                type = type,
+                importedAt = System.currentTimeMillis() / 1000,
+            ),
         )
-
-        val existing = dao.wellnessDay(date)
-        val id = if (existing == null) {
-            dao.insertWellnessDay(entity)
-        } else {
-            dao.updateWellnessDay(entity.copy(id = existing.id))
-            existing.id
-        }
-        val existingKeys = dao.wellnessSamples(id).map { it.kind to it.timestamp }.toHashSet()
-        val freshSamples = samples
-            .filter { (it.kind to it.timestamp) !in existingKeys }
-            .map { it.copy(dayId = id) }
-        if (freshSamples.isNotEmpty()) dao.insertWellnessSamples(freshSamples)
-        return entity.copy(id = id)
     }
-
-    private fun resolveTimestamp16(reference: Long, raw: Int): Long {
-        val mask = 0xFFFFL
-        var value = (reference and mask.inv()) or (raw.toLong() and mask)
-        if (value < reference - 0x8000L) value += 0x10000L
-        else if (value > reference + 0x8000L) value -= 0x10000L
-        return value
-    }
-
-    private fun msgField(message: Fit.Message, name: String): Any? =
-        message.fields.firstOrNull { it.name == name }?.value
-
-    private fun msgInt(message: Fit.Message, name: String): Int? =
-        (msgField(message, name) as? Number)?.toInt()
-
-    private fun msgDouble(message: Fit.Message, name: String): Double? =
-        (msgField(message, name) as? Number)?.toDouble()
 
     private fun recordEntities(activityId: Long, parsed: Fit.Parsed): List<RecordEntity> =
         parsed.records.map { record ->
@@ -696,6 +887,7 @@ class ActivityRepository(private val dao: ActivityDao) {
                 cadence = record.cadence,
                 latitude = record.latitude,
                 longitude = record.longitude,
+                bodyBattery = record.bodyBattery,
             )
         }
 

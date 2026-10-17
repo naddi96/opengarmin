@@ -28,7 +28,7 @@ Compose app with Room, no auth, and no HTTP/LLM layer; see
 |---|---|---|
 | Phase 0 | Architecture, mockups, tokens, backlog | ✅ Done |
 | A. Design system | Token-based Compose primitives matching mockups | Not started |
-| B. Screens | Today, Trends, Activities, Coach shell, real data + states | Not started |
+| B. Screens | Today, Health, Training, Activities, Coach shell, real data + states | In progress |
 | C. LLM provider settings | Presets, encrypted keys, models, test connection, streaming transport | Not started |
 | D. LLM data access | Typed read-only health tools + evidence + safety | Not started |
 | E. Coach chat | Streaming chat with tool calls, cancel, sources, persistence | Not started |
@@ -41,9 +41,12 @@ Shipped in this pass (see commits/working tree):
 - **A:** `PulseTheme` tokens, bundled DM Sans/Space Grotesk, cards, tiles,
   chips, segmented control, buttons, tab bar, empty/error/loading states,
   progress ring, bar/line charts, zone bar, chat components.
-- **B:** four-tab app shell + detail/settings/provider/log routes; Today, Trends,
-  Activities, Activity detail, Coach shell and full chat; persisted sync
-  metadata; profile settings (goal, max HR); honest sleep/HRV empty states.
+- **B:** five-tab app shell (Today, Health, Training, Activities, Coach) +
+  detail/settings/provider/log routes; Today, Health, Training, Activities,
+  Activity detail, Coach shell and full chat; persisted sync metadata; profile
+  settings (goal, max HR); Body Battery ingestion; watch-only training metrics
+  (VO₂ max, recovery, load, LT, training effect); sleep/HRV import paths with
+  honest empty states.
 - **C:** provider presets (OpenAI, **DeepSeek**, OpenRouter, Ollama, LM Studio,
   vLLM, Custom), model add/edit/delete/default, temperature/max tokens,
   Keystore-encrypted key, masked key, test connection, BuildConfig env fallback,
@@ -67,8 +70,11 @@ Known deviations / still open:
   ViewModels. Screens are split out of `MainActivity` and state survives tab
   changes, but process-death restoration is limited.
 - B2 persists sync state but does **not** add WorkManager background sync.
-- B3a/B3b (sleep, HRV, historical wellness) are **not implemented**. The UI/tools
-  explicitly show those metrics as unavailable.
+- B3a/B3b are **partially implemented**: Body Battery, sleep and HRV parsing and
+  pull paths exist, but the FR255 used for development did not expose a
+  SLEEP_DATA file during daytime syncs. Historical wellness is still only
+  accumulated by repeated syncs. The UI/tools explicitly show missing metrics
+  instead of estimating them.
 - Cleartext HTTP is app-wide (with a warning) so local model presets work;
   a stricter per-endpoint policy remains a hardening item.
 - F1 migration/importer tests, F3 Compose/visual tests, and the full F4/F5

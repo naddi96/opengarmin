@@ -32,6 +32,8 @@ import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.FitMessageEntity
 import dev.opengarmin.app.data.LapEntity
 import dev.opengarmin.app.data.RecordEntity
+import dev.opengarmin.app.data.SleepStageEntity
+import dev.opengarmin.app.data.TrainingSummary
 import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.llm.ProviderConfig
@@ -45,22 +47,26 @@ import dev.opengarmin.app.ui.components.PulseTabBar
 import dev.opengarmin.app.ui.screens.ActivitiesScreen
 import dev.opengarmin.app.ui.screens.ActivityDetailScreen
 import dev.opengarmin.app.ui.screens.CoachScreen
+import dev.opengarmin.app.ui.screens.HealthScreen
 import dev.opengarmin.app.ui.screens.ProviderSettingsScreen
 import dev.opengarmin.app.ui.screens.SettingsScreen
 import dev.opengarmin.app.ui.screens.TodayScreen
+import dev.opengarmin.app.ui.screens.TrainingScreen
 import dev.opengarmin.app.ui.screens.TrendsScreen
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 
-private enum class AppRoute { Tabs, Detail, Settings, Provider, Data, Log }
+private enum class AppRoute { Tabs, Trends, Detail, Settings, Provider, Data, Log }
 
 @Composable
 fun PulseApp(
     activities: List<ActivityEntity>,
     wellnessDays: List<WellnessDayEntity>,
     hrSamples: List<WellnessSampleEntity>,
+    sleepStages: List<SleepStageEntity>,
+    trainingSummary: TrainingSummary,
     selectedActivity: ActivityEntity?,
     selectedRecords: List<RecordEntity>,
     selectedLaps: List<LapEntity>,
@@ -86,6 +92,7 @@ fun PulseApp(
     onClearSelection: () -> Unit,
     onExploreData: (ActivityEntity) -> Unit,
     onCloseData: () -> Unit,
+    onImportFit: (android.net.Uri) -> Unit,
 ) {
     var tabName by rememberSaveable { mutableStateOf(PulseTab.Today.name) }
     var routeName by rememberSaveable { mutableStateOf(AppRoute.Tabs.name) }
@@ -112,6 +119,7 @@ fun PulseApp(
                 onCloseData()
                 routeName = if (detailActivity != null) AppRoute.Detail.name else AppRoute.Tabs.name
             }
+            AppRoute.Trends -> routeName = AppRoute.Tabs.name
             AppRoute.Detail -> {
                 onClearSelection()
                 detailId = null
@@ -141,14 +149,30 @@ fun PulseApp(
                                 syncColor = syncColor,
                                 activitySyncProgress = activitySyncProgress,
                                 lastImportedLabel = lastImportedLabel,
+                                syncError = settings.lastSyncError
+                                    .takeIf { settings.lastSyncStatus == "failed" && it.isNotBlank() },
                                 onSync = onSync,
                                 onOpenSettings = { openSettings() },
                                 onAskCoach = { tabName = PulseTab.Coach.name },
                             )
-                            PulseTab.Trends -> TrendsScreen(
+                            PulseTab.Health -> HealthScreen(
                                 days = wellnessDays,
-                                hrSamples = hrSamples,
-                                settings = settings,
+                                samples = hrSamples,
+                                sleepStages = sleepStages,
+                                training = trainingSummary,
+                                onOpenTrends = { routeName = AppRoute.Trends.name },
+                                onOpenTraining = { tabName = PulseTab.Training.name },
+                                onAskCoach = { tabName = PulseTab.Coach.name },
+                                onSync = onSync,
+                            )
+                            PulseTab.Training -> TrainingScreen(
+                                summary = trainingSummary,
+                                latestDay = wellnessDays.maxByOrNull { it.date },
+                                onOpenActivity = { activity ->
+                                    onSelectActivity(activity)
+                                    detailId = activity.id
+                                    routeName = AppRoute.Detail.name
+                                },
                                 onAskCoach = { tabName = PulseTab.Coach.name },
                             )
                             PulseTab.Activities -> ActivitiesScreen(
@@ -177,6 +201,13 @@ fun PulseApp(
                     )
                 }
             }
+            AppRoute.Trends -> TrendsScreen(
+                days = wellnessDays,
+                hrSamples = hrSamples,
+                settings = settings,
+                onAskCoach = { tabName = PulseTab.Coach.name },
+                onBack = { routeName = AppRoute.Tabs.name },
+            )
             AppRoute.Detail -> {
                 if (detailActivity != null) {
                     ActivityDetailScreen(
@@ -219,6 +250,7 @@ fun PulseApp(
                 onScan = onScan,
                 onDisconnect = onDisconnect,
                 onShowLog = { routeName = AppRoute.Log.name },
+                onImportFit = onImportFit,
             )
             AppRoute.Provider -> ProviderSettingsScreen(
                 store = providerStore,

@@ -1645,6 +1645,9 @@ object FitProfile {
         )),
     )
 
-    fun message(number: Int): MessageInfo? = messages[number]
-    fun field(message: Int, number: Int): FieldInfo? = messages[message]?.fields?.get(number)
+    fun message(number: Int): MessageInfo? =
+        messages[number] ?: GarminProfile.messageName(number)?.let { MessageInfo(it, emptyMap()) }
+
+    fun field(message: Int, number: Int): FieldInfo? =
+        messages[message]?.fields?.get(number) ?: GarminProfile.field(message, number)
 }

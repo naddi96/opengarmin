@@ -166,7 +166,7 @@ class RepositoryHealthDataSource(
                 calories = it.calories,
             )
         }
-        val isRunning = categoryForSport(activity.sport) == SportCategory.Run
+        val isRunning = categoryForSport(activity.sport, activity.subSport) == SportCategory.Run
         val sessionJson = repository.messagesByName(id, "session").lastOrNull()?.fieldsJson
         val recordJson = repository.messagesByName(id, "record").map { it.fieldsJson }
         val lapJson = repository.messagesByName(id, "lap").map { it.fieldsJson }

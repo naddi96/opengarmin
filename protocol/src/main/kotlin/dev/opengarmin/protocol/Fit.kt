@@ -26,6 +26,9 @@ object Fit {
         "local_timestamp",
         "time_created",
         "stress_level_time",
+        "start_of_activity",
+        "end_of_previous_activity",
+        "wake_up_time",
     )
 
     data class FileId(
@@ -79,6 +82,8 @@ object Fit {
         val temperatureC: Double?,
         val latitude: Double?,
         val longitude: Double?,
+        /** Garmin Body Battery level (undocumented record field 143), 0-100. */
+        val bodyBattery: Int? = null,
     )
 
     data class Activity(
@@ -308,6 +313,7 @@ object Fit {
                                 temperatureC = int(values, 13)?.toDouble(),
                                 latitude = scaled(values, 0, 1.0)?.let { it * 180.0 / 2147483648.0 },
                                 longitude = scaled(values, 1, 1.0)?.let { it * 180.0 / 2147483648.0 },
+                                bodyBattery = int(values, 143)?.takeIf { it in 0..100 },
                             ),
                         )
                     }

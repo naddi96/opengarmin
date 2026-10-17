@@ -70,7 +70,7 @@ fun ActivityDetailScreen(
             Column(modifier = Modifier.weight(1f)) {
                 Text(activityTitle(activity), style = MaterialTheme.typography.headlineLarge, color = PulseColors.Text)
                 Text(
-                    "${formatDate(activity.startTime)} · ${categoryForSport(activity.sport).label}",
+                    "${formatDate(activity.startTime)} · ${categoryForSport(activity.sport, activity.subSport).label}",
                     style = MaterialTheme.typography.bodySmall,
                     color = PulseColors.TextMuted,
                 )

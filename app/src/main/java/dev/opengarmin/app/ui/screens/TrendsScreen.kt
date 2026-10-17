@@ -7,8 +7,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,6 +47,7 @@ fun TrendsScreen(
     settings: PulseSettings,
     onAskCoach: () -> Unit,
     modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null,
 ) {
     var rangeIndex by rememberSaveable { mutableIntStateOf(1) }
     val sorted = days.sortedBy { it.date }
@@ -60,6 +64,14 @@ fun TrendsScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (onBack != null) {
+                dev.opengarmin.app.ui.components.IconButtonRound(
+                    icon = Icons.Outlined.ArrowBack,
+                    contentDescription = "Back to health",
+                    onClick = onBack,
+                )
+                Spacer(Modifier.width(PulseSpacing.md))
+            }
             Text("Trends", style = MaterialTheme.typography.headlineLarge, color = PulseColors.Text)
             Spacer(Modifier.weight(1f))
             val rangeLabel = when (rangeIndex) {

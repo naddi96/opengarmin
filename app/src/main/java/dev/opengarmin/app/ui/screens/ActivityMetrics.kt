@@ -34,7 +34,9 @@ fun zoneSummary(records: List<RecordEntity>, maxHeartRate: Int?): ZoneSummary? {
     )
 }
 
-fun activityPaceLabel(activity: ActivityEntity): String = when (categoryForSport(activity.sport)) {
+fun activityPaceLabel(activity: ActivityEntity): String = when (
+    categoryForSport(activity.sport, activity.subSport)
+) {
     SportCategory.Ride -> {
         if (activity.durationSeconds > 0 && activity.distanceMeters > 0) {
             "Avg speed %.1f km/h".format(activity.distanceMeters / activity.durationSeconds * 3.6)
@@ -42,6 +44,7 @@ fun activityPaceLabel(activity: ActivityEntity): String = when (categoryForSport
             "Recorded on watch"
         }
     }
+    SportCategory.Cardio -> "Cardio session"
     SportCategory.Strength -> "Strength session"
     SportCategory.Walk, SportCategory.Run ->
         if (activity.distanceMeters > 0) {
@@ -52,9 +55,12 @@ fun activityPaceLabel(activity: ActivityEntity): String = when (categoryForSport
     else -> "Recorded on watch"
 }
 
-fun activityTitle(activity: ActivityEntity): String = when (categoryForSport(activity.sport)) {
+fun activityTitle(activity: ActivityEntity): String = when (
+    categoryForSport(activity.sport, activity.subSport)
+) {
     SportCategory.Run -> "Run"
     SportCategory.Ride -> "Ride"
+    SportCategory.Cardio -> "Cardio"
     SportCategory.Strength -> "Strength"
     SportCategory.Walk -> "Walk"
     else -> dev.opengarmin.app.coach.sportLabel(activity.sport)
