@@ -46,9 +46,14 @@ class SyncCoordinator(
         }
         session.onMlrFrame = { frame -> pipe?.onFrame(frame) }
         session.onReady = {
-            // Give the watch's own handshake time, then probe once. If the handle
-            // closes first, the message stays queued and is flushed on re-register.
+            // Ask the device to start a sync session, then probe capabilities.
             val g = generation
+            handler.postDelayed({
+                if (g == generation) {
+                    log("GDI → SyncRequest")
+                    gdi.sendSmart(Gdi.syncRequest()) { }
+                }
+            }, 400)
             handler.postDelayed({
                 if (g == generation && !capabilitiesReceived) sendCapabilities()
             }, 1500)
