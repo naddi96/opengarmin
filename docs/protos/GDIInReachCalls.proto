@@ -1,0 +1,147 @@
+syntax = "proto2";
+
+package GDI.Proto.InReachCalls;
+
+import "GDIDataTypes.proto";
+import "GDIGenericItemTransfer.proto";
+
+message InReachCallsService {
+  GDI.Proto.InReachCalls.SyncRequest sync_request = 1;
+  GDI.Proto.InReachCalls.SyncResponse sync_response = 2;
+  GDI.Proto.InReachCalls.SubscribeRequest subscribe_request = 3;
+  GDI.Proto.InReachCalls.SubscribeResponse subscribe_response = 4;
+  GDI.Proto.InReachCalls.DeleteCallRequest delete_call_request = 5;
+  GDI.Proto.InReachCalls.DeleteCallResponse delete_call_response = 6;
+  GDI.Proto.InReachCalls.CallUpdatedNotification call_updated_notification = 7;
+}
+
+message Call {
+  enum Source {
+    UNKNOWN_SOURCE = 0;
+    LOCAL = 1;
+    WEB = 2;
+  }
+  enum Category {
+    UNKNOWN_CATEGORY = 0;
+    INCOMING = 1;
+    OUTGOING = 2;
+  }
+  enum State {
+    UNKNOWN_STATE = 0;
+    CANCELLED = 1;
+    REJECTED = 2;
+    COMPLETED = 3;
+    MISSED = 4;
+    ERROR = 5;
+  }
+  string sip_call_id = 1;
+  GDI.Proto.InReachCalls.Call.Source source = 2;
+  GDI.Proto.InReachCalls.Call.Category category = 3;
+  string sip_address = 4;
+  string phone_number = 5;
+  string from_device_id = 6;
+  string to_device_id = 7;
+  uint64 call_time = 8;
+  uint64 updated_time = 9;
+  uint32 duration = 10;
+  GDI.Proto.InReachCalls.Call.State state = 11;
+}
+
+message SyncRequestInfo {
+  enum SyncType {
+    UNKNOWN = 0;
+    FULL = 1;
+    INCREMENTAL = 2;
+  }
+  uint32 protocol_version = 1;
+  GDI.Proto.DataTypes.UUID app_uuid = 2;
+  GDI.Proto.InReachCalls.SyncRequestInfo.SyncType sync_type = 3;
+}
+
+message SyncRequest {
+  GDI.Proto.InReachCalls.SyncRequestInfo request_info = 1;
+}
+
+message SyncResponse {
+  enum Status {
+    UNKNOWN = 0;
+    OK = 1;
+    GENERIC_ERROR = 2;
+    BUSY = 3;
+    UNSUPPORTED_PROTOCOL_VERSION = 4;
+    MISSING_INFO = 5;
+    UP_TO_DATE = 6;
+  }
+  GDI.Proto.InReachCalls.SyncResponse.Status status = 1;
+}
+
+message DeleteCallRequest {
+  string sip_call_id = 1;
+}
+
+message DeleteCallResponse {
+  enum Status {
+    UNKNOWN = 0;
+    OK = 1;
+    GENERIC_ERROR = 2;
+    CALL_NOT_FOUND = 3;
+  }
+  GDI.Proto.InReachCalls.DeleteCallResponse.Status status = 1;
+}
+
+message SubscribeRequest {
+  bool want_call_updated = 1;
+}
+
+message SubscribeResponse {
+  enum Status {
+    UNKNOWN_STATUS = 0;
+    OK = 1;
+    GENERIC_ERROR = 2;
+  }
+  GDI.Proto.InReachCalls.SubscribeResponse.Status status = 1;
+}
+
+message CallUpdatedNotification {
+  uint64 updated_time = 1;
+}
+
+message DataTypeConfigExt {
+  GDI.Proto.InReachCalls.SyncRequestInfo request_info = 1;
+  uint64 updated_time = 2;
+  uint32 max_item_count = 3;
+}
+
+message DataTypeStatusExt {
+  enum Status {
+    UNKNOWN_STATUS = 0;
+    UNSUPPORTED_PROTOCOL_VERSION = 1;
+    UP_TO_DATE = 2;
+  }
+  GDI.Proto.InReachCalls.DataTypeStatusExt.Status status = 1;
+}
+
+message GenericItemReferenceExt {
+  string sip_call_id = 1;
+  uint64 updated_time = 2;
+}
+
+message GenericItemExt {
+  GDI.Proto.InReachCalls.Call call = 1;
+}
+
+extend GDI.Proto.GenericItemTransfer.DataTypeConfig {
+  GDI.Proto.InReachCalls.DataTypeConfigExt config_ext = 105;
+}
+
+extend GDI.Proto.GenericItemTransfer.DataTypeStatus {
+  GDI.Proto.InReachCalls.DataTypeStatusExt status_ext = 105;
+}
+
+extend GDI.Proto.GenericItemTransfer.GenericItemReference {
+  GDI.Proto.InReachCalls.GenericItemReferenceExt item_ref_ext = 105;
+}
+
+extend GDI.Proto.GenericItemTransfer.GenericItem {
+  GDI.Proto.InReachCalls.GenericItemExt item_ext = 105;
+}

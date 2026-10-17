@@ -1,0 +1,97 @@
+syntax = "proto2";
+
+package GDI.Proto.EventSharing;
+
+enum AlertType {
+  ACTIVITY_START = 0;
+  ACTIVITY_STOP = 1;
+  ACTIVITY_DISTANCE = 2;
+  ACTIVITY_TIME = 3;
+  ACTIVITY_AUTO_LAP = 4;
+  ACTIVITY_MANUAL_LAP = 5;
+  ACTIVITY_TRANSITION = 6;
+  SWITCHER_STATUS_CHANGE = 7;
+  LAUNCH_MONITOR = 8;
+  NAVIGATION_UPDATE = 9;
+  BREAK_PLANNER_STATE_CHANGE = 10;
+  DRIVING_STATE_CHANGE = 11;
+  BLUETOOTH_CLASSIC_STATE_CHANGE = 12;
+  GOLF_STATE_CHANGE = 13;
+  RANGEFINDER_MEASUREMENT = 14;
+  XERO_CHRONOGRAPH = 15;
+  GOLF_CLUB_STATUS_CHANGE = 16;
+  DIVE_READINESS_CHANGE = 17;
+  RADAR_SETTINGS_CHANGE = 18;
+  LIVE_SESSION = 19;
+  HEART_RATE_MEASUREMENT = 20;
+  RUNNING_MEASUREMENT = 21;
+  ACCESSORY_UTILITIES_ACTIVITY_STATE = 22;
+  RUNNING_ALGORITHM_INPUT = 23;
+  BIKE_POWER_MEASUREMENT = 24;
+  DEVELOPMENT_TESTING = 25;
+  PSA_SAMPLE = 26;
+}
+
+message EventSharingService {
+  GDI.Proto.EventSharing.SubscribeRequest subscribe_request = 1;
+  GDI.Proto.EventSharing.SubscribeResponse subscribe_response = 2;
+  GDI.Proto.EventSharing.AlertNotification alert_notification = 3;
+  GDI.Proto.EventSharing.AlertSupportRequest support_request = 4;
+  GDI.Proto.EventSharing.AlertSupportResponse support_response = 5;
+}
+
+message AlertMessage {
+  GDI.Proto.EventSharing.AlertType type = 1;
+  uint32 interval = 2;
+}
+
+message Sport {
+  uint32 sport_fit_type = 1;
+  uint32 sport_fit_sub_type = 2;
+}
+
+message ActivityAlertDetails {
+  uint32 total_distance = 1;
+  uint32 total_time = 2;
+  uint32 lap_time = 3;
+  uint32 average_pace = 4;
+  GDI.Proto.EventSharing.Sport sport_type = 5;
+  uint32 est_finish_time = 6;
+  uint32 lap_number = 7;
+  uint32 session_dist = 8;
+  uint32 session_time = 9;
+  uint32 local_time = 10;
+  GDI.Proto.EventSharing.Sport last_sport_type = 11;
+  uint32 interval_dist = 12;
+  uint32 interval_time = 13;
+}
+
+message SubscribeRequest {
+  repeated GDI.Proto.EventSharing.AlertMessage alerts = 1;
+  uint32 target_distance = 2;
+}
+
+message AlertSupportRequest {
+}
+
+message SubscribeResponse {
+  message AlertStatusMessage {
+    enum Status {
+      SUCCESS = 0;
+      FAIL = 1;
+    }
+    GDI.Proto.EventSharing.SubscribeResponse.AlertStatusMessage.Status subscribe_status = 1;
+    GDI.Proto.EventSharing.AlertMessage type = 2;
+  }
+  repeated GDI.Proto.EventSharing.SubscribeResponse.AlertStatusMessage alert_status = 1;
+}
+
+message AlertSupportResponse {
+  repeated GDI.Proto.EventSharing.AlertType supported_alerts = 1;
+  repeated uint32 version_num = 2;
+}
+
+message AlertNotification {
+  repeated GDI.Proto.EventSharing.AlertType alert_type = 1;
+  GDI.Proto.EventSharing.ActivityAlertDetails activity_details = 2;
+}

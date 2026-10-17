@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDISubscriptions.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.Subscriptions.SubscriptionService subscription_service = 71;
+}

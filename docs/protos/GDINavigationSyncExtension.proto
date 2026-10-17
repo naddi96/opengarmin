@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDINavigationSync.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.NavigationSync.Service navigation_sync_service = 40;
+}

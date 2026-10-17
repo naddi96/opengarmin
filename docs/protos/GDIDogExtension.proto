@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIDog.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.Dog.DogService dog_service = 55;
+}

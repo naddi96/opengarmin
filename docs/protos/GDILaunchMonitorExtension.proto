@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDILaunchMonitor.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.LaunchMonitor.Service launch_monitor_service = 38;
+}

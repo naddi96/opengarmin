@@ -1,0 +1,45 @@
+syntax = "proto2";
+
+package GDI.Proto.SwingSensorClubs;
+
+message Club {
+  uint64 timestamp = 1;
+  uint64 club_id = 2;
+  uint32 club_type = 3;
+  string club_nickname = 4;
+  uint32 shaft_flex = 5;
+  float length_offset = 6;
+  float club_loft = 7;
+  float club_lie = 8;
+}
+
+message ClubListChangedNotification {
+}
+
+message GetClubListRequest {
+}
+
+message GetClubListResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 1;
+    NO_REMOTE_DEVICE = 2;
+  }
+  GDI.Proto.SwingSensorClubs.GetClubListResponse.ResponseStatus status = 1;
+  uint64 active_club_id = 2;
+  repeated GDI.Proto.SwingSensorClubs.Club clubs = 3;
+}
+
+message SetActiveClubRequest {
+  uint64 club_id = 1;
+}
+
+message SetActiveClubResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 1;
+    INVALID_CLUB_ID = 2;
+    NO_REMOTE_DEVICE = 3;
+  }
+  GDI.Proto.SwingSensorClubs.SetActiveClubResponse.ResponseStatus status = 1;
+}

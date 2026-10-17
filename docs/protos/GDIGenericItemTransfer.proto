@@ -1,0 +1,139 @@
+syntax = "proto2";
+
+package GDI.Proto.GenericItemTransfer;
+
+import "GDIDataTypes.proto";
+
+enum SessionEndReason {
+  COMPLETE = 1;
+  ERROR = 2;
+  TIMEOUT = 3;
+  USER_CANCEL = 4;
+  SHUTDOWN = 5;
+  RESTART = 6;
+  APP_RESTRICTION = 7;
+  APP_CLOSE = 8;
+}
+
+message GenericItemTransferService {
+  GDI.Proto.GenericItemTransfer.ArbitraryItemRequest arbitrary_item_request = 1;
+  GDI.Proto.GenericItemTransfer.ArbitraryItemResponse arbitrary_item_response = 2;
+  GDI.Proto.GenericItemTransfer.ItemListRequest item_list_request = 3;
+  GDI.Proto.GenericItemTransfer.ItemListResponse item_list_response = 4;
+  GDI.Proto.GenericItemTransfer.ItemRequest item_data_request = 5;
+  GDI.Proto.GenericItemTransfer.ItemResponse item_data_response = 6;
+  GDI.Proto.GenericItemTransfer.CancelSessionRequest cancel_session_request = 9;
+  GDI.Proto.GenericItemTransfer.CancelSessionResponse cancel_session_response = 10;
+  GDI.Proto.GenericItemTransfer.SessionCompletedNotification session_completed_notification = 11;
+}
+
+message DataTypeConfig {
+}
+
+message DataTypeStatus {
+}
+
+message GenericItem {
+  uint32 data_transfer_id = 1;
+  uint32 data_transfer_size = 2;
+}
+
+message GenericItemReference {
+  GDI.Proto.DataTypes.UUID uuid = 1;
+}
+
+message ArbitraryItemRequest {
+  GDI.Proto.GenericItemTransfer.DataTypeConfig config = 1;
+  uint32 item_request_count = 2;
+}
+
+message ArbitraryItemResponse {
+  enum Status {
+    SUCCESS = 1;
+    ABORT = 2;
+    ERROR = 3;
+    UNSUPPORTED_DATA_TYPE = 4;
+    UNSUPPORTED_REQUEST_TYPE = 5;
+    DATA_TYPE_IS_BUSY = 6;
+    SYSTEM_IS_BUSY = 7;
+    TRANSFER_LIMIT = 8;
+  }
+  GDI.Proto.GenericItemTransfer.ArbitraryItemResponse.Status status = 1;
+  GDI.Proto.GenericItemTransfer.DataTypeStatus data_type_status = 2;
+  uint32 session_id = 3;
+  uint32 max_request_count = 4;
+}
+
+message ItemListRequest {
+  uint32 session_id = 1;
+  GDI.Proto.GenericItemTransfer.DataTypeConfig config = 2;
+  uint32 list_offset = 3;
+  uint32 max_item_ref_count = 4;
+}
+
+message ItemListResponse {
+  enum Status {
+    SUCCESS = 1;
+    NO_ITEMS = 2;
+    ABORT = 3;
+    ERROR = 4;
+    INVALID_SESSION_ID = 5;
+    INVALID_LIST_OFFSET = 6;
+    WRONG_SESSION_TYPE = 7;
+    UNSUPPORTED_DATA_TYPE = 8;
+    UNSUPPORTED_REQUEST_TYPE = 9;
+    DATA_TYPE_IS_BUSY = 10;
+    SYSTEM_IS_BUSY = 11;
+    TRANSFER_LIMIT = 12;
+  }
+  GDI.Proto.GenericItemTransfer.ItemListResponse.Status status = 1;
+  GDI.Proto.GenericItemTransfer.DataTypeStatus data_type_status = 2;
+  uint32 session_id = 3;
+  repeated GDI.Proto.GenericItemTransfer.GenericItemReference items = 4;
+  uint32 max_request_count = 5;
+  uint32 next_list_offset = 6;
+}
+
+message ItemRequest {
+  uint32 session_id = 1;
+  repeated GDI.Proto.GenericItemTransfer.GenericItemReference items = 6;
+}
+
+message ItemResponse {
+  enum Status {
+    SUCCESS = 1;
+    INVALID_ITEM = 2;
+    ABORT = 3;
+    ERROR = 4;
+    INVALID_SESSION_ID = 5;
+    UNSUPPORTED_REQUEST_TYPE = 6;
+    REQUEST_TOO_LARGE = 7;
+  }
+  GDI.Proto.GenericItemTransfer.ItemResponse.Status status = 1;
+  GDI.Proto.GenericItemTransfer.DataTypeStatus data_type_status = 2;
+  uint32 session_id = 3;
+  repeated GDI.Proto.GenericItemTransfer.GenericItem items = 4;
+  repeated GDI.Proto.GenericItemTransfer.GenericItemReference invalid_items = 5;
+  uint32 max_request_count = 6;
+}
+
+message SessionCompletedNotification {
+  uint32 session_id = 1;
+  GDI.Proto.GenericItemTransfer.SessionEndReason reason = 2;
+  GDI.Proto.GenericItemTransfer.DataTypeStatus data_type_status = 3;
+}
+
+message CancelSessionRequest {
+  uint32 session_id = 1;
+  GDI.Proto.GenericItemTransfer.SessionEndReason reason = 2;
+  GDI.Proto.GenericItemTransfer.DataTypeStatus data_type_status = 3;
+}
+
+message CancelSessionResponse {
+  enum Status {
+    SUCCESS = 1;
+    ERROR = 2;
+    INVALID_SESSION_ID = 3;
+  }
+  GDI.Proto.GenericItemTransfer.CancelSessionResponse.Status status = 1;
+}

@@ -1,0 +1,78 @@
+syntax = "proto2";
+
+package GDI.Proto.NavigationSync;
+
+import "GDIEventSharing.proto";
+import "GDIDataTypes.proto";
+
+enum NavType {
+  POSITION = 0;
+  SAVED_WAYPOINT = 1;
+  SAVED_LINE = 2;
+  TRACBACK = 3;
+}
+
+enum NavResponseStatus {
+  NEED_ITEM = 0;
+  CALCULATING = 1;
+  FAILED = 2;
+}
+
+message Service {
+  GDI.Proto.NavigationSync.StartNavigationRequest start_request = 1;
+  GDI.Proto.NavigationSync.StartNavigationResponse start_response = 2;
+  GDI.Proto.NavigationSync.StopNavigationRequest stop_request = 3;
+  GDI.Proto.NavigationSync.StopNavigationResponse stop_response = 4;
+}
+
+message StartNavigationRequest {
+  GDI.Proto.NavigationSync.NavigationItem navigation_item = 1;
+}
+
+message StartNavigationResponse {
+  GDI.Proto.NavigationSync.NavResponseStatus nav_response_status = 1;
+}
+
+message StopNavigationRequest {
+}
+
+message StopNavigationResponse {
+  bool nav_stopped = 1;
+}
+
+message NavigationDetails {
+  GDI.Proto.NavigationSync.State state = 1;
+}
+
+message State {
+  enum StateType {
+    START_NAV = 0;
+    STOP_NAV = 1;
+    CALCULATING = 2;
+    FAILED = 3;
+    DEVICE_BUSY = 4;
+    GPS_OFF = 5;
+    GPS_NO_FIX = 6;
+    CALC_TRUNCATED = 7;
+    CALC_OVERFLOW = 8;
+    CALC_CANCELED = 9;
+    INV_START = 10;
+    INV_END = 11;
+  }
+  GDI.Proto.NavigationSync.State.StateType state = 1;
+  uint32 next_nav_index = 2;
+  uint32 distance_to_dest = 3;
+  uint32 time_to_dest = 4;
+  uint32 bearing = 5;
+  float moving_avg = 6;
+  float speed = 7;
+  uint32 moving_time = 8;
+  bool off_course = 9;
+  float off_course_dist = 10;
+  uint32 heading = 11;
+}
+
+message NavigationItem {
+  GDI.Proto.NavigationSync.NavType navigation_type = 1;
+  GDI.Proto.DataTypes.ScPoint position = 2;
+}

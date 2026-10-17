@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDILiveSync.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.LiveSync.Service live_sync_service = 69;
+}

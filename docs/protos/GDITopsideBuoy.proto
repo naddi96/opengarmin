@@ -1,0 +1,18 @@
+syntax = "proto2";
+
+package GDI.Proto.TopsideBuoy;
+
+message Service {
+  GDI.Proto.TopsideBuoy.WifiConnectionDataNotification wifi_connection_data_notification = 1;
+}
+
+message WifiConnectionData {
+  string ssid = 1;
+  bytes password = 2;
+  bytes mac_adr = 3;
+  uint32 ant_id = 4;
+}
+
+message WifiConnectionDataNotification {
+  GDI.Proto.TopsideBuoy.WifiConnectionData wifi_connection_data = 1;
+}

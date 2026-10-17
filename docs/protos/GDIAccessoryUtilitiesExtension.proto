@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIAccessoryUtilities.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.AccessoryUtilities.Service accessory_utilities_service = 63;
+}

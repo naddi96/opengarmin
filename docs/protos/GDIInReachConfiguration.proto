@@ -1,0 +1,47 @@
+syntax = "proto2";
+
+package GDI.Proto.InReachConfiguration;
+
+import "GDIDataTypes.proto";
+
+enum ConfigureStatus {
+  ERROR_UNKNOWN = 1;
+  ERROR_INVALID_UUID = 2;
+  DOWNLOADING = 3;
+  PARSING = 4;
+  PARSE_ERROR = 5;
+  OBJECT_ERROR = 6;
+  SUCCESS = 7;
+}
+
+message Service {
+  GDI.Proto.InReachConfiguration.ConfigureRequest configure_request = 1;
+  GDI.Proto.InReachConfiguration.ConfigureResponse configure_response = 2;
+  GDI.Proto.InReachConfiguration.StatusRequest status_request = 3;
+  GDI.Proto.InReachConfiguration.StatusResponse status_response = 4;
+}
+
+message ConfigureRequest {
+  GDI.Proto.DataTypes.UUID uuid = 1;
+  GDI.Proto.DataTypes.DataTransferItem configuration_file = 2;
+}
+
+message ConfigureResponse {
+  enum Status {
+    ERROR_UNKNOWN = 1;
+    ERROR_INVALID_UUID = 2;
+    ERROR_INVALID_CONFIG = 3;
+    ERROR_CURRENTLY_PROCESSING = 4;
+    ERROR_SAME_UUID = 5;
+    OK = 6;
+  }
+  GDI.Proto.InReachConfiguration.ConfigureResponse.Status status = 1;
+}
+
+message StatusRequest {
+  GDI.Proto.DataTypes.UUID uuid = 1;
+}
+
+message StatusResponse {
+  GDI.Proto.InReachConfiguration.ConfigureStatus status = 1;
+}

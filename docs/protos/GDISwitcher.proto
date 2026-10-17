@@ -1,0 +1,135 @@
+syntax = "proto2";
+
+package GDI.Proto.Switcher;
+
+import "GDIEventSharing.proto";
+
+message Switcher {
+  GDI.Proto.Switcher.SwitcherStatusRequest status_request = 1;
+  GDI.Proto.Switcher.SwitcherStatusResponse status_response = 2;
+  GDI.Proto.Switcher.SwitcherSettingsChangeRequest status_change_request = 3;
+  GDI.Proto.Switcher.SwitcherSettingsChangeResponse status_change_response = 4;
+  GDI.Proto.Switcher.RestoreDefaultsRequest restore_defaults_request = 5;
+  GDI.Proto.Switcher.RestoreDefaultsResponse restore_defaults_response = 6;
+}
+
+message SwitcherStatusRequest {
+}
+
+message SwitcherStatusResponse {
+  GDI.Proto.Switcher.SwitcherSettings switcher_settings = 1;
+  GDI.Proto.Switcher.SwitcherState switcher_state = 2;
+}
+
+message RestoreDefaultsRequest {
+}
+
+message RestoreDefaultsResponse {
+  enum RestoreDefaultsStatus {
+    SUCCESS = 0;
+    UNKNOWN_ERROR = 1;
+  }
+  GDI.Proto.Switcher.RestoreDefaultsResponse.RestoreDefaultsStatus status = 1;
+}
+
+message SwitcherSettingsChangeRequest {
+  GDI.Proto.Switcher.SwitcherSettings switcher_settings = 1;
+  GDI.Proto.Switcher.SwitcherState switcher_state = 2;
+}
+
+message SwitcherSettingsChangeResponse {
+  enum SettingsChangeStatus {
+    SUCCESS = 0;
+    UNKNOWN_ERROR = 1;
+  }
+  GDI.Proto.Switcher.SwitcherSettingsChangeResponse.SettingsChangeStatus status = 1;
+}
+
+message SwitcherStatusChangeDetails {
+  GDI.Proto.Switcher.SwitcherSettings switcher_settings = 1;
+  GDI.Proto.Switcher.SwitcherState switcher_state = 2;
+}
+
+message SwitcherSettings {
+  repeated GDI.Proto.Switcher.SwitchSettings switch_settings = 1;
+  repeated GDI.Proto.Switcher.SwitchSettings custom_settings = 2;
+  repeated GDI.Proto.Switcher.InputSettings input_settings = 3;
+  bool auto_off = 4;
+  string name = 5;
+}
+
+message SwitcherState {
+  float battery_voltage = 1;
+  bool low_voltage_shutdown = 2;
+  bool overloaded = 3;
+  float temperature = 4;
+  uint32 pending_update_version = 5;
+  repeated GDI.Proto.Switcher.SwitchState switch_states = 6;
+}
+
+message SwitchState {
+  uint32 switch_id = 1;
+  float amperage_level = 2;
+  bool custom = 3;
+  bool enabled = 4;
+  bool overloaded = 5;
+}
+
+message SwitchSettings {
+  enum SwitchMode {
+    TOGGLE = 0;
+    MOMENTARY = 1;
+    STROBE = 2;
+  }
+  enum Icon {
+    NONE = 0;
+    HEADLIGHT = 1;
+    ADDT_BATTERY = 2;
+    AIR_COMPRESSOR = 3;
+    CB_RADIO = 4;
+    DFF_LOCKS = 5;
+    FAN = 6;
+    FLASHING_LIGHTS = 7;
+    FOG_LIGHT = 8;
+    FRIDGE = 9;
+    GAUGES = 10;
+    HEADLIGHT_R = 11;
+    HEATED_SEATS = 12;
+    HEATERS = 13;
+    INTERIOR_LIGHT = 14;
+    LIGHT_BAR = 15;
+    SOLAR_PANEL = 16;
+    SPEAKERS = 17;
+    STROBE_LIGHT = 18;
+    UNDERCARRIAGE = 19;
+    USB_CHARGER = 20;
+    WIFI = 21;
+    WINCHES = 22;
+  }
+  uint32 switch_id = 1;
+  uint32 brightness = 2;
+  GDI.Proto.Switcher.SwitchSettings.SwitchMode mode = 3;
+  uint32 on_period = 4;
+  uint32 off_period = 5;
+  string name = 100;
+  uint32 color = 101;
+  uint32 icon = 102;
+}
+
+message InputSettings {
+  uint32 input_id = 1;
+  string name = 2;
+  bool enabled = 3;
+  repeated GDI.Proto.Switcher.InputAction rising_actions = 4;
+  repeated GDI.Proto.Switcher.InputAction falling_actions = 5;
+}
+
+message InputAction {
+  enum ActionType {
+    SWITCH_ON = 0;
+    SWITCH_OFF = 1;
+    DISABLED = 2;
+  }
+  uint32 switch_id = 1;
+  GDI.Proto.Switcher.InputAction.ActionType action_type = 2;
+}

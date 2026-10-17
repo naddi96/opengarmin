@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIInReachMessaging.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.InReachMessaging.InReachMessagingService inreach_messaging_service = 29;
+}

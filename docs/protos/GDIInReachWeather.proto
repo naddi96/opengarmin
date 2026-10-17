@@ -1,0 +1,346 @@
+syntax = "proto2";
+
+package GDI.Proto.InReachWeather;
+
+import "GDIDataTypes.proto";
+import "GDIGenericItemTransfer.proto";
+
+enum ForecastDayOfWeek {
+  FORECAST_DAY_OF_WEEK_INVALID = 0;
+  FORECAST_DAY_OF_WEEK_SUNDAY = 1;
+  FORECAST_DAY_OF_WEEK_MONDAY = 2;
+  FORECAST_DAY_OF_WEEK_TUESDAY = 3;
+  FORECAST_DAY_OF_WEEK_WEDNESDAY = 4;
+  FORECAST_DAY_OF_WEEK_THURSDAY = 5;
+  FORECAST_DAY_OF_WEEK_FRIDAY = 6;
+  FORECAST_DAY_OF_WEEK_SATURDAY = 7;
+}
+
+enum WeatherIcon {
+  WEATHER_ICON_INVALID = 0;
+  WEATHER_ICON_CLEAR_DAY = 1;
+  WEATHER_ICON_CLEAR_NIGHT = 2;
+  WEATHER_ICON_CLOUDY = 3;
+  WEATHER_ICON_PARTLY_CLOUDY_DAY = 4;
+  WEATHER_ICON_PARTLY_CLOUDY_NIGHT = 5;
+  WEATHER_ICON_FOG = 6;
+  WEATHER_ICON_RAIN = 7;
+  WEATHER_ICON_SNOW = 8;
+  WEATHER_ICON_SLEET = 9;
+  WEATHER_ICON_HAIL = 10;
+  WEATHER_ICON_THUNDERSTORM = 11;
+  WEATHER_ICON_WINDY = 12;
+  WEATHER_ICON_TORNADO = 13;
+  WEATHER_ICON_MOSTLY_CLOUDY = 14;
+  WEATHER_ICON_WINTRY_MIX = 15;
+  WEATHER_ICON_HAZY = 16;
+  WEATHER_ICON_SCATTERED_SHOWERS = 17;
+  WEATHER_ICON_SCATTERED_THUNDERSTORMS = 18;
+  WEATHER_ICON_UNKNOWN_PRECIPITATION = 19;
+  WEATHER_ICON_LIGHT_RAIN = 20;
+  WEATHER_ICON_HEAVY_RAIN = 21;
+  WEATHER_ICON_LIGHT_SNOW = 22;
+  WEATHER_ICON_HEAVY_SNOW = 23;
+  WEATHER_ICON_LIGHT_RAIN_SNOW = 24;
+  WEATHER_ICON_HEAVY_RAIN_SNOW = 25;
+  WEATHER_ICON_RAIN_SNOW = 26;
+  WEATHER_ICON_PARTLY_CLEAR = 27;
+  WEATHER_ICON_MOSTLY_CLEAR = 28;
+  WEATHER_ICON_LIGHT_SHOWERS = 29;
+  WEATHER_ICON_SHOWERS = 30;
+  WEATHER_ICON_HEAVY_SHOWERS = 31;
+  WEATHER_ICON_CHANCE_OF_SHOWERS = 32;
+  WEATHER_ICON_CHANCE_OF_THUNDERSTORMS = 33;
+  WEATHER_ICON_MIST = 34;
+  WEATHER_ICON_DUST = 35;
+  WEATHER_ICON_DRIZZLE = 36;
+  WEATHER_ICON_SMOKE = 37;
+  WEATHER_ICON_ICE = 38;
+  WEATHER_ICON_SAND = 39;
+  WEATHER_ICON_SQUALL = 40;
+  WEATHER_ICON_SANDSTORM = 41;
+  WEATHER_ICON_VOLCANIC_ASH = 42;
+  WEATHER_ICON_HAZE = 43;
+  WEATHER_ICON_FAIR = 44;
+  WEATHER_ICON_HURRICANE = 45;
+  WEATHER_ICON_TROPICAL_STORM = 46;
+  WEATHER_ICON_CHANCE_OF_SNOW = 47;
+  WEATHER_ICON_CHANCE_OF_RAIN_SNOW = 48;
+  WEATHER_ICON_CLOUDY_CHANCE_OF_RAIN = 49;
+  WEATHER_ICON_CLOUDY_CHANCE_OF_SNOW = 50;
+  WEATHER_ICON_CLOUDY_CHANCE_OF_RAIN_SNOW = 51;
+  WEATHER_ICON_FLURRIES = 52;
+  WEATHER_ICON_FREEZING_RAIN = 53;
+  WEATHER_ICON_ICE_SNOW = 54;
+  WEATHER_ICON_THIN_CLOUDS = 55;
+}
+
+enum Precipitation {
+  PRECIPITATION_NONE = 1;
+  PRECIPITATION_RAIN = 2;
+  PRECIPITATION_SNOW = 3;
+  PRECIPITATION_SLEET = 4;
+}
+
+enum ForecastAirQuality {
+  FORECAST_AIR_QUALITY_INVALID = 0;
+  FORECAST_AIR_QUALITY_GOOD = 1;
+  FORECAST_AIR_QUALITY_MODERATE = 2;
+  FORECAST_AIR_QUALITY_UNHEALTHY_SENSITIVE = 3;
+  FORECAST_AIR_QUALITY_UNHEALTHY = 4;
+  FORECAST_AIR_QUALITY_VERY_UNHEALTHY = 5;
+  FORECAST_AIR_QUALITY_HAZARDOUS = 6;
+}
+
+message InReachWeatherService {
+  GDI.Proto.InReachWeather.CapabilitiesRequest capabilities_request = 1;
+  GDI.Proto.InReachWeather.CapabilitiesResponse capabilities_response = 2;
+  GDI.Proto.InReachWeather.RequestForecastRequest request_forecast_request = 3;
+  GDI.Proto.InReachWeather.RequestForecastResponse request_forecast_response = 4;
+  GDI.Proto.InReachWeather.SyncRequest sync_request = 5;
+  GDI.Proto.InReachWeather.SyncResponse sync_response = 6;
+  GDI.Proto.InReachWeather.SubscribeRequest subscribe_request = 7;
+  GDI.Proto.InReachWeather.SubscribeResponse subscribe_response = 8;
+  GDI.Proto.InReachWeather.LocationModifiedNotification location_modified_notification = 9;
+  GDI.Proto.InReachWeather.ForecastStatusNotification forecast_status_notification = 10;
+}
+
+message Capabilities {
+  uint32 max_protocol_version = 1;
+  repeated GDI.Proto.InReachWeather.Forecast.Type forecast_types = 2;
+  repeated GDI.Proto.InReachWeather.Forecast.Provider forecast_providers = 3;
+  uint32 max_location_count = 4;
+  repeated GDI.Proto.InReachWeather.Forecast.Type sync_forecast_types = 5;
+}
+
+message Location {
+  GDI.Proto.DataTypes.UUID uuid = 1;
+  bool deleted = 2;
+  fixed32 modified_time = 3;
+  GDI.Proto.DataTypes.ScPoint point = 4;
+  string name = 5;
+}
+
+message Forecast {
+  enum Type {
+    FORECAST_TYPE_INVALID = 0;
+    INREACH_BASIC = 1;
+    INREACH_PREMIUM = 2;
+    INREACH_MARINE = 3;
+    WBL_LAND = 4;
+  }
+  enum Provider {
+    DARK_SKY = 1;
+    OCENS = 2;
+    METEOBLUE = 3;
+  }
+  enum Status {
+    REQUEST_ERROR = 1;
+    WAITING_FOR_GPS = 2;
+    QUEUED = 3;
+    WAITING_FOR_REPLY = 4;
+    RECEIVED = 5;
+  }
+  enum RequestError {
+    GENERIC_REQUEST_ERROR = 1;
+    REQUEST_NOT_SENT = 2;
+    RESPONSE_TIMEOUT = 3;
+    NO_COVERAGE = 4;
+    DECODE_ERROR = 5;
+    SERVER_CONNECTION_FAILED = 6;
+    SERVER_ERROR = 7;
+    SERVER_RETRIES_EXCEEDED = 8;
+  }
+  GDI.Proto.DataTypes.UUID uuid = 1;
+  GDI.Proto.DataTypes.UUID location_uuid = 2;
+  GDI.Proto.DataTypes.ScPoint point = 3;
+  GDI.Proto.InReachWeather.Forecast.Type type = 4;
+  GDI.Proto.InReachWeather.Forecast.Provider provider = 5;
+  GDI.Proto.InReachWeather.Forecast.Status status = 6;
+  GDI.Proto.InReachWeather.Forecast.RequestError request_error = 7;
+  bool read = 8;
+  fixed32 modified_time = 9;
+  fixed32 issued_time = 10;
+  fixed32 end_time = 11;
+  sint32 zone_offset1_minutes = 12;
+  fixed32 zone_offset2_start_time = 13;
+  sint32 zone_offset2_minutes = 14;
+  fixed32 created_time = 15;
+}
+
+message ForecastDaySummary {
+  fixed32 start_time = 1;
+  GDI.Proto.InReachWeather.WeatherIcon icon = 2;
+  float high_temp_c = 3;
+  float low_temp_c = 4;
+  GDI.Proto.InReachWeather.Precipitation precip_type = 5;
+  uint32 precip_chance_percent = 6;
+  uint32 precip_amount_mm = 7;
+  uint32 snowfall_amount_mm = 8;
+  GDI.Proto.InReachWeather.ForecastDayOfWeek day_of_week = 9;
+  fixed32 sunrise_time = 10;
+  fixed32 sunset_time = 11;
+}
+
+message LandForecastDetail {
+  fixed32 detail_time = 1;
+  GDI.Proto.InReachWeather.WeatherIcon icon = 2;
+  float temperature_c = 3;
+  float feels_like_temp_c = 4;
+  float pressure_millibar = 5;
+  float wind_speed_mps = 6;
+  float gust_speed_mps = 7;
+  uint32 wind_bearing_degrees = 8;
+  uint32 humidity_percent = 9;
+  uint32 cloud_cover_percent = 10;
+  GDI.Proto.InReachWeather.Precipitation precip_type = 11;
+  uint32 precip_chance_percent = 12;
+  uint32 precip_amount_mm = 13;
+  uint32 snowfall_amount_mm = 14;
+  float uv_index = 15;
+  float dew_point_c = 16;
+  GDI.Proto.InReachWeather.ForecastAirQuality air_quality = 17;
+  float visibility_meters = 18;
+  bool is_night = 19;
+}
+
+message MarineForecastDetail {
+  fixed32 detail_time = 1;
+  float visibility_meters = 2;
+  float wind_speed_mps = 3;
+  float gust_speed_mps = 4;
+  uint32 wind_bearing_degrees = 5;
+  uint32 current_bearing_degrees = 6;
+  float current_speed_mps = 7;
+  uint32 wave_bearing_degrees = 8;
+  float wave_height_meters = 9;
+  uint32 wave_period_seconds = 10;
+}
+
+message CapabilitiesRequest {
+  GDI.Proto.InReachWeather.Capabilities capabilities = 1;
+}
+
+message CapabilitiesResponse {
+  GDI.Proto.InReachWeather.Capabilities capabilities = 1;
+}
+
+message RequestForecastRequest {
+  GDI.Proto.InReachWeather.Location location = 1;
+  repeated GDI.Proto.InReachWeather.Forecast.Type forecast_types = 2;
+}
+
+message RequestForecastResponse {
+  enum Status {
+    OK = 1;
+    GENERIC_ERROR = 2;
+    NOT_IMPLEMENTED = 3;
+    NOT_ACTIVATED = 4;
+    DELETED_LOCATION = 5;
+    UNSUPPORTED_FORECAST_TYPE = 6;
+    EXCLUSIVE_FORECAST_TYPES = 7;
+    LOCATION_LIMIT_REACHED = 8;
+    DUPLICATE_FORECAST_TYPE = 9;
+    LAND_FORECAST_TYPE_REQUIRED = 10;
+    FAILED_TO_GET_GPS_POSITION = 11;
+    LOCATION_FIELDS_MISSING = 12;
+    FAILED_TO_CREATE_LOCATION = 13;
+    COORDINATES_MISSING = 14;
+  }
+  GDI.Proto.InReachWeather.RequestForecastResponse.Status status = 1;
+  repeated GDI.Proto.InReachWeather.Forecast forecasts = 2;
+}
+
+message SyncRequestInfo {
+  enum SyncType {
+    FULL = 1;
+    INCREMENTAL = 2;
+  }
+  uint32 protocol_version = 1;
+  GDI.Proto.DataTypes.UUID app_uuid = 2;
+  GDI.Proto.InReachWeather.SyncRequestInfo.SyncType sync_type = 3;
+}
+
+message SyncRequest {
+  GDI.Proto.InReachWeather.SyncRequestInfo request_info = 1;
+  fixed32 modified_time = 2;
+}
+
+message SyncResponse {
+  enum Status {
+    OK = 1;
+    UP_TO_DATE = 2;
+    GENERIC_ERROR = 3;
+    BUSY = 4;
+    UNSUPPORTED_PROTOCOL_VERSION = 5;
+    MISSING_INFO = 6;
+  }
+  GDI.Proto.InReachWeather.SyncResponse.Status status = 1;
+}
+
+message SubscribeRequest {
+  bool want_location_modified = 1;
+  bool want_forecast_status = 2;
+}
+
+message SubscribeResponse {
+  enum Status {
+    OK = 1;
+    GENERIC_ERROR = 2;
+  }
+  GDI.Proto.InReachWeather.SubscribeResponse.Status status = 1;
+}
+
+message LocationModifiedNotification {
+  GDI.Proto.InReachWeather.Location location = 1;
+}
+
+message ForecastStatusNotification {
+  repeated GDI.Proto.InReachWeather.Forecast forecasts = 1;
+}
+
+message LocationsAndForecastsQuery {
+  fixed32 modified_after = 1;
+}
+
+message ForecastDetailQuery {
+  GDI.Proto.DataTypes.UUID forecast_uuid = 1;
+  fixed32 detail_time_begin = 2;
+  fixed32 detail_time_end = 3;
+}
+
+message DataTypeConfigExt {
+  GDI.Proto.InReachWeather.SyncRequestInfo request_info = 1;
+  GDI.Proto.InReachWeather.LocationsAndForecastsQuery locs_and_forecasts_query = 2;
+  GDI.Proto.InReachWeather.ForecastDetailQuery forecast_detail_query = 3;
+}
+
+message DataTypeStatusExt {
+  enum Status {
+    UNSUPPORTED_PROTOCOL_VERSION = 1;
+    UNSUPPORTED_QUERY = 2;
+    MISSING_INFO = 3;
+    FORECAST_NOT_FOUND = 4;
+  }
+  GDI.Proto.InReachWeather.DataTypeStatusExt.Status status = 1;
+}
+
+message GenericItemReferenceExt {
+  GDI.Proto.InReachWeather.Location location = 1;
+  GDI.Proto.InReachWeather.Forecast forecast = 2;
+  GDI.Proto.InReachWeather.ForecastDaySummary day_summary = 3;
+  GDI.Proto.InReachWeather.LandForecastDetail land_detail = 4;
+  GDI.Proto.InReachWeather.MarineForecastDetail marine_detail = 5;
+}
+
+extend GDI.Proto.GenericItemTransfer.DataTypeConfig {
+  GDI.Proto.InReachWeather.DataTypeConfigExt config_ext = 103;
+}
+
+extend GDI.Proto.GenericItemTransfer.DataTypeStatus {
+  GDI.Proto.InReachWeather.DataTypeStatusExt status_ext = 103;
+}
+
+extend GDI.Proto.GenericItemTransfer.GenericItemReference {
+  GDI.Proto.InReachWeather.GenericItemReferenceExt item_ref_ext = 103;
+}

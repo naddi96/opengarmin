@@ -1,0 +1,261 @@
+syntax = "proto2";
+
+package GDI.Proto.Dezl;
+
+import "GDIEventSharing.proto";
+
+enum Vendor {
+  LOVES = 0;
+  PILOT_FLYINGJ = 1;
+}
+
+enum WorkoutStageType {
+  UNKNOWN_STAGE = 0;
+  REST_STAGE = 1;
+  EXERCISE_STAGE = 2;
+  REST_BETWEEN_EXERCISES_STAGE = 3;
+  EXERCISE_MIRROR_ARM_STAGE = 4;
+  EXERCISE_MIRROR_LEG_STAGE = 5;
+  EXERCISE_MIRROR_SIDE_STAGE = 6;
+  EXERCISE_DURATION_OPEN = 7;
+}
+
+enum WorkoutType {
+  UNKNOWN_TYPE = 0;
+  STRETCH_WORKOUT = 1;
+  LOW_INTENSITY_WORKOUT = 2;
+  HIGH_INTENSITY_WORKOUT = 3;
+  KR_BODY_WEIGHT_CORE = 4;
+  KR_BODY_WEIGHT_PUSH = 5;
+  KR_BODY_WEIGHT_PULL = 6;
+  KR_DUMBBELL_CORE = 7;
+  KR_DUMBBELL_PUSH = 8;
+  KR_DUMBBELL_PULL = 9;
+  KR_RESISTANCE_BAR_CORE = 10;
+  KR_RESISTANCE_BAR_PUSH = 11;
+  KR_RESISTANCE_BAR_PULL = 12;
+  TRUCKERS_LIFE_AT_A_GYM = 13;
+  TRUCKERS_LIFE_ON_THE_ROAD = 14;
+}
+
+enum WellnessSuggestion {
+  UNKNOWN_WELLNESS_SUGGESTION = 0;
+  INTENSITY_GOAL = 1;
+  ON_THE_ROAD_ALL_DAY_STRETCH = 2;
+  ACTIVE_CALORIES_COMPLIMENT = 3;
+  NEED_X_DAILY_STEPS = 4;
+  DAILY_REMAINING_STEPS_TO_GOAL = 5;
+  TEN_MINUTE_WALK_INFO = 6;
+  STEP_GOAL_ACHIEVED_COMPLIMENT = 7;
+  REDUCE_STRESS_RELAX = 8;
+  REDUCE_STRESS_STRETCH = 9;
+  REDUCE_STRESS_WALK = 10;
+  REDUCE_STRESS_ACTIVITY = 11;
+  HIGH_BODY_BATTERY_BE_ACTIVE = 12;
+  LOW_BODY_BATTERY_BE_ACTIVE = 13;
+  MORNING_ACTIVITY = 14;
+  DRIVE_TIME_STRETCH = 15;
+  DRIVE_TIME_WIND_DOWN = 16;
+  HEART_RATE_BE_ACTIVE = 17;
+  DAILY_INTENSITY_MINUTES = 18;
+  BEAT_INTENSITY_MINUTES_GOAL = 19;
+  TRY_A_WORKOUT = 20;
+  NO_CONSTRAINT_STRETCH = 21;
+  RECORD_ACTIVITY = 22;
+  REST_AREA_AHEAD_TAKE_A_WALK = 23;
+  MILES_DRIVEN_WITHOUT_STOP_BE_ACTIVE = 24;
+  STEPS_PER_MILE = 25;
+  TOTAL_MILES_DRIVEN_WALK = 26;
+  TOTAL_MILES_DRIVEN_STRETCH = 27;
+}
+
+message DezlService {
+  GDI.Proto.Dezl.TruckStopLoyaltyInfoRequest truck_stop_loyalty_info_request = 1;
+  GDI.Proto.Dezl.TruckStopLoyaltyInfoResponse truck_stop_loyalty_info_response = 2;
+  GDI.Proto.Dezl.TruckStopLoyaltyInfoNotification truck_stop_loyalty_info_notification = 3;
+  GDI.Proto.Dezl.WellnessSuggestionRequest wellness_suggestion_request = 4;
+  GDI.Proto.Dezl.WellnessSuggestionResponse wellness_suggestion_response = 5;
+  GDI.Proto.Dezl.WorkoutSelectedNotification workout_selected_notification = 6;
+  GDI.Proto.Dezl.StageSelectedNotification stage_selected_notification = 7;
+  GDI.Proto.Dezl.StageStartedNotification stage_started_notification = 8;
+  GDI.Proto.Dezl.StageCompletedNotification stage_completed_notification = 9;
+  GDI.Proto.Dezl.StagePausedNotification stage_paused_notification = 10;
+  GDI.Proto.Dezl.WorkoutCanceledNotification workout_canceled_notification = 11;
+  GDI.Proto.Dezl.FeaturesEnableRequest enable_request = 12;
+  GDI.Proto.Dezl.FeaturesEnableResponse enable_response = 13;
+}
+
+message BreakPlannerStateChangedNotification {
+  enum TimerState {
+    UNKNOWN = 0;
+    DRIVING = 1;
+    STOPPED = 2;
+    RESET = 3;
+    PAUSED = 4;
+  }
+  uint64 timestamp = 1;
+  uint32 daily_driven_timer = 2;
+  uint32 time_until_break_timer = 3;
+  uint32 total_driven_timer = 4;
+  GDI.Proto.Dezl.BreakPlannerStateChangedNotification.TimerState timer_state = 5;
+  bool elog_detected = 6;
+  uint32 time_on_break = 7;
+}
+
+message DrivingStateChangedNotification {
+  enum DrivingState {
+    UNKNOWN = 0;
+    STARTED = 1;
+    STOPPED = 2;
+  }
+  enum Source {
+    UNKNOWN_SOURCE = 0;
+    APP = 1;
+    PND = 2;
+  }
+  GDI.Proto.Dezl.DrivingStateChangedNotification.DrivingState driving_state = 1;
+  GDI.Proto.Dezl.DrivingStateChangedNotification.Source source = 2;
+}
+
+message TruckStopLoyaltyInfoRequest {
+  GDI.Proto.Dezl.Vendor vendor = 1;
+}
+
+message TruckStopLoyaltyInfoResponse {
+  GDI.Proto.Dezl.TruckStopLoyaltyInfo loyalty_info = 1;
+}
+
+message TruckStopLoyaltyInfoNotification {
+  GDI.Proto.Dezl.TruckStopLoyaltyInfo loyalty_info = 1;
+}
+
+message TruckStopLoyaltyInfo {
+  GDI.Proto.Dezl.Vendor vendor = 1;
+  GDI.Proto.Dezl.LoyaltyUserInfo user_info = 2;
+  GDI.Proto.Dezl.LoyaltyBalances balances = 3;
+  GDI.Proto.Dezl.LoyaltyRewardInfo reward_info = 4;
+  GDI.Proto.Dezl.LoyaltyGoalInfo goal_info = 5;
+  GDI.Proto.Dezl.LoyaltyBonusOfferInfo bonus_offer_info = 6;
+  GDI.Proto.Dezl.LoyaltyCampaignInfo campaign_info = 7;
+  bool is_logged_in = 8;
+}
+
+message LoyaltyUserInfo {
+  string loyalty_card_number = 1;
+  string contact_id = 2;
+  string first_name = 3;
+  string last_name = 4;
+}
+
+message LoyaltyBalances {
+  uint32 current_drink_credit_balance = 1;
+  uint32 current_gallons_balance = 2;
+  uint32 current_points_balance = 3;
+  uint32 current_shower_credit_balance = 4;
+  uint32 current_tirepass_credit_balance = 5;
+}
+
+message LoyaltyRewardInfo {
+  string current_tier = 1;
+  string earned_reward = 2;
+  string reward_category = 3;
+  string margin_category = 4;
+  uint32 gallons_to_next_tier = 5;
+  string next_tier = 6;
+  uint32 earning_points_per_gallon = 7;
+  uint32 gallons_this_year = 8;
+}
+
+message LoyaltyGoalInfo {
+  uint32 achieve_goal = 1;
+  uint32 achieve_goal_progress = 2;
+  sint32 achieve_goal_remaining = 3;
+  bool final_goal_achieved = 4;
+}
+
+message LoyaltyBonusOfferInfo {
+  string current_bonus_offer = 1;
+  string current_bonus_offer_segment_id = 2;
+  string bonus_offer_start_date = 3;
+  string bonus_offer_end_date = 4;
+}
+
+message LoyaltyCampaignInfo {
+  string campaign_name = 1;
+  string campaign_name_agg = 2;
+  bool campaign_joined = 3;
+  bool click_to_join_campaign = 4;
+  bool ladder_campaign = 5;
+}
+
+message OTRHealthWorkoutStage {
+  GDI.Proto.Dezl.WorkoutStageType stage_type = 1;
+  uint32 stage_duration = 2;
+  uint32 exercise_category = 3;
+  uint32 exercise_name = 4;
+}
+
+message OTRHealthWorkout {
+  string workout_name = 1;
+  uint32 fit_sport = 2;
+  uint32 fit_sub_sport = 3;
+  repeated GDI.Proto.Dezl.OTRHealthWorkoutStage stages = 4;
+  GDI.Proto.Dezl.WorkoutType workout_type = 5;
+}
+
+message WorkoutSelectedNotification {
+  GDI.Proto.Dezl.OTRHealthWorkout selected_workout = 1;
+}
+
+message WorkoutCanceledNotification {
+}
+
+message StageSelectedNotification {
+  uint32 selected_stage_index = 1;
+}
+
+message StageStartedNotification {
+  uint32 selected_stage_index = 1;
+  uint32 elapsed_time = 2;
+}
+
+message StageCompletedNotification {
+  uint32 completed_stage_index = 1;
+}
+
+message StagePausedNotification {
+}
+
+message WellnessSuggestionRequest {
+}
+
+message WellnessSuggestionResponse {
+  GDI.Proto.Dezl.WellnessSuggestion wellness_suggestion = 1;
+  GDI.Proto.Dezl.PndWellnessData pnd_data = 2;
+}
+
+message PndWellnessData {
+  uint32 miles_driven_today = 1;
+  uint32 miles_driven_since_last_stop = 2;
+  uint32 distance_to_next_rest_area = 3;
+  uint32 hours_driven_without_stop = 4;
+  bool drive_timer_near_max = 5;
+}
+
+message FeaturesEnableRequest {
+  enum Action {
+    STATUS = 0;
+    ENABLE = 1;
+    DISABLE = 2;
+  }
+  GDI.Proto.Dezl.FeaturesEnableRequest.Action action = 1;
+}
+
+message FeaturesEnableResponse {
+  enum ResponseStatus {
+    SUCCESS = 0;
+    FAILURE = 1;
+  }
+  GDI.Proto.Dezl.FeaturesEnableResponse.ResponseStatus status = 1;
+  bool enabled = 2;
+}

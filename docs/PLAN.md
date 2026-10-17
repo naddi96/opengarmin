@@ -40,10 +40,10 @@ Non-goals for v1: Connect IQ store, firmware updates, Garmin servers, iOS/deskto
 | # | Milestone | Exit criteria |
 |---|---|---|
 | **M0** | RE + protocol core | ✅ protocol library builds; CRC/COBS/framing vectors pass |
-| **M1** | BLE connect & identify | app connects, registers GFDI, reads `PRODUCT_NUMBER` + `SUPPORTED_PROTOCOLS`; shown in UI |
-| **M2** | Handshake | watch accepts companion (device info / config / auth / time); logged cleanly |
-| **M3** | File listing | app retrieves the watch file directory (index, type, size, flags) |
-| **M4** | FIT download | app downloads a pending FIT file to local storage, byte-exact vs `adb pull` |
+| **M1** | BLE connect & identify | ✅ app connects, registers GFDI, discovers the ML pair |
+| **M2** | Handshake | ✅ DEVICE_INFORMATION / CONFIGURATION / AUTH / time exchange works |
+| **M3** | File listing | ✅ GDI capabilities + `ItemListRequest`; 78 files listed on FR255 |
+| **M4** | FIT download | in progress: `PullItemDataRequest` + DataTransfer/GFDI bytes |
 | **M5** | Archive | app marks synced files ARCHIVE; no redownload; idempotent |
 | **M6** | FIT → DB | parsed activities + records in Room; dashboard shows them |
 | **M7** | Polish | background sync, error recovery, export, health summaries |
@@ -73,6 +73,6 @@ Non-goals for v1: Connect IQ store, firmware updates, Garmin servers, iOS/deskto
 ## Immediate next actions
 
 1. `./gradlew :protocol:test` — green.
-2. Implement `AndroidBleLink` + scan UI (M1) and test on the user's phone.
-3. Capture an official-app sync with a btsnoop log to lock down the file-transfer
-   message sequence (M3–M4).
+2. ✅ M1–M3 validated on a real Forerunner 255 (Pixel 10a, Android 17).
+3. Implement `PullItemDataRequest` and receive file bytes (M4).
+4. Parse FIT → Room DB (M5–M6).

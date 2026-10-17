@@ -1,0 +1,60 @@
+syntax = "proto2";
+
+package GDI.Proto.InstantInput;
+
+enum CommandResult {
+  UNKNOWN = 0;
+  SUCCESS = 1;
+  FAILURE = 2;
+}
+
+message InstantInputService {
+  GDI.Proto.InstantInput.InstantInputMessage input_content = 1;
+  GDI.Proto.InstantInput.InstantInputStartRequest start_request = 2;
+  GDI.Proto.InstantInput.InstantInputStartResponse start_response = 3;
+  GDI.Proto.InstantInput.InstantInputEndRequest end_request = 4;
+  GDI.Proto.InstantInput.InstantInputEndResponse end_response = 5;
+  GDI.Proto.InstantInput.InstantInputRestartRequest restart_request = 6;
+  GDI.Proto.InstantInput.InstantInputSyncRequest sync_request = 7;
+}
+
+message InstantInputMessage {
+  string content = 1;
+  uint32 content_size = 2;
+}
+
+message InstantInputStartRequest {
+  enum Command {
+    UNKNOWN = 0;
+    RENAME = 1;
+    POI_SEARCH = 2;
+  }
+  uint32 code_page = 1;
+  uint32 max_size = 2;
+  string content = 3;
+  uint32 content_size = 4;
+  GDI.Proto.InstantInput.InstantInputStartRequest.Command command = 5;
+}
+
+message InstantInputRestartRequest {
+}
+
+message InstantInputSyncRequest {
+}
+
+message InstantInputStartResponse {
+  GDI.Proto.InstantInput.CommandResult result = 1;
+}
+
+message InstantInputEndRequest {
+  enum Command {
+    UNKNOWN = 0;
+    CANCEL = 1;
+    CONFIRM = 2;
+  }
+  GDI.Proto.InstantInput.InstantInputEndRequest.Command command = 1;
+}
+
+message InstantInputEndResponse {
+  GDI.Proto.InstantInput.CommandResult result = 1;
+}

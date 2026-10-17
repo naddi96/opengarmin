@@ -62,6 +62,20 @@ class GarminBleClient(
         }
     }
 
+    /** Returns the OS-bonded Garmin watch, if any (requires BLUETOOTH_CONNECT). */
+    fun findBondedWatch(): BluetoothDevice? {
+        val bonded = try {
+            adapter?.bondedDevices
+        } catch (e: SecurityException) {
+            onLog("missing BLUETOOTH_CONNECT")
+            null
+        } ?: return null
+        return bonded.firstOrNull { device ->
+            val name = try { device.name } catch (e: SecurityException) { null } ?: return@firstOrNull false
+            GARMIN_NAMES.any { name.contains(it, ignoreCase = true) }
+        }
+    }
+
     fun startScan() {
         val scanner = adapter?.bluetoothLeScanner
         if (scanner == null) {
@@ -98,17 +112,23 @@ class GarminBleClient(
     private fun write(bytes: ByteArray) {
         val g = gatt ?: return
         val c = writeChar ?: return
+        val writeType = if (c.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0) {
+            BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+        } else {
+            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            g.writeCharacteristic(c, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+            val rc = g.writeCharacteristic(c, bytes, writeType)
+            onLog("TX($rc) ${Hex.encode(bytes)}")
         } else {
             @Suppress("DEPRECATION")
             run {
                 c.value = bytes
-                c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                g.writeCharacteristic(c)
+                c.writeType = writeType
+                val rc = g.writeCharacteristic(c)
+                onLog("TX($rc) ${Hex.encode(bytes)}")
             }
         }
-        onLog("TX ${Hex.encode(bytes)}")
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
@@ -166,12 +186,22 @@ class GarminBleClient(
                     }
                 }
             }
-            onLog("starting GFDI session")
-            session.begin()
+            if (cccd == null) {
+                onLog("no CCCD descriptor; starting session anyway")
+                session.begin()
+            }
         }
 
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-            onLog("notifications enabled")
+            onLog("notifications enabled (status=$status)")
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                onLog("starting GFDI session")
+                session.begin()
+            }
+        }
+
+        override fun onCharacteristicWrite(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            if (status != BluetoothGatt.GATT_SUCCESS) onLog("write failed status=$status")
         }
 
         override fun onCharacteristicChanged(
@@ -196,5 +226,8 @@ class GarminBleClient(
 
     companion object {
         private const val CLIENT_CHARACTERISTIC_CONFIG = "00002902-0000-1000-8000-00805f9b34fb"
+        private val GARMIN_NAMES = listOf(
+            "Forerunner", "Garmin", "Fenix", "Venu", "Instinct", "Epix", "Enduro", "Vivoactive", "Vivomove",
+        )
     }
 }

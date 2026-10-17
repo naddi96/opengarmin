@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIRadar.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.Radar.Service radar_service = 57;
+}

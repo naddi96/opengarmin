@@ -1,0 +1,73 @@
+syntax = "proto2";
+
+package GDI.Proto.GarminConnect;
+
+import "GDICore.proto";
+
+enum Priority {
+  STANDARD = 0;
+  USER_INITIATED = 1;
+}
+
+message ClientFeatureCapabilities {
+  uint32 version = 1;
+  bool wellness_threshold_met_support = 2;
+}
+
+message ServerFeatureCapabilities {
+  bool wellness_support = 2;
+  bool lifestyle_logging_support = 3;
+}
+
+message Service {
+  GDI.Proto.GarminConnect.CheckDownloadQueueRequest check_download_queue_request = 1;
+  GDI.Proto.GarminConnect.CheckDownloadQueueResponse check_download_queue_response = 2;
+  GDI.Proto.GarminConnect.CutWellnessFilesRequest cut_wellness_files_request = 3;
+  GDI.Proto.GarminConnect.CutWellnessFilesResponse cut_wellness_files_response = 4;
+  GDI.Proto.GarminConnect.WellnessThresholdMetNotification wellness_threshold_met_notification = 5;
+  GDI.Proto.GarminConnect.ContactsUpdateRequestNotification contacts_update_request_notification = 6;
+  GDI.Proto.GarminConnect.LifestyleLoggingUpdateRequestNotification lifestyle_logging_update_request_notification = 7;
+}
+
+message CheckDownloadQueueRequest {
+  GDI.Proto.GarminConnect.Priority priority = 1;
+  bool force_beta_software_update_check = 2;
+}
+
+message CheckDownloadQueueResponse {
+  enum Status {
+    SUCCESS = 0;
+    FAIL_NO_CONNECTIVITY = 1;
+  }
+  GDI.Proto.GarminConnect.CheckDownloadQueueResponse.Status status = 1;
+}
+
+message CutWellnessFilesRequest {
+  GDI.Proto.GarminConnect.Priority priority = 1;
+}
+
+message CutWellnessFilesResponse {
+  enum Status {
+    SUCCESS = 0;
+    IGNORED = 1;
+    NOT_SUPPORTED = 2;
+  }
+  GDI.Proto.GarminConnect.CutWellnessFilesResponse.Status status = 1;
+}
+
+message WellnessThresholdMetNotification {
+}
+
+message ContactsUpdateRequestNotification {
+}
+
+message LifestyleLoggingUpdateRequestNotification {
+}
+
+extend GDI.Proto.Core.FeatureCapabilitiesRequest {
+  GDI.Proto.GarminConnect.ClientFeatureCapabilities request_garmin_connect_capabilites = 11;
+}
+
+extend GDI.Proto.Core.FeatureCapabilitiesResponse {
+  GDI.Proto.GarminConnect.ServerFeatureCapabilities response_garmin_connect_capabilites = 11;
+}

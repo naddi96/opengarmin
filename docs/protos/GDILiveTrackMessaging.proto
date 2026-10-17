@@ -1,0 +1,75 @@
+syntax = "proto2";
+
+package GDI.Proto.LiveTrackMessaging;
+
+message LiveTrackMessagingService {
+  GDI.Proto.LiveTrackMessaging.SendLiveTrackMessageRequest send_live_track_message_request = 1;
+  GDI.Proto.LiveTrackMessaging.SendLiveTrackMessageResponse send_live_track_message_response = 2;
+  GDI.Proto.LiveTrackMessaging.GetLiveTrackMessagesRequest get_live_track_messages_request = 3;
+  GDI.Proto.LiveTrackMessaging.GetLiveTrackMessagesResponse get_live_track_messages_response = 4;
+}
+
+message SendLiveTrackMessageRequest {
+  repeated string recipient_session_ids = 1;
+  GDI.Proto.LiveTrackMessaging.LiveTrackMessageBody live_track_message_body = 2;
+}
+
+message SendLiveTrackMessageResponse {
+  enum SendLiveTrackMessageStatus {
+    OK = 0;
+    UNKNOWN_ERROR = 1;
+    NETWORK_FAILURE = 2;
+    TIMEOUT = 3;
+    SERVER_ERROR = 4;
+    INVALID_SERVER_RESPONSE = 5;
+    NOT_LIVE_TRACKING = 6;
+    EMPTY_SESSION_IDS = 7;
+  }
+  GDI.Proto.LiveTrackMessaging.SendLiveTrackMessageResponse.SendLiveTrackMessageStatus send_live_track_message_status = 1;
+  repeated GDI.Proto.LiveTrackMessaging.SendLiveTrackMessageError send_live_track_message_errors = 2;
+}
+
+message SendLiveTrackMessageError {
+  enum LiveTrackMessageErrorType {
+    UNKNOWN_ERROR = 0;
+    SENDER_SESSION_INVALID = 1;
+    SENDER_SESSION_ENDED = 2;
+    RECIPIENT_SESSION_INVALID = 3;
+    RECIPIENT_SESSION_ENDED = 4;
+  }
+  repeated string session_ids = 1;
+  GDI.Proto.LiveTrackMessaging.SendLiveTrackMessageError.LiveTrackMessageErrorType live_track_message_error_type = 2;
+  string error_message_text = 3;
+}
+
+message GetLiveTrackMessagesRequest {
+  uint64 last_received_tracker_message_seq = 1;
+}
+
+message GetLiveTrackMessagesResponse {
+  enum GetLiveTrackMessagesStatus {
+    OK = 0;
+    UNKNOWN_ERROR = 1;
+    NETWORK_FAILURE = 2;
+    TIMEOUT = 3;
+    SERVER_ERROR = 4;
+    INVALID_SERVER_RESPONSE = 5;
+    NOT_LIVE_TRACKING = 6;
+  }
+  GDI.Proto.LiveTrackMessaging.GetLiveTrackMessagesResponse.GetLiveTrackMessagesStatus get_live_track_messages_status = 1;
+  repeated GDI.Proto.LiveTrackMessaging.LiveTrackMessage live_track_messages = 2;
+  uint32 call_interval = 3;
+}
+
+message LiveTrackMessage {
+  string sender_session_id = 1;
+  string sender_display_name = 2;
+  uint64 tracker_message_seq = 3;
+  GDI.Proto.LiveTrackMessaging.LiveTrackMessageBody live_track_message_body = 4;
+}
+
+message LiveTrackMessageBody {
+  uint64 message_id = 1;
+  string message_text = 2;
+  uint64 timestamp = 3;
+}

@@ -1,0 +1,97 @@
+syntax = "proto2";
+
+package GDI.Proto.IncidentDetection;
+
+import "GDIDataTypes.proto";
+
+message IncidentDetectionService {
+  GDI.Proto.IncidentDetection.UpdateDeviceOwnerRequest update_device_owner_request = 1;
+  GDI.Proto.IncidentDetection.UpdateDeviceOwnerResponse update_device_owner_response = 2;
+  GDI.Proto.IncidentDetection.UpdateIncidentContactsRequest update_incident_contacts_request = 3;
+  GDI.Proto.IncidentDetection.UpdateIncidentContactsResponse update_incident_contacts_response = 4;
+  GDI.Proto.IncidentDetection.IncidentDetectedRequest incident_detected_request = 5;
+  GDI.Proto.IncidentDetection.IncidentDetectedResponse incident_detected_response = 6;
+  GDI.Proto.IncidentDetection.CancelIncidentRequest cancel_incident_request = 7;
+  GDI.Proto.IncidentDetection.CancelIncidentResponse cancel_incident_response = 8;
+  GDI.Proto.IncidentDetection.IncidentStatusNotification incident_status_notification = 9;
+  GDI.Proto.IncidentDetection.IncidentVideoNotification incident_video_notification = 10;
+}
+
+message UpdateDeviceOwnerRequest {
+  string name = 1;
+  string location = 2;
+}
+
+message UpdateDeviceOwnerResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 100;
+    ERROR = 200;
+  }
+  GDI.Proto.IncidentDetection.UpdateDeviceOwnerResponse.ResponseStatus status = 1;
+}
+
+message UpdateIncidentContactsRequest {
+  repeated GDI.Proto.IncidentDetection.Contact contact = 1;
+}
+
+message UpdateIncidentContactsResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 100;
+    ERROR = 200;
+  }
+  GDI.Proto.IncidentDetection.UpdateIncidentContactsResponse.ResponseStatus status = 1;
+}
+
+message Contact {
+  string id = 1;
+  string name = 2;
+  repeated string telephone = 3;
+  repeated string email_address = 4;
+}
+
+message IncidentDetectedRequest {
+  enum RequestType {
+    UNKNOWN = 0;
+    CYCLING_INCIDENT = 1;
+    ASSISTANCE_NEEDED = 2;
+  }
+  GDI.Proto.DataTypes.ScPoint position = 1;
+  uint32 seconds_to_delay_before_notifying_contact_persons = 2;
+  GDI.Proto.IncidentDetection.IncidentDetectedRequest.RequestType type = 3;
+}
+
+message IncidentDetectedResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    TIMER_STARTED = 100;
+    ERROR = 200;
+  }
+  GDI.Proto.IncidentDetection.IncidentDetectedResponse.ResponseStatus status = 1;
+}
+
+message IncidentStatusNotification {
+  enum Status {
+    UNKNOWN = 0;
+    SENT_NOTIFICATIONS_TO_CONTACTS_SUCCESS = 1;
+    SENT_NOTIFICATIONS_TO_CONTACTS_FAILURE = 2;
+    FINISHED = 3;
+  }
+  GDI.Proto.IncidentDetection.IncidentStatusNotification.Status status = 1;
+}
+
+message CancelIncidentRequest {
+}
+
+message CancelIncidentResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    SUCCESS = 100;
+    ERROR = 200;
+  }
+  GDI.Proto.IncidentDetection.CancelIncidentResponse.ResponseStatus status = 1;
+}
+
+message IncidentVideoNotification {
+}

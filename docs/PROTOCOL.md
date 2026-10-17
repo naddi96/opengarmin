@@ -341,3 +341,92 @@ Connect IQ, GPS CPE updates).
 - Archive file response (decoded): `0d 00 00 96 90 13 00 00 c5 00 10 31 b1`.
 
 These are used as unit-test fixtures in `protocol/src/test`.
+
+---
+
+## 10. GDI protobuf layer (modern file access)
+
+The Forerunner 255 + Garmin Connect 5.30.1 **does not use the legacy GFDI
+`DIRECTORY_FILTER (5007)`** — it replies `UNSUPPORTED`. File access runs over a
+protobuf "GDI" layer instead.
+
+### 10.1 Protobuf schemas
+
+All 141 `GDI.Proto.*` FileDescriptorProtos are embedded (as Java strings) in the
+generated classes in the APK and have been extracted to [`docs/protos/`](protos/).
+The relevant ones:
+
+| File | Purpose |
+|---|---|
+| `GDISmart.proto` | empty `Smart` base message |
+| `GDIFileAccessExtension.proto` | `Smart.file_access_service = 43` |
+| `GDICoreExtension.proto` | `Smart.core_service = 13` |
+| `GDIDataTransferExtension.proto` | `Smart.data_transfer_service = 7` |
+| `GDIFileAccess.proto` | ItemList / Pull / Push / ModifyFlags / checksum |
+| `GDICore.proto` | capabilities, time sync, connection ready |
+| `GDIDataTransfer.proto` | chunked data download/upload |
+| `GDIDataTypes.proto` | `UUID` (`fixed64 most/least`), `ScPoint`, enums |
+
+### 10.2 Transport
+
+GDI messages travel in **GFDI message type 5044** (in *both* directions).
+Type **5043** is only a cancellation/"unsupported" notice
+(`[id: u16] ...`) and needs no reply.
+
+Each GDI message = 14-byte header + a protobuf chunk (little-endian):
+
+```
+[u16 id][u32 offset][u32 totalLength][u32 chunkLength][chunk]
+```
+
+- `offset` is the byte position of this chunk in the full `Smart` message.
+- Large messages are split; reassemble by `id` + `offset` until `offset+len == totalLength`.
+- Payload is `GDI.Proto.Smart.Smart` with extension fields selecting a service.
+
+### 10.3 Session startup (observed against FR255)
+
+1. GFDI register + `DEVICE_INFORMATION` / `CONFIGURATION` handshake (section 6).
+2. Send `FeatureCapabilitiesRequest` (`Smart.core_service = 13` →
+   `CoreService.feature_capabilities_request = 8`) with the FileAccess capability
+   extension (`request_file_access_capabilities = 16`).
+3. Watch replies `FeatureCapabilitiesResponse` (`CoreService.feature_capabilities_response = 9`).
+4. Send `ItemListRequest` (`Smart.file_access_service = 43` →
+   `FileAccess.Service.item_list_request = 9`).
+5. Watch replies `ItemListResponse` (`Service.item_list_response = 10`) with
+   `items: repeated ItemReference`.
+
+`ItemListRequest` fields: `session_id=1`, `transaction_id=2`, `max_item_count=3`,
+`exclude_all_flags=4`, `get_flags=5`, `included_data_types=6`.
+`ItemListResponse` fields: `status=1`, `session_id=2`, `next_transaction_id=3`,
+`items=4`.
+`ItemReference`: `uid=1` (UUID), `data_type=2`, `data_size=3`,
+`requested_flags=4`, `transaction_id=5`, `urgency=6`.
+
+### 10.4 Quirks (important)
+
+- After a GDI exchange the watch **closes the GFDI handle**. The client must cycle
+  a Multi-Link `CLOSE_ALL` and re-register GFDI; registering immediately can return
+  status `0x03` (`ALREADY_IN_USE`).
+- The watch does **not** always echo the request's GDI `id`; responses can arrive
+  with the watch's own id sequence. Handle responses by content (service field),
+  not only by id.
+- A real capture of the FR255 directory (78 items, ~430 KB) is in
+  [`docs/samples/fr255_file_list.txt`](samples/fr255_file_list.txt). Items carry a
+  `gdxml_string` such as `FIT_TYPE_2`, `FIT_TYPE_3`, `FIT_TYPE_29`, …
+  `FIT_TYPE_4` is activity.
+
+### 10.5 Pulling a file (next)
+
+```
+PullItemDataRequest (FileAccess.Service field 1)
+  item              = the ItemReference from the list
+  priority          = e.g. STANDARD (20..29) / USER_INITIATED (30..39)
+  supported_transports = [MULTILINK_TRANSPORT_PIPE = 0]
+  offset            = 0
+```
+
+The watch answers `PullItemDataResponse` (field 2) with a `transfer_handle` and
+`transport`; the bytes then arrive over the DataTransfer service
+(`Smart.data_transfer_service = 7`, `DataDownloadRequest`/`DataDownloadResponse`)
+or as GFDI FIT messages, depending on firmware. This is milestone M4.
+

@@ -1,0 +1,141 @@
+syntax = "proto2";
+
+package GDI.Proto.LTE;
+
+import "GDIDataTypes.proto";
+
+enum LTEServiceProvider {
+  VERIZON = 1;
+  OTHER = 2;
+}
+
+enum LTEModemStatus {
+  UNKNOWN = 0;
+  ON = 1;
+  OFF = 2;
+}
+
+message LTEService {
+  GDI.Proto.LTE.LTEDeviceInfoRequest lte_device_info_request = 1;
+  GDI.Proto.LTE.LTEDeviceInfoResponse lte_device_info_response = 2;
+  GDI.Proto.LTE.LTEDeviceStatusRequest lte_device_status_request = 3;
+  GDI.Proto.LTE.LTEDeviceStatusResponse lte_device_status_response = 4;
+  GDI.Proto.LTE.LTEServiceActivationNotification lte_service_activation_notification = 5;
+  GDI.Proto.LTE.LTEPhoneInfoRequest phone_info_request = 6;
+  GDI.Proto.LTE.LTEPhoneInfoResponse phone_info_response = 7;
+  GDI.Proto.LTE.LTESubscriptionInfoNotification lte_subscription_info_notification = 8;
+  GDI.Proto.LTE.LTESubscriptionInfoRequest lte_subscription_info_request = 9;
+  GDI.Proto.LTE.LTESubscriptionInfoResponse lte_subscription_info_response = 10;
+  GDI.Proto.LTE.AssistancePlusGeofencingNotification ap_geofencing_notification = 11;
+  GDI.Proto.LTE.AssistancePlusValidationNotification ap_validation_notification = 12;
+}
+
+message LTEDeviceInfo {
+  string imei = 1;
+  string iccid = 2;
+}
+
+message LTEDeviceInfoRequest {
+}
+
+message LTEDeviceInfoResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 1;
+    NOT_AN_LTE_DEVICE = 2;
+    ERROR = 3;
+  }
+  GDI.Proto.LTE.LTEDeviceInfoResponse.ResponseStatus response_status = 1;
+  GDI.Proto.LTE.LTEDeviceInfo lte_device_info = 2;
+  GDI.Proto.LTE.LTEModemStatus modem_status = 3;
+}
+
+message LTEDeviceStatusRequest {
+  uint32 timeout = 1;
+}
+
+message LTEDeviceStatusResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    LTE_ACTIVE = 1;
+    LTE_INACTIVE = 2;
+    NOT_AN_LTE_DEVICE = 3;
+    TIMEOUT = 4;
+    TRY_AGAIN = 5;
+    ERROR = 6;
+  }
+  GDI.Proto.LTE.LTEDeviceStatusResponse.ResponseStatus response_status = 1;
+  GDI.Proto.LTE.LTEDeviceInfo lte_device_info = 2;
+  GDI.Proto.LTE.LTEModemStatus modem_status = 3;
+}
+
+message LTEServiceActivationNotification {
+  enum ActivationStatus {
+    STARTED = 0;
+    CANCELLED = 1;
+    SUCCESS = 2;
+  }
+  GDI.Proto.LTE.LTEServiceProvider service_provider = 1;
+  GDI.Proto.LTE.LTEServiceActivationNotification.ActivationStatus status = 2;
+}
+
+message LTEPhoneInfo {
+  GDI.Proto.LTE.LTEServiceProvider service_provider = 1;
+}
+
+message LTEPhoneInfoRequest {
+}
+
+message LTEPhoneInfoResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 1;
+    ERROR = 2;
+  }
+  GDI.Proto.LTE.LTEPhoneInfoResponse.ResponseStatus status = 1;
+  GDI.Proto.LTE.LTEPhoneInfo phone_info = 2;
+}
+
+message LTESubscriptionInfoRequest {
+}
+
+message LTESubscriptionInfoResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 1;
+    TIMEOUT = 2;
+    DEVICE_NOT_SUPPORTED = 3;
+  }
+  GDI.Proto.LTE.LTESubscriptionInfoResponse.ResponseStatus status = 1;
+  GDI.Proto.LTE.LTESubscriptionInfo info = 2;
+}
+
+message LTESubscriptionInfoNotification {
+  GDI.Proto.LTE.LTESubscriptionInfo info = 1;
+}
+
+message LTESubscriptionInfo {
+  enum SubscriptionStatus {
+    ACTIVE = 0;
+    INACTIVE = 1;
+    PENDING = 2;
+  }
+  uint32 device_id = 1;
+  bool is_subscribed = 2;
+  int64 account_expiration_unix_timestamp = 3;
+  GDI.Proto.LTE.LTESubscriptionInfo.SubscriptionStatus subscription_status = 4;
+}
+
+message AssistancePlusGeofencingNotification {
+  GDI.Proto.LTE.MobileCountry country = 1;
+  bool assistance_plus_covered = 2;
+}
+
+message AssistancePlusValidationNotification {
+  GDI.Proto.DataTypes.ScPoint location = 1;
+}
+
+message MobileCountry {
+  int32 code = 1;
+  string name = 2;
+}

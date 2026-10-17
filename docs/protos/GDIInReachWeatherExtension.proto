@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIInReachWeather.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.InReachWeather.InReachWeatherService inreach_weather_service = 34;
+}

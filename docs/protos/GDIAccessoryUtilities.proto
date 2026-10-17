@@ -1,0 +1,43 @@
+syntax = "proto2";
+
+package GDI.Proto.AccessoryUtilities;
+
+import "GDICore.proto";
+import "GDIEventSharing.proto";
+
+message Service {
+  GDI.Proto.AccessoryUtilities.ErrorNotification error_notification = 1;
+}
+
+message ActivityStateNotification {
+  enum ActivityState {
+    ACTIVITY_STARTED = 0;
+    ACTIVITY_STOPPED = 1;
+  }
+  uint32 current_sport = 1;
+  uint32 current_sub_sport = 2;
+  GDI.Proto.AccessoryUtilities.ActivityStateNotification.ActivityState activity_state = 3;
+}
+
+message ErrorNotification {
+  enum ErrorLevel {
+    INFO = 0;
+    WARNING = 1;
+    CRITICAL = 2;
+  }
+  GDI.Proto.AccessoryUtilities.ErrorNotification.ErrorLevel error_level = 1;
+  uint32 component_index = 2;
+  uint32 error_code = 3;
+  uint32 error_data = 4;
+}
+
+message CapabilitiesRequest {
+}
+
+message AccessoryUtilitiesCapabilities {
+  repeated uint32 channel_ids = 1;
+}
+
+message CapabilitiesResponse {
+  GDI.Proto.AccessoryUtilities.AccessoryUtilitiesCapabilities accessory_utilities_capabilities = 1;
+}

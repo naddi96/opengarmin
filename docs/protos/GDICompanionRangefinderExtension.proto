@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDICompanionRangefinder.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.CompanionRangefinder.CompanionRangefinderService companion_rangefinder_service = 54;
+}

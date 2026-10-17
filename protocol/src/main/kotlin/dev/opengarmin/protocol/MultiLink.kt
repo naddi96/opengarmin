@@ -90,10 +90,12 @@ class GarminSession(
 
     var autoHandshake: Boolean = true
     var onGfdiMessage: ((Gfdi.Frame) -> Unit)? = null
+    var onProtobuf: ((Gfdi.Frame) -> Unit)? = null
     var onReady: (() -> Unit)? = null
 
     private val cobsBuffer = ArrayList<Byte>(1024)
     private var seqCounter = 0
+    private var recovering = false
 
     fun begin() {
         log("ML: close-all")
@@ -156,8 +158,13 @@ class GarminSession(
                 val resp = MlControl.parseRegisterResponse(data) ?: return
                 if (resp.status != 0x00) {
                     log("ML: register service=0x%04x failed status=%d".format(resp.service, resp.status))
+                    if (resp.status == 0x03 && !recovering) { // ALREADY_IN_USE
+                        recovering = true
+                        sink(MlControl.closeAllRequest(clientId))
+                    }
                     return
                 }
+                if (resp.service == ServiceId.GFDI) recovering = false
                 when (resp.service) {
                     ServiceId.GFDI -> {
                         gfdiHandle = resp.handle
@@ -173,12 +180,27 @@ class GarminSession(
             }
             MlControl.CLOSE_ALL_RESP -> {
                 log("ML: close-all done, registering GFDI + REGISTRATION")
+                recovering = false
                 gfdiHandle = -1
                 registrationHandle = -1
                 sink(MlControl.registerRequest(clientId, ServiceId.GFDI, reliable = false))
                 sink(MlControl.registerRequest(clientId, ServiceId.REGISTRATION, reliable = false))
             }
-            MlControl.CLOSE_HANDLE_RESP -> log("ML: handle closed")
+            MlControl.CLOSE_HANDLE_RESP -> {
+                if (data.size >= 13) {
+                    val service = Gfdi.le16(data, 9)
+                    val handle = data[11].toInt() and 0xFF
+                    log("ML: handle closed service=0x%04x handle=%d".format(service, handle))
+                    if (service == ServiceId.GFDI && handle == gfdiHandle && !recovering) {
+                        recovering = true
+                        log("ML: GFDI closed by device; cycling close-all")
+                        gfdiHandle = -1
+                        sink(MlControl.closeAllRequest(clientId))
+                    }
+                } else {
+                    log("ML: handle closed")
+                }
+            }
         }
     }
 
@@ -208,6 +230,11 @@ class GarminSession(
         }
     }
 
+    /** Sends a GDI protobuf payload. The GDI data channel is GFDI message type 5044. */
+    fun sendProtobuf(payload: ByteArray, seq: Int? = nextSeq()) {
+        sendGfdi(Gfdi.build(Gfdi.MessageType.PROTOBUF_RESPONSE.id, payload, seq))
+    }
+
     /** Sends a raw payload on an arbitrary registered handle (no COBS). */
     fun sendOnHandle(handle: Int, payload: ByteArray) {
         val packet = ByteArray(1 + payload.size)
@@ -235,6 +262,11 @@ class GarminSession(
 
     private fun dispatch(frame: Gfdi.Frame) {
         onGfdiMessage?.invoke(frame)
+        if (frame.type == Gfdi.MessageType.PROTOBUF_REQUEST.id ||
+            frame.type == Gfdi.MessageType.PROTOBUF_RESPONSE.id
+        ) {
+            onProtobuf?.invoke(frame)
+        }
         if (autoHandshake) respondToHandshake(frame)
     }
 
@@ -246,7 +278,7 @@ class GarminSession(
             Gfdi.MessageType.CURRENT_TIME_REQUEST.id ->
                 Handshake.currentTimeRequest(frame.payload, System.currentTimeMillis() / 1000, 0, frame.seq)
             Gfdi.MessageType.NOTIFICATION_SUBSCRIPTION.id -> Handshake.notificationSubscription(frame.payload, frame.seq)
-            Gfdi.MessageType.PROTOBUF_REQUEST.id -> Handshake.protobufRequest(frame.seq)
+            // 5043 is a protobuf cancellation/unsupported notice from the device; it needs no reply.
             else -> null
         }
         if (reply != null) sendGfdi(reply)

@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDITopsideBuoy.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.TopsideBuoy.Service topside_buoy_service = 58;
+}

@@ -1,0 +1,27 @@
+syntax = "proto2";
+
+package GDI.Proto.SportProfileSetup;
+
+message SportProfileSetupService {
+  GDI.Proto.SportProfileSetup.SupportedSportListRequest supported_sport_list_request = 1;
+  GDI.Proto.SportProfileSetup.SupportedSportListResponse supported_sport_list_response = 2;
+  GDI.Proto.SportProfileSetup.SelectedSportListNotification selected_sport_list_notification = 3;
+}
+
+message SupportedSportListRequest {
+}
+
+message SupportedSportListResponse {
+  repeated GDI.Proto.SportProfileSetup.Sport sport = 1;
+  bool profile_setup_complete = 2;
+}
+
+message SelectedSportListNotification {
+  repeated GDI.Proto.SportProfileSetup.Sport sport = 1;
+}
+
+message Sport {
+  uint32 sport_fit_type = 1;
+  uint32 sport_fit_sub_type = 2;
+  bool enabled = 3;
+}

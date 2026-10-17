@@ -1,0 +1,35 @@
+syntax = "proto2";
+
+package GDI.Proto.StoreAndForward;
+
+import "GDIDataTypes.proto";
+
+message Service {
+  GDI.Proto.StoreAndForward.GetStoredDataRequest get_stored_data_request = 1;
+  GDI.Proto.StoreAndForward.GetStoredDataResponse get_stored_data_response = 2;
+}
+
+message GetStoredDataRequest {
+  enum DataType {
+    HEARTRATE = 1;
+  }
+  GDI.Proto.StoreAndForward.GetStoredDataRequest.DataType type = 1;
+  uint32 current_date_time = 2;
+  uint32 start_time_minutes = 3;
+  uint32 end_time_minutes = 4;
+}
+
+message GetStoredDataResponse {
+  enum GenerationResponse {
+    SUCCESS = 1;
+    FAILED = 2;
+    ABORTED = 3;
+    TIME_SYNC_FAILED = 4;
+  }
+  message StoredData {
+    GDI.Proto.DataTypes.UUID uuid = 1;
+    uint64 size = 2;
+  }
+  GDI.Proto.StoreAndForward.GetStoredDataResponse.GenerationResponse response = 1;
+  repeated GDI.Proto.StoreAndForward.GetStoredDataResponse.StoredData objects = 2;
+}

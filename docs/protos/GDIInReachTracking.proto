@@ -1,0 +1,218 @@
+syntax = "proto2";
+
+package GDI.Proto.InReachTracking;
+
+import "GDIDataTypes.proto";
+import "GDICore.proto";
+import "GDIGenericItemTransfer.proto";
+
+enum TrackingState {
+  TRACKING_STATE_OFF = 1;
+  TRACKING_STATE_NORMAL = 2;
+  TRACKING_STATE_EMERGENCY = 3;
+}
+
+enum SettingError {
+  SETTING_ERROR_OK = 1;
+  SETTING_ERROR_GENERIC = 2;
+  SETTING_ERROR_UNKNOWN_SETTING = 3;
+  SETTING_ERROR_UNAVAILABLE_SETTING = 4;
+  SETTING_ERROR_ILLEGAL_VALUE = 5;
+}
+
+enum UintListSetting {
+  MOVING_INTERVAL = 1;
+  RESTING_INTERVAL = 2;
+  RESTING_DISTANCE = 3;
+}
+
+enum UintListSettingSpecialValue {
+  MOVING_INTERVAL_OFF = 1;
+  RESTING_INTERVAL_SAME_AS_MOVING = 2;
+  RESTING_DISTANCE_OFF = 3;
+}
+
+message InReachTrackingService {
+  GDI.Proto.InReachTracking.TrackingStateRequest tracking_state_request = 1;
+  GDI.Proto.InReachTracking.TrackingStateResponse tracking_state_response = 2;
+  GDI.Proto.InReachTracking.StartTrackingRequest start_tracking_request = 3;
+  GDI.Proto.InReachTracking.StartTrackingResponse start_tracking_response = 4;
+  GDI.Proto.InReachTracking.StopTrackingRequest stop_tracking_request = 5;
+  GDI.Proto.InReachTracking.StopTrackingResponse stop_tracking_response = 6;
+  GDI.Proto.InReachTracking.CurrentSettingsRequest current_settings_request = 7;
+  GDI.Proto.InReachTracking.CurrentSettingsResponse current_settings_response = 8;
+  GDI.Proto.InReachTracking.LegalUintListValuesRequest legal_uint_list_values_request = 9;
+  GDI.Proto.InReachTracking.LegalUintListValuesResponse legal_uint_list_values_response = 10;
+  GDI.Proto.InReachTracking.ChangeUintListSettingRequest change_uint_list_setting_request = 11;
+  GDI.Proto.InReachTracking.ChangeUintListSettingResponse change_uint_list_setting_response = 12;
+  GDI.Proto.InReachTracking.TrackingSubscribeRequest tracking_subscribe_request = 13;
+  GDI.Proto.InReachTracking.TrackingSubscribeResponse tracking_subscribe_response = 14;
+  GDI.Proto.InReachTracking.TrackingStatusNotification tracking_status_notification = 15;
+  GDI.Proto.InReachTracking.LegalValuesChangedNotification legal_values_changed_notification = 16;
+  GDI.Proto.InReachTracking.TrackingSessionNotification tracking_session_notification = 17;
+  GDI.Proto.InReachTracking.TrackingPointNotification tracking_point_notification = 18;
+}
+
+message TrackingSessionInfo {
+  GDI.Proto.DataTypes.UUID uuid = 1;
+  fixed32 start_time = 2;
+  fixed32 last_sent_timestamp = 3;
+  bool send_pending = 4;
+  float total_distance_m = 5;
+}
+
+message TrackingPointInfo {
+  enum PointType {
+    START = 1;
+    NORMAL = 2;
+    STOP = 3;
+  }
+  enum PointStatus {
+    FAILED = 1;
+    PENDING = 2;
+    COMPLETE = 3;
+  }
+  GDI.Proto.InReachTracking.TrackingState state = 1;
+  GDI.Proto.InReachTracking.TrackingPointInfo.PointType type = 2;
+  GDI.Proto.InReachTracking.TrackingPointInfo.PointStatus status = 3;
+}
+
+message TrackingStateRequest {
+}
+
+message TrackingStateResponse {
+  enum Status {
+    OK = 1;
+    GENERIC_ERROR = 2;
+  }
+  GDI.Proto.InReachTracking.TrackingStateResponse.Status status = 1;
+  GDI.Proto.InReachTracking.TrackingState tracking = 2;
+  GDI.Proto.InReachTracking.TrackingSettings settings = 3;
+  GDI.Proto.DataTypes.UUID session_uuid = 4;
+  GDI.Proto.InReachTracking.TrackingSessionInfo session_info = 5;
+}
+
+message StartTrackingRequest {
+}
+
+message StartTrackingResponse {
+  enum Status {
+    OK = 1;
+    GENERIC_ERROR = 2;
+    ALREADY_TRACKING = 3;
+    NOT_ACTIVATED = 4;
+    MOVING_INTERVAL_IS_OFF = 5;
+  }
+  GDI.Proto.InReachTracking.StartTrackingResponse.Status status = 1;
+}
+
+message StopTrackingRequest {
+}
+
+message StopTrackingResponse {
+  enum Status {
+    OK = 1;
+    GENERIC_ERROR = 2;
+    STOP_DISALLOWED = 3;
+  }
+  GDI.Proto.InReachTracking.StopTrackingResponse.Status status = 1;
+}
+
+message TrackingSettings {
+  uint32 settings_version = 1;
+  repeated GDI.Proto.InReachTracking.UintListSettingValue uint_list_values = 2;
+}
+
+message UintListSettingValue {
+  GDI.Proto.InReachTracking.UintListSetting setting = 1;
+  uint32 value = 2;
+  GDI.Proto.InReachTracking.UintListSettingSpecialValue special = 3;
+}
+
+message CurrentSettingsRequest {
+  uint32 max_settings_version = 1;
+}
+
+message CurrentSettingsResponse {
+  GDI.Proto.InReachTracking.SettingError status = 1;
+  GDI.Proto.InReachTracking.TrackingSettings settings = 2;
+}
+
+message LegalUintListValuesRequest {
+  GDI.Proto.InReachTracking.UintListSetting setting = 1;
+}
+
+message LegalUintListValuesResponse {
+  GDI.Proto.InReachTracking.SettingError status = 1;
+  GDI.Proto.InReachTracking.UintListSetting setting = 2;
+  repeated uint32 legal_values = 3;
+  repeated GDI.Proto.InReachTracking.UintListSettingSpecialValue legal_special_values = 4;
+}
+
+message ChangeUintListSettingRequest {
+  GDI.Proto.InReachTracking.UintListSettingValue value = 1;
+}
+
+message ChangeUintListSettingResponse {
+  GDI.Proto.InReachTracking.SettingError status = 1;
+}
+
+message TrackingSubscribeRequest {
+  bool want_status = 1;
+  bool want_legal_values_changed = 2;
+  bool want_session = 3;
+  bool want_point = 4;
+}
+
+message TrackingSubscribeResponse {
+  enum Status {
+    OK = 1;
+    GENERIC_ERROR = 2;
+  }
+  GDI.Proto.InReachTracking.TrackingSubscribeResponse.Status status = 1;
+}
+
+message TrackingStatusNotification {
+  GDI.Proto.InReachTracking.TrackingState tracking = 1;
+  GDI.Proto.InReachTracking.TrackingSettings settings = 2;
+  GDI.Proto.DataTypes.UUID session_uuid = 3;
+}
+
+message TrackingSessionNotification {
+  GDI.Proto.InReachTracking.TrackingSessionInfo session_info = 1;
+}
+
+message TrackingPointNotification {
+  repeated GDI.Proto.Core.LocationData points = 1;
+}
+
+message LegalValuesChangedNotification {
+  repeated GDI.Proto.InReachTracking.UintListSetting changed_uint_lists = 1;
+}
+
+message TrackingPointDateRangeQuery {
+  fixed32 date_begin = 1;
+  fixed32 date_end = 2;
+  uint32 point_limit = 3;
+  GDI.Proto.DataTypes.UUID session_uuid = 4;
+}
+
+message DataTypeConfigExt {
+  GDI.Proto.InReachTracking.TrackingPointDateRangeQuery point_date_range = 1;
+}
+
+message GenericItemReferenceExt {
+  GDI.Proto.Core.LocationData tracking_point = 1;
+}
+
+extend GDI.Proto.Core.LocationData {
+  GDI.Proto.InReachTracking.TrackingPointInfo locationdata_inreach_tracking_ext = 1000;
+}
+
+extend GDI.Proto.GenericItemTransfer.DataTypeConfig {
+  GDI.Proto.InReachTracking.DataTypeConfigExt config_ext = 101;
+}
+
+extend GDI.Proto.GenericItemTransfer.GenericItemReference {
+  GDI.Proto.InReachTracking.GenericItemReferenceExt reference_ext = 101;
+}

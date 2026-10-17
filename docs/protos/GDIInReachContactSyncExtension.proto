@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIInReachContactSync.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.InReachContactSync.InReachContactSyncService inreach_contact_sync_service = 32;
+}

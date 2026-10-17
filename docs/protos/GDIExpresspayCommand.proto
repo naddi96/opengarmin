@@ -1,0 +1,25 @@
+syntax = "proto2";
+
+package GDI.Proto.ExpresspayCommand;
+
+message ExpresspayCommandService {
+  GDI.Proto.ExpresspayCommand.ExpresspayRequest request = 1;
+  GDI.Proto.ExpresspayCommand.ExpresspayResponse response = 2;
+}
+
+message ExpresspayRequest {
+  enum ControlCommandType {
+    UNKNOWN_CONTROL_COMMAND_TYPE = 0;
+    APDU_COMMAND = 1;
+    CONNECT = 2;
+    DISCONNECT = 3;
+    RESET = 4;
+    QUREY = 5;
+  }
+  GDI.Proto.ExpresspayCommand.ExpresspayRequest.ControlCommandType ControlCommand = 1;
+  bytes APDUCommandData = 2;
+}
+
+message ExpresspayResponse {
+  bytes Data = 1;
+}

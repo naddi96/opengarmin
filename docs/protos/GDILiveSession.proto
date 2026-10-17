@@ -1,0 +1,272 @@
+syntax = "proto2";
+
+package GDI.Proto.LiveSession;
+
+import "GDIDataTypes.proto";
+import "GDIEventSharing.proto";
+
+message LiveSessionService {
+  GDI.Proto.LiveSession.MetricConfigurationRequest metric_configuration_request = 1;
+  GDI.Proto.LiveSession.MetricConfigurationResponse metric_configuration_response = 2;
+  GDI.Proto.LiveSession.LapButtonRequest lap_request = 3;
+  GDI.Proto.LiveSession.LapButtonResponse lap_response = 4;
+  GDI.Proto.LiveSession.StartStopButtonRequest start_stop_request = 5;
+  GDI.Proto.LiveSession.StartStopButtonResponse start_stop_response = 6;
+  GDI.Proto.LiveSession.AdvanceWorkoutRequest advance_workout_request = 7;
+  GDI.Proto.LiveSession.AdvanceWorkoutResponse advance_workout_response = 8;
+  GDI.Proto.LiveSession.SetConfigurationRequest set_configuration_request = 9;
+  GDI.Proto.LiveSession.SetConfigurationResponse set_configuration_response = 10;
+  GDI.Proto.LiveSession.CancelFinalizeTimerRequest cancel_finalize_timer_request = 11;
+  GDI.Proto.LiveSession.CancelFinalizeTimerResponse cancel_finalize_timer_response = 12;
+  GDI.Proto.LiveSession.ModifyWorkoutRequest modify_workout_request = 13;
+  GDI.Proto.LiveSession.ModifyWorkoutResponse modify_workout_response = 14;
+  GDI.Proto.LiveSession.WorkoutModifiedRequest workout_modified_request = 15;
+  GDI.Proto.LiveSession.WorkoutModifiedResponse workout_modified_response = 16;
+  GDI.Proto.LiveSession.AppInitiatedActivityCommandRequest app_initiated_activity_command_request = 17;
+  GDI.Proto.LiveSession.AppInitiatedActivityCommandResponse app_initiated_activity_command_response = 18;
+  GDI.Proto.LiveSession.WorkoutListRequest workout_list_request = 19;
+  GDI.Proto.LiveSession.WorkoutListResponse workout_list_response = 20;
+  GDI.Proto.LiveSession.WorkoutRequest workout_request = 21;
+  GDI.Proto.LiveSession.WorkoutResponse workout_response = 22;
+  GDI.Proto.LiveSession.DeleteWorkoutRequest delete_workout_request = 23;
+  GDI.Proto.LiveSession.DeleteWorkoutResponse delete_workout_response = 24;
+}
+
+message SportProfile {
+  uint32 sport_fit_type = 1;
+  uint32 sport_fit_sub_type = 2;
+  string name = 3;
+  uint32 accent_color = 4;
+}
+
+message Zones {
+  enum Type {
+    HR = 0;
+    POWER = 1;
+  }
+  GDI.Proto.LiveSession.Zones.Type type = 1;
+  repeated uint32 high_values = 2;
+}
+
+message Target {
+  uint32 distance = 1;
+  uint32 speed = 2;
+  uint32 time = 3;
+  uint32 reps = 4;
+}
+
+message WorkoutSession {
+  enum Type {
+    OPEN_REPEAT = 0;
+    STRUCTURED_REPEAT = 1;
+    TARGET_WORKOUT = 2;
+    STRUCTURED_WORKOUT = 3;
+    HIIT_TIMER = 4;
+  }
+  GDI.Proto.LiveSession.WorkoutSession.Type type = 1;
+  bool has_warmup_start = 2;
+}
+
+message PowerCurveEntry {
+  uint32 power = 1;
+  uint32 duration = 2;
+}
+
+message ActivityStartRequest {
+  GDI.Proto.DataTypes.UUID uuid = 1;
+  GDI.Proto.LiveSession.SportProfile sport_profile = 2;
+  GDI.Proto.DataTypes.UUID workout_file_uid = 3;
+  repeated GDI.Proto.LiveSession.Zones zones = 4;
+  GDI.Proto.LiveSession.Target target = 5;
+  GDI.Proto.LiveSession.WorkoutSession workout_session = 6;
+  repeated GDI.Proto.LiveSession.PowerCurveEntry power_curve_entries = 7;
+  uint32 ftp = 8;
+}
+
+message ActivityStateRequest {
+  enum State {
+    START = 0;
+    STOP = 1;
+    PAUSE = 2;
+    RESUME = 3;
+    ENDED = 4;
+    SAVING = 5;
+    DISCARDING = 6;
+    WORKOUT_ENDED = 7;
+    WORKOUT_WARMUP = 8;
+    WORKOUT_ACTIVE = 9;
+    WORKOUT_REST = 10;
+    WORKOUT_COOLDOWN = 11;
+  }
+  enum EndReason {
+    SAVED = 0;
+    DISCARDED = 1;
+  }
+  GDI.Proto.LiveSession.ActivityStateRequest.State state = 1;
+  GDI.Proto.LiveSession.ActivityStateRequest.EndReason end_reason = 2;
+}
+
+message LapButtonRequest {
+}
+
+message LapButtonResponse {
+}
+
+message StartStopButtonRequest {
+}
+
+message StartStopButtonResponse {
+}
+
+message LiveSessionEventNotification {
+  GDI.Proto.LiveSession.ActivityStartRequest activity_start_request = 1;
+  GDI.Proto.LiveSession.ActivityStateRequest activity_state_request = 2;
+  GDI.Proto.LiveSession.DataNotification data_notification = 3;
+  GDI.Proto.LiveSession.WorkoutStepStartedRequest workout_step_started_request = 4;
+  GDI.Proto.LiveSession.FinalizeSetRequest finalize_set_request = 5;
+  GDI.Proto.LiveSession.CancelFinalizeTimerRequest cancel_finalize_timer_request = 6;
+  GDI.Proto.LiveSession.SetConfigurationRequest set_configuration_request = 7;
+}
+
+message Metric {
+  uint32 timestamp = 1;
+  uint32 type = 2;
+  float float_val = 3;
+  int32 int_val = 4;
+  string string_val = 5;
+  GDI.Proto.DataTypes.MeasurementUnit measurement_unit = 6;
+  repeated float float_arr = 7;
+}
+
+message DataNotification {
+  repeated GDI.Proto.LiveSession.Metric metrics = 1;
+}
+
+message AppInitiatedActivityCommandRequest {
+  enum Command {
+    INITIAL_START = 0;
+    RESUME = 1;
+    PAUSE = 2;
+    SAVE = 3;
+    DISCARD = 4;
+  }
+  GDI.Proto.LiveSession.SportProfile sport_profile = 1;
+  GDI.Proto.LiveSession.AppInitiatedActivityCommandRequest.Command command = 2;
+  uint32 workout_id = 3;
+}
+
+message AppInitiatedActivityCommandResponse {
+  enum FailureReason {
+    UNKNOWN = 1;
+  }
+  GDI.Proto.LiveSession.AppInitiatedActivityCommandResponse.FailureReason failure = 1;
+}
+
+message MetricConfigurationRequest {
+  repeated uint32 requested_types = 1;
+}
+
+message MetricConfigurationResponse {
+  repeated uint32 types = 1;
+}
+
+message WorkoutStepStartedRequest {
+  uint32 step_id = 1;
+  uint32 current_repeat = 2;
+  uint32 total_repeats = 3;
+}
+
+message AdvanceWorkoutRequest {
+}
+
+message AdvanceWorkoutResponse {
+}
+
+message AutodetectExerciseSuggestion {
+  uint32 exercise_category = 1;
+  uint32 exercise_subcategory = 2;
+  uint32 confidence = 3;
+}
+
+message FinalizeSetRequest {
+  uint32 stepIndex = 1;
+  uint32 reps = 2;
+  float weight = 3;
+  GDI.Proto.DataTypes.MeasurementUnit weight_unit = 4;
+  uint32 timeout = 5;
+  repeated GDI.Proto.LiveSession.AutodetectExerciseSuggestion exercise_suggestions = 6;
+}
+
+message SetConfigurationRequest {
+  uint32 stepIndex = 1;
+  uint32 reps = 2;
+  float weight = 3;
+  GDI.Proto.DataTypes.MeasurementUnit weight_unit = 4;
+  uint32 exercise_category = 5;
+  uint32 exercise_subcategory = 6;
+  bool configure_next_set = 7;
+}
+
+message SetConfigurationResponse {
+}
+
+message CancelFinalizeTimerRequest {
+}
+
+message CancelFinalizeTimerResponse {
+}
+
+message ModifyWorkoutRequest {
+  oneof modification {
+    uint32 skipped_cluster_id = 1;
+    uint32 deleted_cluster_id = 2;
+    uint32 start_now_cluster_id = 3;
+    uint32 add_cluster_id = 4;
+  }
+}
+
+message ModifyWorkoutResponse {
+  repeated uint32 active_clusters = 1;
+  repeated uint32 skipped_clusters = 2;
+}
+
+message WorkoutModifiedRequest {
+  repeated uint32 active_clusters = 1;
+  repeated uint32 skipped_clusters = 2;
+}
+
+message WorkoutModifiedResponse {
+}
+
+message WorkoutListRequest {
+}
+
+message WorkoutListResponse {
+  repeated GDI.Proto.LiveSession.WorkoutInfo list = 1;
+}
+
+message WorkoutInfo {
+  enum Type {
+    SCHEDULED = 0;
+    NORMAL = 1;
+  }
+  string name = 1;
+  GDI.Proto.LiveSession.WorkoutInfo.Type type = 2;
+  uint32 workout_id = 3;
+  uint32 scheduled_time = 4;
+}
+
+message WorkoutRequest {
+  uint32 workout_id = 1;
+}
+
+message WorkoutResponse {
+  GDI.Proto.DataTypes.UUID workout_file_uid = 1;
+}
+
+message DeleteWorkoutRequest {
+  uint32 workout_id = 1;
+}
+
+message DeleteWorkoutResponse {
+}

@@ -1,0 +1,141 @@
+syntax = "proto2";
+
+package GDI.Proto.DataTypes;
+
+enum GPSFixType {
+  FORCE_NO_SOLUTION = 1;
+  NO_SOLUTION = 2;
+  DEAD_RECKONING = 3;
+  TWO_D = 4;
+  THREE_D = 5;
+  TWO_D_DIFFERENTIAL = 6;
+  THREE_D_DIFFERENTIAL = 7;
+}
+
+enum Languages {
+  UNKNOWN = 0;
+  AFRIKAANS = 1;
+  ALBANIAN = 2;
+  ARABIC = 3;
+  ARMENIAN = 4;
+  AZERBAIJANI = 5;
+  BASQUE = 6;
+  BELARUSIAN = 7;
+  BENGALI = 8;
+  BOSNIAN = 9;
+  BULGARIAN = 10;
+  CATALAN = 11;
+  CHINESE_SIMPLIFIED = 12;
+  CHINESE_TRADITIONAL_HONG_KONG = 13;
+  CHINESE_TRADITIONAL_TAIWAN = 14;
+  CROATIAN = 15;
+  CZECH = 16;
+  DANISH = 17;
+  DUTCH = 18;
+  ENGLISH_UK = 19;
+  ENGLISH_US = 20;
+  ESPERANTO = 21;
+  ESTONIAN = 22;
+  FAROESE = 23;
+  FILIPINO = 24;
+  FINNISH = 25;
+  FRENCH_CANADA = 26;
+  FRENCH_FRANCE = 27;
+  FRISIAN = 28;
+  GALICIAN = 29;
+  GEORGIAN = 30;
+  GERMAN = 31;
+  GREEK = 32;
+  HEBREW = 33;
+  HINDI = 34;
+  HUNGARIAN = 35;
+  ICELANDIC = 36;
+  INDONESIAN = 37;
+  IRISH = 38;
+  ITALIAN = 39;
+  JAPANESE = 40;
+  KHMER = 41;
+  KOREAN = 42;
+  KURDISH = 43;
+  LATIN = 44;
+  LATVIAN = 45;
+  LITHUANIAN = 46;
+  MACEDONIAN = 47;
+  MALAY = 48;
+  MALAYALAM = 49;
+  NEPALI = 50;
+  NORWEGIAN_BOKMAL = 51;
+  NORWEGIAN_NYNORSK = 52;
+  PASHTO = 53;
+  PERSIAN = 54;
+  POLISH = 55;
+  PORTUGUESE_BRAZIL = 56;
+  PORTUGUESE_PORTUGAL = 57;
+  PUNJABI = 58;
+  ROMANIAN = 59;
+  RUSSIAN = 60;
+  SERBIAN = 61;
+  SLOVAK = 62;
+  SLOVENIAN = 63;
+  SPANISH = 64;
+  SPANISH_SPAIN = 65;
+  SWAHILI = 66;
+  SWEDISH = 67;
+  TAMIL = 68;
+  TELUGU = 69;
+  THAI = 70;
+  TURKISH = 71;
+  UKRAINIAN = 72;
+  VIETNAMESE = 73;
+  WELSH = 74;
+  ENGLISH_AUSTRALIA = 75;
+}
+
+enum CoordinateSystem {
+  WGS84 = 0;
+  GCJ02 = 1;
+}
+
+enum CompassDirection {
+  NORTH = 0;
+  NORTH_NORTHEAST = 1;
+  NORTHEAST = 2;
+  EAST_NORTHEAST = 3;
+  EAST = 4;
+  EAST_SOUTHEAST = 5;
+  SOUTHEAST = 6;
+  SOUTH_SOUTHEAST = 7;
+  SOUTH = 8;
+  SOUTH_SOUTHWEST = 9;
+  SOUTHWEST = 10;
+  WEST_SOUTHWEST = 11;
+  WEST = 12;
+  WEST_NORTHWEST = 13;
+  NORTHWEST = 14;
+  NORTH_NORTHWEST = 15;
+}
+
+enum MeasurementUnit {
+  METRIC = 0;
+  STATUTE = 1;
+}
+
+message ScPoint {
+  sint32 lat = 1;
+  sint32 lon = 2;
+}
+
+message UUID {
+  fixed64 most_significant = 1;
+  fixed64 least_significant = 2;
+}
+
+message Locale {
+  string language_code = 1;
+  string country_code = 2;
+}
+
+message DataTransferItem {
+  uint32 id = 1;
+  uint32 size = 2;
+}

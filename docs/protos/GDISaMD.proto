@@ -1,0 +1,36 @@
+syntax = "proto2";
+
+package GDI.Proto.SaMD;
+
+import "GDICore.proto";
+
+enum CapabilityBits {
+  EMBEDDED_HEALTH_TOKEN = 0;
+  ECG_SERVICE = 1;
+  FILE_TRANSFER = 2;
+  DATA_XFER = 3;
+}
+
+enum SaMDCommonFailures {
+  OTHER = 0;
+  NOT_READY = 1;
+  GHS_SERVER = 2;
+  NO_NETWORK_CONNECTION = 3;
+  NO_UPLOAD_CONSENT = 4;
+  NO_APP_AUTHORIZATION = 5;
+  SAMDID_MISMATCH = 6;
+}
+
+message Service {
+  bytes garmin_health_service = 1;
+  bytes ecg_service = 2;
+  string garmin_health_service_file_transfer = 3;
+}
+
+extend GDI.Proto.Core.FeatureCapabilitiesRequest {
+  bytes requestSaMDCapabilities = 10;
+}
+
+extend GDI.Proto.Core.FeatureCapabilitiesResponse {
+  bytes responseSaMDCapabilities = 10;
+}

@@ -1,0 +1,124 @@
+syntax = "proto2";
+
+package GDI.Proto.AudioPrompts;
+
+enum SpeechType {
+  UNKNOWN = 0;
+  NAVIGATION = 1;
+}
+
+message AudioPromptsService {
+  GDI.Proto.AudioPrompts.LapNotification lap_notification = 1;
+  GDI.Proto.AudioPrompts.AudioSettingsUpdatedNotification audio_settings_updated_notification = 2;
+  GDI.Proto.AudioPrompts.AudioSettingsRequest audio_settings_request = 3;
+  GDI.Proto.AudioPrompts.AudioSettingsResponse audio_settings_response = 4;
+  GDI.Proto.AudioPrompts.SpeedNotification speed_notification = 5;
+  GDI.Proto.AudioPrompts.PaceNotification pace_notification = 6;
+  GDI.Proto.AudioPrompts.HeartRateNotification heart_rate_notification = 7;
+  GDI.Proto.AudioPrompts.PowerNotification power_notification = 8;
+  GDI.Proto.AudioPrompts.SpeechNotification speech_notification = 9;
+  GDI.Proto.AudioPrompts.SupportedLanguagesRequest supported_languages_request = 10;
+  GDI.Proto.AudioPrompts.SupportedLanguagesResponse supported_languages_response = 11;
+  GDI.Proto.AudioPrompts.SetLanguageRequest set_language_request = 12;
+  GDI.Proto.AudioPrompts.SetLanguageResponse set_language_response = 13;
+  GDI.Proto.AudioPrompts.PhraseNotification phrase_notification = 14;
+}
+
+message AudioSettingsUpdatedNotification {
+}
+
+message AudioSettingsRequest {
+}
+
+message AudioSettingsResponse {
+  bool speakLaps = 1;
+  uint64 speedIntervalTime = 2;
+  uint64 hrIntervalTime = 3;
+  uint64 powerIntervalTime = 4;
+  bool speakNavigation = 5;
+}
+
+message LapNotification {
+  uint32 lap_number = 1;
+  uint64 lap_time = 2;
+  float lap_speed = 3;
+  GDI.Proto.AudioPrompts.Language audio_prompt_language = 4;
+}
+
+message SpeedNotification {
+  float average_speed = 1;
+  float current_speed = 2;
+  float lap_speed = 3;
+  bool device_is_displaying_metric_units = 4;
+  GDI.Proto.AudioPrompts.Language audio_prompt_language = 5;
+}
+
+message PaceNotification {
+  uint64 average_pace = 1;
+  uint64 current_pace = 2;
+  uint64 lap_pace = 3;
+  GDI.Proto.AudioPrompts.Language audio_prompt_language = 4;
+}
+
+message HeartRateNotification {
+  uint32 bpm = 1;
+  float zone = 2;
+  uint32 percentage_max = 3;
+  uint32 percentage_hrr = 4;
+  GDI.Proto.AudioPrompts.Language audio_prompt_language = 5;
+}
+
+message PowerNotification {
+  uint32 average_power = 1;
+  uint32 normalized_power = 2;
+  uint32 lap_power = 3;
+  GDI.Proto.AudioPrompts.Language audio_prompt_language = 4;
+}
+
+message SpeechNotification {
+  GDI.Proto.AudioPrompts.SpeechType speech_type = 1;
+  string text_to_speak = 2;
+}
+
+message PhraseNotification {
+  uint32 priority = 1;
+  repeated GDI.Proto.AudioPrompts.Phrase phrases = 2;
+  repeated GDI.Proto.AudioPrompts.GravelPhrase gravel_phrases = 3;
+}
+
+message Phrase {
+  uint32 phrase_id = 1;
+  repeated GDI.Proto.AudioPrompts.SlotValue slot_values = 2;
+}
+
+message SlotValue {
+  oneof value {
+    sint32 int_value = 1;
+    float float_value = 2;
+  }
+}
+
+message GravelPhrase {
+  string phrase_template = 1;
+  string context_json = 2;
+}
+
+message SetLanguageRequest {
+  GDI.Proto.AudioPrompts.Language lang = 1;
+}
+
+message SetLanguageResponse {
+  bool success = 1;
+}
+
+message Language {
+  string language_code = 1;
+  string country_code = 2;
+}
+
+message SupportedLanguagesRequest {
+}
+
+message SupportedLanguagesResponse {
+  repeated GDI.Proto.AudioPrompts.Language languages = 1;
+}

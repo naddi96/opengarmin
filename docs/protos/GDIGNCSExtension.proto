@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIGNCS.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.GNCS.Service gncs_service = 49;
+}

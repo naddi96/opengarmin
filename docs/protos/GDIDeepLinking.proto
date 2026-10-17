@@ -1,0 +1,22 @@
+syntax = "proto2";
+
+package GDI.Proto.DeepLinking;
+
+message DeepLinkingService {
+  GDI.Proto.DeepLinking.OpenDeepLinkingRequest deep_linking_request = 1;
+  GDI.Proto.DeepLinking.OpenDeepLinkingResponse deep_linking_response = 2;
+}
+
+message OpenDeepLinkingRequest {
+  repeated string schemas = 1;
+}
+
+message OpenDeepLinkingResponse {
+  enum ResponseStatus {
+    OK = 1;
+    UNHANDLED = 2;
+    UNKNOWN_ERROR = 3;
+  }
+  GDI.Proto.DeepLinking.OpenDeepLinkingResponse.ResponseStatus status = 1;
+  int32 used_schema_index = 2;
+}

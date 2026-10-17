@@ -1,0 +1,34 @@
+syntax = "proto2";
+
+package GDI.Proto.XeroGameCam;
+
+message Service {
+  GDI.Proto.XeroGameCam.InitialSetupInfoRequest initial_setup_info_request = 1;
+  GDI.Proto.XeroGameCam.InitialSetupInfoResponse initial_setup_info_response = 2;
+  GDI.Proto.XeroGameCam.SwitchToWifiRequest switch_to_wifi_request = 3;
+  GDI.Proto.XeroGameCam.SwitchToWifiResponse switch_to_wifi_response = 4;
+}
+
+message InitialSetupInfoRequest {
+}
+
+message InitialSetupInfoResponse {
+  message WifiConnectionData {
+    string ssid = 1;
+    string password = 2;
+  }
+  string IMEI = 1;
+  GDI.Proto.XeroGameCam.InitialSetupInfoResponse.WifiConnectionData wifi_data = 2;
+}
+
+message SwitchToWifiRequest {
+}
+
+message SwitchToWifiResponse {
+  enum Status {
+    UNKNOWN = 0;
+    SUCCESS = 1;
+    PIN_SWITCH_FAILURE = 2;
+  }
+  GDI.Proto.XeroGameCam.SwitchToWifiResponse.Status status = 1;
+}

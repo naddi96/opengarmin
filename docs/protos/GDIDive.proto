@@ -1,0 +1,43 @@
+syntax = "proto2";
+
+package GDI.Proto.Dive;
+
+import "GDIEventSharing.proto";
+
+message DiveService {
+}
+
+message DiveReadinessResults {
+  fixed32 timestamp_utc = 1;
+  uint32 score = 2;
+  uint32 feedback_phrase = 3;
+  uint32 classification = 4;
+  uint32 classification_factor_sleep = 5;
+  uint32 classification_factor_sleep_history = 6;
+  uint32 classification_factor_body_battery = 7;
+  uint32 classification_factor_training = 8;
+  uint32 classification_factor_recovery_time = 9;
+  uint32 classification_factor_dive_history = 10;
+  uint32 classification_factor_jetlag = 11;
+  bool dcs_warning = 12;
+  bool no_sleep_data = 13;
+  bool no_recent_dive_history = 14;
+  bool classification_blocked = 15;
+  bool residual_tissue_load = 16;
+  bool recent_gauge_dive = 17;
+  uint32 classification_factor_recent_dive = 18;
+  uint32 sleep_score = 101;
+  uint32 sleep_quality = 102;
+  uint32 sleep_history_quality = 103;
+  uint32 body_battery = 104;
+  uint32 training_status = 105;
+  uint32 recovery_time_min = 106;
+  uint32 jetlag_severity = 107;
+  uint32 cns = 108;
+  uint32 otus = 109;
+  uint32 last_dive_timestamp_utc = 110;
+}
+
+message DiveReadinessChangedNotification {
+  GDI.Proto.Dive.DiveReadinessResults dive_readiness_results = 1;
+}

@@ -1,0 +1,188 @@
+syntax = "proto2";
+
+package GDI.Proto.LaunchMonitor;
+
+import "GDIEventSharing.proto";
+
+message Service {
+  GDI.Proto.LaunchMonitor.StatusRequest status_request = 1;
+  GDI.Proto.LaunchMonitor.StatusResponse status_response = 2;
+  GDI.Proto.LaunchMonitor.WakeUpRequest wake_up_request = 3;
+  GDI.Proto.LaunchMonitor.WakeUpResponse wake_up_response = 4;
+  GDI.Proto.LaunchMonitor.TiltRequest tilt_request = 5;
+  GDI.Proto.LaunchMonitor.TiltResponse tilt_response = 6;
+  GDI.Proto.LaunchMonitor.StartTiltCalibrationRequest start_tilt_cal_request = 7;
+  GDI.Proto.LaunchMonitor.StartTiltCalibrationResponse start_tilt_cal_response = 8;
+  GDI.Proto.LaunchMonitor.ResetTiltCalibrationRequest reset_tilt_cal_request = 9;
+  GDI.Proto.LaunchMonitor.ResetTiltCalibrationResponse reset_tilt_cal_response = 10;
+  GDI.Proto.LaunchMonitor.ShotConfigRequest shot_config_request = 11;
+  GDI.Proto.LaunchMonitor.ShotConfigResponse shot_config_response = 12;
+}
+
+message StatusRequest {
+}
+
+message StatusResponse {
+  GDI.Proto.LaunchMonitor.State state = 1;
+}
+
+message WakeUpRequest {
+}
+
+message WakeUpResponse {
+  enum ResponseStatus {
+    SUCCESS = 0;
+    ALREADY_AWAKE = 1;
+    UNKNOWN_ERROR = 2;
+  }
+  GDI.Proto.LaunchMonitor.WakeUpResponse.ResponseStatus status = 1;
+}
+
+message TiltRequest {
+}
+
+message TiltResponse {
+  GDI.Proto.LaunchMonitor.Tilt tilt = 1;
+}
+
+message StartTiltCalibrationRequest {
+}
+
+message StartTiltCalibrationResponse {
+  enum CalibrationStatus {
+    STARTED = 0;
+    IN_PROGRESS = 1;
+    ERROR = 2;
+  }
+  GDI.Proto.LaunchMonitor.StartTiltCalibrationResponse.CalibrationStatus status = 1;
+}
+
+message ResetTiltCalibrationRequest {
+  bool should_reset = 1;
+}
+
+message ResetTiltCalibrationResponse {
+  enum Status {
+    CAN_RESET = 1;
+    ALREADY_RESET = 2;
+    RESET_SUCCESSFUL = 3;
+    CANNOT_RESET = 4;
+  }
+  GDI.Proto.LaunchMonitor.ResetTiltCalibrationResponse.Status status = 1;
+}
+
+message ShotConfigRequest {
+  float temperature = 1;
+  float humidity = 2;
+  float altitude = 3;
+  float air_density = 4;
+  float tee_range = 5;
+}
+
+message ShotConfigResponse {
+  bool success = 1;
+}
+
+message AlertDetails {
+  GDI.Proto.LaunchMonitor.State state = 1;
+  GDI.Proto.LaunchMonitor.Metrics metrics = 2;
+  GDI.Proto.LaunchMonitor.Error error = 3;
+  GDI.Proto.LaunchMonitor.CalibrationStatus tilt_calibration = 4;
+}
+
+message State {
+  enum StateType {
+    STANDBY = 0;
+    INTERFERENCE_TEST = 1;
+    WAITING = 2;
+    RECORDING = 3;
+    PROCESSING = 4;
+    ERROR = 5;
+  }
+  GDI.Proto.LaunchMonitor.State.StateType state = 1;
+}
+
+message CalibrationStatus {
+  enum StatusType {
+    IN_BOUNDS = 1;
+    RECALIBRATION_SUGGESTED = 2;
+    RECALIBRATION_REQUIRED = 3;
+  }
+  enum CalibrationResult {
+    SUCCESS = 0;
+    ERROR = 1;
+    UNIT_MOVING = 2;
+  }
+  GDI.Proto.LaunchMonitor.CalibrationStatus.StatusType status = 1;
+  GDI.Proto.LaunchMonitor.CalibrationStatus.CalibrationResult result = 2;
+}
+
+message Metrics {
+  enum ShotType {
+    PRACTICE = 0;
+    NORMAL = 1;
+  }
+  uint32 shot_id = 1;
+  GDI.Proto.LaunchMonitor.Metrics.ShotType shot_type = 2;
+  GDI.Proto.LaunchMonitor.BallMetrics ball_metrics = 3;
+  GDI.Proto.LaunchMonitor.ClubMetrics club_metrics = 4;
+  GDI.Proto.LaunchMonitor.SwingMetrics swing_metrics = 5;
+}
+
+message BallMetrics {
+  enum SpinCalculationType {
+    RATIO = 0;
+    BALL_FLIGHT = 1;
+    OTHER = 2;
+    MEASURED = 3;
+  }
+  enum GolfBallType {
+    UNKNOWN = 0;
+    CONVENTIONAL = 1;
+    MARKED = 2;
+  }
+  float launch_angle = 1;
+  float launch_direction = 2;
+  float ball_speed = 3;
+  float spin_axis = 4;
+  float total_spin = 5;
+  GDI.Proto.LaunchMonitor.BallMetrics.SpinCalculationType spin_calculation_type = 6;
+  GDI.Proto.LaunchMonitor.BallMetrics.GolfBallType golf_ball_type = 7;
+}
+
+message ClubMetrics {
+  float club_head_speed = 1;
+  float club_angle_face = 2;
+  float club_angle_path = 3;
+  float attack_angle = 4;
+}
+
+message SwingMetrics {
+  uint32 back_swing_start_time = 1;
+  uint32 down_swing_start_time = 2;
+  uint32 impact_time = 3;
+  uint32 follow_through_end_time = 4;
+  uint32 end_recording_time = 5;
+}
+
+message Error {
+  enum ErrorCode {
+    UNKNOWN = 0;
+    OVERHEATING = 1;
+    RADAR_SATURATION = 2;
+    PLATFORM_TILTED = 3;
+  }
+  enum Severity {
+    WARNING = 0;
+    SERIOUS = 1;
+    FATAL = 2;
+  }
+  GDI.Proto.LaunchMonitor.Error.ErrorCode code = 1;
+  GDI.Proto.LaunchMonitor.Error.Severity severity = 2;
+  GDI.Proto.LaunchMonitor.Tilt deviceTilt = 3;
+}
+
+message Tilt {
+  float roll = 1;
+  float pitch = 2;
+}

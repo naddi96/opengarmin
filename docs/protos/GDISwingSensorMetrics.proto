@@ -1,0 +1,25 @@
+syntax = "proto2";
+
+package GDI.Proto.SwingSensorMetrics;
+
+message SwingMetrics {
+  float swing_speed = 1;
+  float backswing_time = 2;
+  float downswing_time = 3;
+  float shaft_lean_at_address = 4;
+  float shaft_angle_at_address = 5;
+  float club_path_at_impact = 6;
+  float face_angle_at_impact = 7;
+  float club_loft_at_impact = 8;
+  float shaft_lean_at_impact = 9;
+  float shaft_angle_at_impact = 10;
+  uint64 club_id = 11;
+  float angle_of_attack = 12;
+  float face_to_target_at_impact = 13;
+  float club_loft_offset_at_impact = 14;
+  bool impact_was_made = 15;
+}
+
+message SwingMetricsNotification {
+  GDI.Proto.SwingSensorMetrics.SwingMetrics swing_metrics = 1;
+}

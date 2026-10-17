@@ -1,0 +1,61 @@
+syntax = "proto2";
+
+package GDI.Proto.SmsNotification;
+
+import "GDICore.proto";
+
+enum CannedListType {
+  PHONE_CALL_RESPONSE = 0;
+  SMS_MESSAGE_RESPONSE = 1;
+  GROUP_TRACK_RESPONSE = 2;
+}
+
+message SmsNotificationService {
+  GDI.Proto.SmsNotification.SmsSendMessageRequest sms_send_message_request = 1;
+  GDI.Proto.SmsNotification.SmsSendMessageResponse sms_send_message_response = 2;
+  GDI.Proto.SmsNotification.SmsCannedListChangedNotification sms_canned_list_changed_notification = 3;
+  GDI.Proto.SmsNotification.SmsCannedListRequest sms_canned_list_request = 4;
+  GDI.Proto.SmsNotification.SmsCannedListResponse sms_canned_list_response = 5;
+}
+
+message SmsSendMessageRequest {
+  string receiver_number = 1;
+  string message = 2;
+}
+
+message SmsSendMessageResponse {
+  enum ResponseStatus {
+    SUCCESS = 0;
+    GENERIC_ERROR = 1;
+  }
+  GDI.Proto.SmsNotification.SmsSendMessageResponse.ResponseStatus status = 1;
+}
+
+message SmsCannedListChangedNotification {
+  repeated GDI.Proto.SmsNotification.CannedListType changed_types = 1;
+}
+
+message SmsCannedListRequest {
+  repeated GDI.Proto.SmsNotification.CannedListType requested_types = 1;
+}
+
+message SmsCannedList {
+  GDI.Proto.SmsNotification.CannedListType type = 1;
+  repeated string responses = 2;
+}
+
+message SmsCannedListResponse {
+  enum ResponseStatus {
+    SUCCESS = 0;
+    GENERIC_ERROR = 1;
+  }
+  GDI.Proto.SmsNotification.SmsCannedListResponse.ResponseStatus status = 1;
+  repeated GDI.Proto.SmsNotification.SmsCannedList lists = 2;
+}
+
+message CapabilitiesRequest {
+}
+
+message CapabilitiesResponse {
+  repeated GDI.Proto.SmsNotification.CannedListType type = 1;
+}

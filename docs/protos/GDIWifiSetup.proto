@@ -1,0 +1,97 @@
+syntax = "proto2";
+
+package GDI.Proto.WifiSetup;
+
+import "GDICore.proto";
+
+message WifiSetupService {
+  GDI.Proto.WifiSetup.AccessPointScanRequest access_point_scan_request = 1;
+  GDI.Proto.WifiSetup.AccessPointScanResponse access_point_scan_response = 2;
+  GDI.Proto.WifiSetup.StoreAccessPointNotification store_access_point_notification = 3;
+  GDI.Proto.WifiSetup.VerifyConnectionRequest verify_connection_request = 4;
+  GDI.Proto.WifiSetup.VerifyConnectionResponse verify_connection_response = 5;
+  GDI.Proto.WifiSetup.OAuthCredentialsRequest oauth_credentials_request = 6;
+  GDI.Proto.WifiSetup.OAuthCredentialsResponse oauth_credentials_response = 7;
+  GDI.Proto.WifiSetup.StoredAccessPointRequest access_point_request = 8;
+  GDI.Proto.WifiSetup.StoredAccessPointResponse access_point_response = 9;
+  GDI.Proto.WifiSetup.AccessPointStartScanNotification access_point_start_scan_notification = 10;
+  GDI.Proto.WifiSetup.AccessPointScanCompleteNotification access_point_scan_complete_notification = 11;
+  GDI.Proto.WifiSetup.VerifyConnectionNotification verify_connection_notification = 12;
+  GDI.Proto.WifiSetup.ConnectionVerificationStatusNotification connection_verification_status_notification = 13;
+  GDI.Proto.WifiSetup.UpdateAccessPointRequest update_access_point_request = 14;
+  GDI.Proto.WifiSetup.UpdateAccessPointResponse update_access_point_response = 15;
+  GDI.Proto.WifiSetup.OAuthCredentialsRequest oauth_credentials_request_with_agent_msg = 16;
+  GDI.Proto.WifiSetup.OAuthCredentialsResponse oauth_credentials_response_with_agent_msg = 17;
+  GDI.Proto.WifiSetup.MobileCarrierInfoRequest mobile_carrier_info_request = 18;
+  GDI.Proto.WifiSetup.MobileCarrierInfoResponse mobile_carrier_info_response = 19;
+}
+
+message CapabilitiesRequest {
+  uint32 service_version = 1;
+}
+
+message CapabilitiesResponse {
+}
+
+message AccessPointScanRequest {
+}
+
+message AccessPointScanResponse {
+  bytes encrypted_wifi_protobuf = 1;
+}
+
+message AccessPointStartScanNotification {
+}
+
+message AccessPointScanCompleteNotification {
+  bytes encrypted_wifi_protobuf = 1;
+}
+
+message StoredAccessPointRequest {
+}
+
+message StoredAccessPointResponse {
+  bytes encrypted_wifi_protobuf = 1;
+}
+
+message StoreAccessPointNotification {
+  bytes encrypted_wifi_protobuf = 1;
+}
+
+message UpdateAccessPointRequest {
+  bytes encrypted_wifi_protobuf = 1;
+}
+
+message UpdateAccessPointResponse {
+  bytes encrypted_wifi_protobuf = 1;
+}
+
+message VerifyConnectionRequest {
+}
+
+message VerifyConnectionResponse {
+  bytes encrypted_wifi_protobuf = 1;
+}
+
+message VerifyConnectionNotification {
+  bytes encrypted_wifi_protobuf = 1;
+}
+
+message ConnectionVerificationStatusNotification {
+  bytes encrypted_wifi_protobuf = 1;
+}
+
+message OAuthCredentialsRequest {
+}
+
+message OAuthCredentialsResponse {
+  bytes encrypted_wifi_protobuf = 1;
+}
+
+message MobileCarrierInfoRequest {
+}
+
+message MobileCarrierInfoResponse {
+  repeated string mobile_country_code = 1;
+  repeated string iso_country_code = 2;
+}

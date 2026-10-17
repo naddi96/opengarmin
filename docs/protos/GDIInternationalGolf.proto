@@ -1,0 +1,346 @@
+syntax = "proto2";
+
+package GDI.Proto.InternationalGolf;
+
+import "GDIDataTypes.proto";
+import "GDIEventSharing.proto";
+
+enum MapType {
+  MEDIUM = 0;
+  MEDIUM_PLUS = 1;
+  COURSE_VIEW = 2;
+  GREEN_CONTOUR = 3;
+}
+
+enum StatTrendType {
+  UP = 0;
+  DOWN = 1;
+  EVEN = 2;
+}
+
+enum GolfSubscriptionType {
+  NONE = 0;
+  RENEWABLE = 1;
+  LIFETIME = 2;
+}
+
+enum PlaysLikeDirectionType {
+  UNKNOWN_RESPONSE_STATUS = 0;
+  FLAT = 1;
+  UPHILL = 2;
+  DOWNHILL = 3;
+}
+
+enum PlaysLikeFactors {
+  NOT_SUPPORTED = 0;
+  ELEVATION_ONLY = 1;
+  ELEVATION_PLUS_WEATHER = 2;
+  ELEVATION_PLUS_WIND = 3;
+  ELEVATION_PLUS_WIND_AND_WEATHER = 4;
+}
+
+enum DeviceType {
+  EMBEDDED_DEVICE = 0;
+  MOBILE_APP = 1;
+}
+
+message InternationalGolfService {
+  GDI.Proto.InternationalGolf.GetGolfCourseListRequest get_golf_course_list_request = 1;
+  GDI.Proto.InternationalGolf.GetGolfCourseListResponse get_golf_course_list_response = 2;
+  GDI.Proto.InternationalGolf.GetGolfCourseRequest get_golf_course_request = 3;
+  GDI.Proto.InternationalGolf.GetGolfCourseResponse get_golf_course_response = 4;
+  GDI.Proto.InternationalGolf.CourseUpdateRequest course_update_request = 5;
+  GDI.Proto.InternationalGolf.CourseUpdateResponse course_update_response = 6;
+  GDI.Proto.InternationalGolf.ScorecardDataNotification scorecard_data_notification = 7;
+  GDI.Proto.InternationalGolf.RoundSettingsRequest round_settings_request = 8;
+  GDI.Proto.InternationalGolf.RoundSettingsResponse round_settings_response = 9;
+  GDI.Proto.InternationalGolf.EndRoundRequest end_round_request = 10;
+  GDI.Proto.InternationalGolf.EndRoundResponse end_round_response = 11;
+  GDI.Proto.InternationalGolf.VirtualTournamentRequest virtual_tournament_request = 12;
+  GDI.Proto.InternationalGolf.VirtualTournamentResponse virtual_tournament_response = 13;
+  GDI.Proto.InternationalGolf.TournamentInfoRequest tournament_info_request = 14;
+  GDI.Proto.InternationalGolf.TournamentInfoResponse tournament_info_response = 15;
+  GDI.Proto.InternationalGolf.PerformanceStatsRequest performance_stats_request = 16;
+  GDI.Proto.InternationalGolf.PerformanceStatsResponse performance_stats_response = 17;
+  GDI.Proto.InternationalGolf.GolfClubListRequest golf_club_list_request = 18;
+  GDI.Proto.InternationalGolf.GolfClubListResponse golf_club_list_response = 19;
+  GDI.Proto.InternationalGolf.GolfClubUpdateListRequest golf_club_update_list_request = 20;
+  GDI.Proto.InternationalGolf.GolfClubUpdateListResponse golf_club_update_list_response = 21;
+}
+
+message GetGolfCourseListRequest {
+  int32 num_courses = 1;
+  GDI.Proto.DataTypes.ScPoint position = 2;
+}
+
+message GetGolfCourseListResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 100;
+    DATABASE_ERROR = 200;
+  }
+  GDI.Proto.InternationalGolf.GetGolfCourseListResponse.ResponseStatus status = 1;
+  repeated GDI.Proto.InternationalGolf.GolfCourseInfo course_list = 2;
+}
+
+message GetGolfCourseRequest {
+  int32 build_id = 1;
+  int32 global_id = 2;
+  GDI.Proto.InternationalGolf.MapType map_type = 3;
+  bool is_non_english_map = 4;
+}
+
+message GetGolfCourseResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 100;
+    DATABASE_ERROR = 200;
+    COURSE_NOT_AVAILABLE = 300;
+  }
+  GDI.Proto.InternationalGolf.GetGolfCourseResponse.ResponseStatus status = 1;
+  bytes golf_course_data = 2;
+  GDI.Proto.DataTypes.DataTransferItem golf_course_file = 3;
+  bytes golf_course_gma_data = 4;
+  bytes golf_course_unl_data = 5;
+  int32 global_id = 6;
+  string part_number = 7;
+  int32 version = 8;
+  GDI.Proto.InternationalGolf.MapType map_type = 9;
+}
+
+message GolfCourseInfo {
+  int32 build_id = 1;
+  int32 global_id = 2;
+  GDI.Proto.DataTypes.ScPoint position = 3;
+  string name = 4;
+}
+
+message CourseUpdateRequestInfo {
+  int32 build_id = 1;
+  int32 global_id = 2;
+  string part_number = 3;
+  int32 version = 4;
+  string green_contour_part_number = 5;
+  int32 green_contour_version = 6;
+  bool is_non_english_map = 7;
+}
+
+message CourseUpdateResponseInfo {
+  int32 build_id = 1;
+  int32 global_id = 2;
+  bool update_available = 3;
+  bool green_contour_update_available = 4;
+}
+
+message CourseUpdateRequest {
+  GDI.Proto.InternationalGolf.MapType map_type = 1;
+  repeated GDI.Proto.InternationalGolf.CourseUpdateRequestInfo installed_courses = 2;
+}
+
+message CourseUpdateResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 100;
+    ERROR = 200;
+  }
+  GDI.Proto.InternationalGolf.CourseUpdateResponse.ResponseStatus status = 1;
+  repeated GDI.Proto.InternationalGolf.CourseUpdateResponseInfo installed_courses = 2;
+  GDI.Proto.InternationalGolf.GolfSubscriptionType golf_subscription_type = 3;
+  uint32 golf_subscription_end_time = 4;
+}
+
+message ScorecardDataNotification {
+  uint32 id = 1;
+  uint32 size = 2;
+}
+
+message RoundSettingsRequest {
+  uint32 global_course_id = 1;
+  string tee_box_name = 2;
+  uint32 back_nine_global_course_id = 3;
+  string back_nine_tee_box_name = 4;
+}
+
+message RoundSettingsResponse {
+  bool is_tournament = 1;
+  bool is_live_scoring = 2;
+  sint32 player_course_handicap = 3;
+  uint32 player_profile_id = 4;
+}
+
+message EndRoundRequest {
+  uint32 global_course_id = 1;
+  bool scorecard_saved = 2;
+  uint32 stop_time = 3;
+}
+
+message EndRoundResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 1;
+    ERROR = 2;
+  }
+  GDI.Proto.InternationalGolf.EndRoundResponse.ResponseStatus status = 1;
+}
+
+message VirtualTournamentRequest {
+}
+
+message VirtualTournamentResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 1;
+    NO_ACTIVE_TOURNAMENT = 2;
+    NETWORK_UNAVAILABLE = 3;
+    NETWORK_ERROR = 4;
+  }
+  GDI.Proto.InternationalGolf.VirtualTournamentResponse.ResponseStatus status = 1;
+  GDI.Proto.InternationalGolf.GolfCourseInfo course_info = 2;
+}
+
+message TournamentInfoRequest {
+}
+
+message TournamentInfoResponse {
+  bool is_tournament = 1;
+  string tournament_name = 2;
+  uint32 start_time = 3;
+  GDI.Proto.InternationalGolf.GolfCourseInfo course_info = 4;
+  string tee_box_name = 5;
+  GDI.Proto.InternationalGolf.GolfCourseInfo back_nine_course_info = 6;
+  string back_nine_tee_box_name = 7;
+}
+
+message PerformanceStatsRequest {
+}
+
+message PerformanceStatsResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 1;
+    NETWORK_ERROR = 2;
+  }
+  GDI.Proto.InternationalGolf.PerformanceStatsResponse.ResponseStatus status = 1;
+  float handicap = 2;
+  GDI.Proto.InternationalGolf.StatTrendType handicap_trend = 3;
+  GDI.Proto.InternationalGolf.DriveShotStats drive_shot_stats = 4;
+  GDI.Proto.InternationalGolf.ApproachShotStats approach_shot_stats = 5;
+  GDI.Proto.InternationalGolf.ChipShotStats chip_shot_stats = 6;
+  GDI.Proto.InternationalGolf.PuttShotStats putt_shot_stats = 7;
+  repeated GDI.Proto.InternationalGolf.StrokesGainedRating strokes_gained_ratings = 8;
+}
+
+message StrokesGainedRating {
+  enum ShotType {
+    DRIVE = 0;
+    APPROACH = 1;
+    CHIP = 2;
+    PUTT = 3;
+    BUNKER = 4;
+    RECOVERY = 5;
+  }
+  float strokes_gained = 1;
+  GDI.Proto.InternationalGolf.StatTrendType trend = 2;
+  GDI.Proto.InternationalGolf.StrokesGainedRating.ShotType shot_type = 3;
+}
+
+message DriveShotStats {
+  float percent_fairway_hit = 1;
+  float percent_fairway_left = 2;
+  float percent_fairway_right = 3;
+  float min_shot_distance = 4;
+  float max_shot_distance = 5;
+  float avg_shot_distance = 6;
+  float min_dispersion_distance = 7;
+  float max_dispersion_distance = 8;
+}
+
+message ApproachShotStats {
+  float percent_hit_green = 1;
+  float percent_hit_green_10 = 2;
+  float percent_hit_green_20 = 3;
+  float percent_hit_green_20_plus = 4;
+  float percent_missed_green = 5;
+  float percent_short_of_green = 6;
+  float percent_long_of_green = 7;
+  float percent_left_of_green = 8;
+  float percent_right_of_green = 9;
+  float green_in_regulation = 10;
+}
+
+message ChipShotStats {
+  float percent_hit_green_10 = 1;
+  float percent_hit_green_20 = 2;
+  float percent_hit_green_20_plus = 3;
+  float percent_missed_green = 4;
+  float percent_up_down = 5;
+  float percent_sandies = 6;
+}
+
+message PuttShotStats {
+  float average_putts_per_hole = 1;
+}
+
+message GolfHoleInfo {
+  uint32 hole_number = 1;
+  float green_front_dist = 2;
+  float green_back_dist = 3;
+  float green_front_plays_like_dist = 4;
+  float green_back_plays_like_dist = 5;
+  GDI.Proto.InternationalGolf.PlaysLikeDirectionType green_front_plays_like_dir = 6;
+  GDI.Proto.InternationalGolf.PlaysLikeDirectionType green_back_plays_like_dir = 7;
+  float green_front_to_pin_dist = 8;
+  float green_back_to_pin_dist = 9;
+  float laser_range_plays_like_dist = 10;
+  GDI.Proto.InternationalGolf.PlaysLikeDirectionType laser_range_plays_like_dir = 11;
+  GDI.Proto.InternationalGolf.PlaysLikeFactors plays_like_factors = 12;
+  GDI.Proto.InternationalGolf.DeviceType device_type = 13;
+}
+
+message GolfStateChangedNotification {
+  GDI.Proto.InternationalGolf.GolfHoleInfo current_hole_info = 1;
+}
+
+message GolfClubInfo {
+  uint32 club_id_upper = 1;
+  uint32 club_id_lower = 2;
+  uint32 club_type = 3;
+  uint32 hole_number = 4;
+  float last_posn_lat = 5;
+  float last_posn_lon = 6;
+  uint32 last_connected_time = 7;
+  string ct1_uuid = 8;
+  uint32 ct1_last_updated_time = 9;
+}
+
+message GolfClubStatusChangedNotification {
+  GDI.Proto.InternationalGolf.GolfClubInfo golf_club_info = 1;
+}
+
+message GolfClubListRequest {
+}
+
+message GolfClubListResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 1;
+    ERROR = 2;
+  }
+  GDI.Proto.InternationalGolf.GolfClubListResponse.ResponseStatus status = 1;
+  uint32 club_count = 2;
+  repeated GDI.Proto.InternationalGolf.GolfClubInfo club_list = 3;
+}
+
+message GolfClubUpdateListRequest {
+  uint32 club_count = 1;
+  repeated GDI.Proto.InternationalGolf.GolfClubInfo club_list = 2;
+}
+
+message GolfClubUpdateListResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 1;
+    ERROR = 2;
+  }
+  GDI.Proto.InternationalGolf.GolfClubUpdateListResponse.ResponseStatus status = 1;
+}

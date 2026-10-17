@@ -1,0 +1,79 @@
+syntax = "proto2";
+
+package GDI.Proto.GroupLiveTrack;
+
+import "GDIDataTypes.proto";
+
+enum ResponseFailureStatus {
+  UNDEFINED = 0;
+  NO_NETWORK_CONN = 1;
+  TIMEOUT = 2;
+  SERVER_ERROR = 3;
+  EMPTY_SESSION_IDS_LIST = 4;
+}
+
+message GroupLiveTrackService {
+  GDI.Proto.GroupLiveTrack.GetLiveTrackConnectionsRequest get_live_track_connections_request = 1;
+  GDI.Proto.GroupLiveTrack.GetLiveTrackConnectionsResponse get_live_track_connections_response = 2;
+  GDI.Proto.GroupLiveTrack.GetLastKnownLocationRequest get_last_known_location_request = 3;
+  GDI.Proto.GroupLiveTrack.GetLastKnownLocationResponse get_last_known_location_response = 4;
+}
+
+message GetLiveTrackConnectionsRequest {
+  GDI.Proto.DataTypes.ScPoint position = 1;
+  uint32 radius = 2;
+  repeated GDI.Proto.GroupLiveTrack.FitnessPointData.ActivityType activity_type = 3;
+}
+
+message GetLiveTrackConnectionsResponse {
+  GDI.Proto.GroupLiveTrack.GroupTrackResponse group_track_response = 1;
+  repeated GDI.Proto.GroupLiveTrack.LiveConnectionUserTrackPoint track_points = 2;
+  uint32 call_interval = 3;
+}
+
+message GroupTrackResponse {
+  bool success = 1;
+  GDI.Proto.GroupLiveTrack.ResponseFailureStatus failureStatus = 2;
+}
+
+message GetLastKnownLocationRequest {
+  repeated string session_id = 1;
+  uint64 user_profile_pk = 2;
+}
+
+message GetLastKnownLocationResponse {
+  GDI.Proto.GroupLiveTrack.GroupTrackResponse group_track_response = 1;
+  repeated GDI.Proto.GroupLiveTrack.LiveConnectionTrackPoint track_points = 2;
+  uint32 call_interval = 3;
+  bool dirty = 4;
+}
+
+message FitnessPointData {
+  enum ActivityType {
+    CYCLING = 0;
+    RUNNING = 1;
+    WALKING = 2;
+    OTHER = 3;
+    TRANSITION = 4;
+    FITNESS_EQUIPMENT = 5;
+    SWIMMING = 6;
+    HIKING = 7;
+    UNCATEGORIZED = 8;
+    MOTOR_CYCLING = 9;
+  }
+}
+
+message LiveConnectionTrackPoint {
+  string session_id = 1;
+  uint64 reported_timestamp = 2;
+  GDI.Proto.DataTypes.ScPoint position = 3;
+  double speed_mps = 4;
+  sint32 heading_sc = 5;
+  GDI.Proto.GroupLiveTrack.FitnessPointData.ActivityType activity_type = 6;
+}
+
+message LiveConnectionUserTrackPoint {
+  string user_display_name = 1;
+  GDI.Proto.GroupLiveTrack.LiveConnectionTrackPoint track_point = 2;
+  bool is_livetrack_messaging_available = 3;
+}

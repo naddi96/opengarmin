@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIAntiTheftAlarm.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.AntiTheftAlarm.AntiTheftAlarmService anti_theft_alarm_service = 26;
+}

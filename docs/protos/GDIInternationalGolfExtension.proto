@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIInternationalGolf.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.InternationalGolf.InternationalGolfService international_golf_service = 5;
+}

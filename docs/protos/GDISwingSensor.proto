@@ -1,0 +1,34 @@
+syntax = "proto2";
+
+package GDI.Proto.SwingSensor;
+
+import "GDISwingSensorClubs.proto";
+import "GDISwingSensorMetrics.proto";
+import "GDISwingSensorUserSettings.proto";
+
+message NewSwingNotification {
+  uint32 id = 1;
+  uint32 size = 2;
+}
+
+message SwingSensorConnectedNotification {
+}
+
+message SwingSensorDisconnectedNotification {
+}
+
+message SwingSensorService {
+  GDI.Proto.SwingSensor.NewSwingNotification new_swing_notification = 1;
+  GDI.Proto.SwingSensorClubs.GetClubListRequest get_club_list_request = 4;
+  GDI.Proto.SwingSensorClubs.GetClubListResponse get_club_list_response = 5;
+  GDI.Proto.SwingSensorClubs.SetActiveClubRequest set_active_club_request = 8;
+  GDI.Proto.SwingSensorClubs.SetActiveClubResponse set_active_club_response = 9;
+  GDI.Proto.SwingSensorUserSettings.GetUserSettingsRequest get_user_settings_request = 10;
+  GDI.Proto.SwingSensorUserSettings.GetUserSettingsResponse get_user_settings_response = 11;
+  GDI.Proto.SwingSensorUserSettings.SetUserSettingsRequest set_user_settings_request = 12;
+  GDI.Proto.SwingSensorUserSettings.SetUserSettingsResponse set_user_settings_response = 13;
+  GDI.Proto.SwingSensor.SwingSensorConnectedNotification swing_sensor_connected_notification = 14;
+  GDI.Proto.SwingSensor.SwingSensorDisconnectedNotification swing_sensor_disconnected_notification = 15;
+  GDI.Proto.SwingSensorMetrics.SwingMetricsNotification swing_metrics_notification = 18;
+  GDI.Proto.SwingSensorClubs.ClubListChangedNotification club_list_changed_notification = 19;
+}

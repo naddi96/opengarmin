@@ -1,0 +1,122 @@
+syntax = "proto2";
+
+package GDI.Proto.DeviceStatus;
+
+import "GDICore.proto";
+
+enum RemoteDeviceBatteryStatusBatteryStatus {
+  UNKNOWN_STATUS = 0;
+  NORMAL = 1;
+  LOW = 2;
+  CRITICAL = 3;
+  CHARGING = 4;
+  FULLY_CHARGED = 5;
+  ERROR = 6;
+}
+
+enum PasscodeResponseStatus {
+  PASSCODE_STATUS_ERROR = 0;
+  PASSCODE_STATUS_OK = 1;
+  PASSCODE_STATUS_NFC_DEVICE = 2;
+}
+
+message DeviceStatusService {
+  GDI.Proto.DeviceStatus.RemoteDeviceBatteryStatusChangedNotification remote_device_battery_status_changed_notification = 1;
+  GDI.Proto.DeviceStatus.RemoteDeviceBatteryStatusRequest remote_device_battery_status_request = 2;
+  GDI.Proto.DeviceStatus.RemoteDeviceBatteryStatusResponse remote_device_battery_status_response = 3;
+  GDI.Proto.DeviceStatus.GetCurrentActivityStatusRequest activity_status_request = 4;
+  GDI.Proto.DeviceStatus.GetCurrentActivityStatusResponse activity_status_response = 5;
+  GDI.Proto.DeviceStatus.GetInitialSetupStatusRequest initial_setup_status_request = 6;
+  GDI.Proto.DeviceStatus.GetInitialSetupStatusResponse initial_setup_status_response = 7;
+  GDI.Proto.DeviceStatus.DevicePasscodeInvalidAttemptNotification device_passcode_invalid_attempt_notification = 8;
+  GDI.Proto.DeviceStatus.DeviceUnlockedNotification device_unlocked_notification = 9;
+  GDI.Proto.DeviceStatus.SetDevicePasscodeRequest set_device_passcode_request = 10;
+  GDI.Proto.DeviceStatus.SetDevicePasscodeResponse set_device_passcode_response = 11;
+  GDI.Proto.DeviceStatus.AppInitiatedPasscodeSetNotification app_initiated_passcode_set_notification = 12;
+  GDI.Proto.DeviceStatus.ResetPasscodeRequest reset_passcode_request = 13;
+  GDI.Proto.DeviceStatus.ResetPasscodeResponse reset_passcode_response = 14;
+  GDI.Proto.DeviceStatus.RegionRequiresPasscodeNotification region_requires_passcode_notification = 15;
+}
+
+message CapabilitiesRequest {
+}
+
+message CapabilitiesResponse {
+  bool initial_setup_status_support = 1;
+}
+
+message RemoteDeviceBatteryStatusChangedNotification {
+  GDI.Proto.DeviceStatus.RemoteDeviceBatteryStatusBatteryStatus status = 1;
+}
+
+message RemoteDeviceBatteryStatusRequest {
+}
+
+message RemoteDeviceBatteryStatusResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 1;
+    NO_REMOTE_DEVICE = 2;
+  }
+  GDI.Proto.DeviceStatus.RemoteDeviceBatteryStatusResponse.ResponseStatus status = 1;
+  uint32 current_battery_level = 2;
+  GDI.Proto.DeviceStatus.RemoteDeviceBatteryStatusBatteryStatus battery_status = 3;
+}
+
+message GetCurrentActivityStatusRequest {
+}
+
+message GetCurrentActivityStatusResponse {
+  enum ActivityStatus {
+    OFF = 0;
+    STOPPED = 1;
+    PAUSED = 2;
+    ON = 3;
+  }
+  GDI.Proto.DeviceStatus.GetCurrentActivityStatusResponse.ActivityStatus activity_status = 1;
+}
+
+message GetInitialSetupStatusRequest {
+}
+
+message GetInitialSetupStatusResponse {
+  enum InitialSetupStatus {
+    IN_INITIAL_SETUP = 0;
+    SETUP_COMPLETE = 1;
+    IN_SETUP_APPLYING_BACKUP = 2;
+  }
+  GDI.Proto.DeviceStatus.GetInitialSetupStatusResponse.InitialSetupStatus initial_setup_status = 1;
+}
+
+message DevicePasscodeInvalidAttemptNotification {
+  uint32 attempts_remaining = 1;
+}
+
+message DeviceUnlockedNotification {
+}
+
+message SetDevicePasscodeRequest {
+  string passcode = 1;
+}
+
+message SetDevicePasscodeResponse {
+  GDI.Proto.DeviceStatus.PasscodeResponseStatus response_status = 1;
+}
+
+message AppInitiatedPasscodeSetNotification {
+  enum Source {
+    GARMIN_PAY = 0;
+    DEVICE_SETTINGS = 1;
+  }
+  GDI.Proto.DeviceStatus.AppInitiatedPasscodeSetNotification.Source source = 1;
+}
+
+message ResetPasscodeRequest {
+}
+
+message ResetPasscodeResponse {
+  GDI.Proto.DeviceStatus.PasscodeResponseStatus response_status = 1;
+}
+
+message RegionRequiresPasscodeNotification {
+}

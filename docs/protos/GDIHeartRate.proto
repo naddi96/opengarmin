@@ -1,0 +1,21 @@
+syntax = "proto2";
+
+package GDI.Proto.HeartRate;
+
+import "GDIEventSharing.proto";
+
+message Service {
+}
+
+message SwimInterval {
+  uint32 interval_average_heart_rate_bpm = 1;
+  uint32 interval_maximum_heart_rate_bpm = 2;
+  uint32 session_average_heart_rate_bpm = 3;
+}
+
+message MeasurementNotification {
+  uint32 heart_rate_bpm = 1;
+  bool is_hr_confident = 2;
+  uint32 beat_period_1_1024ths_s = 3;
+  GDI.Proto.HeartRate.SwimInterval swim_interval_data = 4;
+}

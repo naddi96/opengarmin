@@ -1,0 +1,17 @@
+syntax = "proto2";
+
+package GDI.Proto.LiveSync;
+
+import "GDIDataTypes.proto";
+
+message Service {
+  GDI.Proto.LiveSync.ActivityStateNotification activity_state_notification = 1;
+}
+
+message ActivityStateNotification {
+  enum ActivityState {
+    ACTIVITY_STARTED = 0;
+    ACTIVITY_STOPPED = 1;
+  }
+  GDI.Proto.LiveSync.ActivityStateNotification.ActivityState activity_state = 1;
+}

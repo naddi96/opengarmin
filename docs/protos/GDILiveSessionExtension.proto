@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDILiveSession.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.LiveSession.LiveSessionService live_session_service = 56;
+}

@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDISmsNotification.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.SmsNotification.SmsNotificationService sms_notification_service = 16;
+}

@@ -1,0 +1,26 @@
+syntax = "proto2";
+
+package GDI.Proto.WaypointTransfer;
+
+import "GDIDataTypes.proto";
+
+message WaypointTransferService {
+  GDI.Proto.WaypointTransfer.WaypointRequest waypoint_request = 1;
+  GDI.Proto.WaypointTransfer.WaypointResponse waypoint_response = 2;
+}
+
+message WaypointRequest {
+  GDI.Proto.DataTypes.ScPoint location = 1;
+  string name = 2;
+  GDI.Proto.DataTypes.CoordinateSystem coordinate_system = 3;
+}
+
+message WaypointResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 1;
+    ALREADY_EXISTS = 2;
+    ERROR = 3;
+  }
+  GDI.Proto.WaypointTransfer.WaypointResponse.ResponseStatus status = 1;
+}

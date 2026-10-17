@@ -1,0 +1,104 @@
+syntax = "proto2";
+
+package GDI.Proto.Radar;
+
+import "GDIEventSharing.proto";
+
+enum LightLevel {
+  DAY = 0;
+  VERY_HIGH = 1;
+  HIGH = 2;
+  MED = 3;
+  LOW = 4;
+  DARK = 5;
+}
+
+message Service {
+  GDI.Proto.Radar.GetSettingsRequest settings_request = 1;
+  GDI.Proto.Radar.GetSettingsResponse settings_response = 2;
+  GDI.Proto.Radar.ChangeSettingsRequest change_settings_request = 3;
+  GDI.Proto.Radar.ChangeSettingsResponse change_settings_response = 4;
+  GDI.Proto.Radar.TestModeRequest test_mode_request = 5;
+  GDI.Proto.Radar.TestModeResponse test_mode_response = 6;
+  GDI.Proto.Radar.RestoreDefaultsRequest restore_defaults_request = 7;
+  GDI.Proto.Radar.RestoreDefaultsResponse restore_defaults_response = 8;
+}
+
+message LimpModeControl {
+  bool force_enable = 1;
+  float speed_threshold = 2;
+}
+
+message AlertSettings {
+  enum Sensitivity {
+    OFF = 0;
+    LOW = 1;
+    NORMAL = 2;
+    HIGH = 3;
+  }
+  GDI.Proto.Radar.AlertSettings.Sensitivity sensitivity = 1;
+  bool enable_rear_lights = 2;
+  bool enable_audio_alerts = 3;
+}
+
+message Settings {
+  GDI.Proto.Radar.AlertSettings blind_spot_alerts = 1;
+  GDI.Proto.Radar.AlertSettings rear_alerts = 2;
+  bool demo_mode_active = 3;
+  GDI.Proto.Radar.LimpModeControl limp_mode_control = 4;
+  bool light_level_updates_enabled = 5;
+}
+
+message GetSettingsRequest {
+}
+
+message GetSettingsResponse {
+  GDI.Proto.Radar.Settings settings = 1;
+  GDI.Proto.Radar.LightLevel light_level = 2;
+}
+
+message ChangeSettingsRequest {
+  GDI.Proto.Radar.Settings settings = 1;
+}
+
+message ChangeSettingsResponse {
+  enum ChangeSettingsStatus {
+    SUCCESS = 0;
+    UNKNOWN_ERROR = 1;
+  }
+  GDI.Proto.Radar.ChangeSettingsResponse.ChangeSettingsStatus status = 1;
+}
+
+message SettingsChangeDetails {
+  GDI.Proto.Radar.Settings settings = 1;
+  GDI.Proto.Radar.LightLevel light_level = 2;
+}
+
+message TestModeRequest {
+  enum TestModeState {
+    OFF = 0;
+    LEFT_LIGHTS = 1;
+    REAR_LIGHTS = 2;
+    RIGHT_LIGHTS = 3;
+  }
+  GDI.Proto.Radar.TestModeRequest.TestModeState state = 2;
+}
+
+message TestModeResponse {
+  enum TestModeStatus {
+    SUCCESS = 0;
+    UNKNOWN_ERROR = 1;
+  }
+  GDI.Proto.Radar.TestModeResponse.TestModeStatus status = 1;
+}
+
+message RestoreDefaultsRequest {
+}
+
+message RestoreDefaultsResponse {
+  enum RestoreDefaultsStatus {
+    SUCCESS = 0;
+    UNKNOWN_ERROR = 1;
+  }
+  GDI.Proto.Radar.RestoreDefaultsResponse.RestoreDefaultsStatus status = 1;
+}

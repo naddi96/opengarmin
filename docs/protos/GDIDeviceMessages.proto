@@ -1,0 +1,32 @@
+syntax = "proto2";
+
+package GDI.Proto.DeviceMessages;
+
+message DeviceMessageService {
+  GDI.Proto.DeviceMessages.CIQMessageSubscribeNotification message_subscribe = 1;
+  GDI.Proto.DeviceMessages.CIQMessageUnsubscribeNotification message_unsubscribe = 2;
+  GDI.Proto.DeviceMessages.CIQMessageRequest message_request = 3;
+  GDI.Proto.DeviceMessages.CIQMessageResponse message_response = 4;
+}
+
+message CIQMessageSubscribeNotification {
+  string last_event_id = 1;
+}
+
+message CIQMessageUnsubscribeNotification {
+}
+
+message CIQMessageRequest {
+  string event_id = 1;
+  string app_id = 2;
+  string payload = 3;
+}
+
+message CIQMessageResponse {
+  enum Status {
+    SUCCESS = 0;
+    FAILURE = 1;
+  }
+  string event_id = 1;
+  GDI.Proto.DeviceMessages.CIQMessageResponse.Status status = 2;
+}

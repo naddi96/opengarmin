@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIConnectIQInstalledApps.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.ConnectIQInstalledApps.ConnectIQInstalledAppsService connect_iq_installed_apps_service = 3;
+}

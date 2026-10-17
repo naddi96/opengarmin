@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIXeroGameCam.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.XeroGameCam.Service xero_game_cam_service = 66;
+}

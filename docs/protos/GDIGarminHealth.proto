@@ -1,0 +1,79 @@
+syntax = "proto2";
+
+package GDI.Proto.GHS;
+
+import "GDISaMD.proto";
+import "GDIDataTypes.proto";
+
+message Service {
+  GDI.Proto.GHS.EmbeddedHealthTokenRequest token_request = 1;
+  GDI.Proto.GHS.EmbeddedHealthTokenResponse token_response = 2;
+  GDI.Proto.GHS.UpdateSaMDIdRequest update_samdid_request = 3;
+  GDI.Proto.GHS.UpdateSaMDIdResponse update_samdid_response = 4;
+  GDI.Proto.GHS.FileTransferPrecheckRequest file_xfer_precheck_request = 5;
+  GDI.Proto.GHS.FileTransferPrecheckResponse file_xfer_precheck_response = 6;
+  GDI.Proto.GHS.FileTransferRequest file_xfer_request = 7;
+  GDI.Proto.GHS.FileTransferResponse file_xfer_response = 8;
+  GDI.Proto.GHS.FileTransferReadyForNext file_xfer_ready_for_next = 9;
+  GDI.Proto.GHS.InvalidUploadConsent invalid_upload_consent = 10;
+  GDI.Proto.GHS.FileTransferCompleteNotification file_xfer_complete_notification = 11;
+}
+
+message EmbeddedHealthTokenRequest {
+}
+
+message EmbeddedHealthTokenResponse {
+  string token = 1;
+  GDI.Proto.SaMD.SaMDCommonFailures failure = 2;
+}
+
+message UpdateSaMDIdRequest {
+  string samd_id = 1;
+}
+
+message UpdateSaMDIdResponse {
+  bool success = 1;
+}
+
+message FileTransferPrecheckRequest {
+}
+
+message FileTransferPrecheckResponse {
+  GDI.Proto.SaMD.SaMDCommonFailures failure = 1;
+  bool garmin_health_service_file_transfer_support = 2;
+}
+
+message FileTransferRequest {
+  enum FileType {
+    ECG = 0;
+  }
+  enum ContentType {
+    FIT = 0;
+    ZIP_FIT = 1;
+  }
+  message FileData {
+    bytes data = 1;
+  }
+  bytes raw_bytes = 1;
+  string file_name = 2;
+  GDI.Proto.GHS.FileTransferRequest.FileType file_type = 3;
+  GDI.Proto.GHS.FileTransferRequest.ContentType content_type = 4;
+  repeated GDI.Proto.GHS.FileTransferRequest.FileData file_data = 5;
+  GDI.Proto.DataTypes.DataTransferItem xfer_data = 6;
+}
+
+message FileTransferResponse {
+  GDI.Proto.SaMD.SaMDCommonFailures failure = 1;
+  bool is_pending = 2;
+}
+
+message FileTransferCompleteNotification {
+  GDI.Proto.SaMD.SaMDCommonFailures failure = 1;
+  string file_name = 2;
+}
+
+message FileTransferReadyForNext {
+}
+
+message InvalidUploadConsent {
+}

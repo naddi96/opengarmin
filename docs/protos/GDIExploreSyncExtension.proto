@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIExploreSync.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.ExploreSync.ExploreSyncService explore_sync_service = 22;
+}

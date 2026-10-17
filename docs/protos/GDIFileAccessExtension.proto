@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIFileAccess.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.FileAccess.Service file_access_service = 43;
+}

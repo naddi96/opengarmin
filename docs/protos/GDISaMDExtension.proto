@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDISaMD.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.SaMD.Service samd_service = 39;
+}

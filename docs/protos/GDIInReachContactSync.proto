@@ -1,0 +1,187 @@
+syntax = "proto2";
+
+package GDI.Proto.InReachContactSync;
+
+import "GDIDataTypes.proto";
+import "GDIGenericItemTransfer.proto";
+
+message InReachContactSyncService {
+  GDI.Proto.InReachContactSync.SyncRequest sync_request = 1;
+  GDI.Proto.InReachContactSync.SyncResponse sync_response = 2;
+  GDI.Proto.InReachContactSync.SubscribeRequest subscribe_request = 3;
+  GDI.Proto.InReachContactSync.SubscribeResponse subscribe_response = 4;
+  GDI.Proto.InReachContactSync.ContactUpdatedNotification contact_updated_notification = 5;
+  GDI.Proto.InReachContactSync.PresetsUpdatedNotification presets_updated_notification = 6;
+  GDI.Proto.InReachContactSync.QuickTextsUpdatedNotification quicktexts_updated_notification = 7;
+  GDI.Proto.InReachContactSync.MessengerAccountsUpdatedNotification messenger_accounts_updated_notification = 8;
+}
+
+message Contact {
+  GDI.Proto.DataTypes.UUID uuid = 1;
+  bool read_only = 2;
+  fixed32 name_edit_time = 3;
+  string first_name = 4;
+  string last_name = 5;
+  string organization = 6;
+  fixed32 email_edit_time = 7;
+  string email = 8;
+  fixed32 mobile_edit_time = 9;
+  string mobile = 10;
+  fixed32 inreach_edit_time = 11;
+  string inreach = 12;
+  fixed32 imei_edit_time = 13;
+  string imei = 14;
+}
+
+message PresetMessage {
+  enum SpecialAddress {
+    MAPSHARE = 1;
+    FACEBOOK = 2;
+    TWITTER = 3;
+  }
+  uint32 code = 1;
+  repeated string addresses = 2;
+  repeated GDI.Proto.InReachContactSync.PresetMessage.SpecialAddress special_addresses = 3;
+  string text = 4;
+}
+
+message QuickText {
+  string text = 1;
+}
+
+message MessengerAccount {
+  string phone_number = 1;
+  bool is_hermes_registered = 2;
+  string sip_address = 3;
+  fixed32 modified_time = 4;
+}
+
+message SyncRequestInfo {
+  enum SyncType {
+    FULL = 1;
+    INCREMENTAL = 2;
+  }
+  enum SyncDataType {
+    CONTACT = 1;
+    PRESET_MESSAGE = 2;
+    QUICK_TEXT = 3;
+    MESSENGER_ACCOUNT = 4;
+  }
+  uint32 protocol_version = 1;
+  GDI.Proto.DataTypes.UUID app_uuid = 2;
+  GDI.Proto.InReachContactSync.SyncRequestInfo.SyncType sync_type = 3;
+  GDI.Proto.InReachContactSync.SyncRequestInfo.SyncDataType data_type = 4;
+}
+
+message SyncRequest {
+  GDI.Proto.InReachContactSync.SyncRequestInfo request_info = 1;
+  uint32 ending_transaction_id = 2;
+  fixed32 timestamp = 3;
+}
+
+message SyncResponse {
+  enum Status {
+    OK = 1;
+    UP_TO_DATE = 2;
+    GENERIC_ERROR = 3;
+    BUSY = 4;
+    UNSUPPORTED_PROTOCOL_VERSION = 5;
+    UNSUPPORTED_DATA_TYPE = 6;
+    MISSING_INFO = 7;
+  }
+  GDI.Proto.InReachContactSync.SyncResponse.Status status = 1;
+}
+
+message SubscribeRequest {
+  bool want_contact_updated = 1;
+  bool want_presets_updated = 2;
+  bool want_quicktexts_updated = 3;
+  bool want_messenger_accounts_updated = 4;
+}
+
+message SubscribeResponse {
+  enum Status {
+    OK = 1;
+    GENERIC_ERROR = 2;
+  }
+  GDI.Proto.InReachContactSync.SubscribeResponse.Status status = 1;
+}
+
+message ContactUpdatedNotification {
+  GDI.Proto.DataTypes.UUID uuid = 1;
+  bool deleted = 2;
+}
+
+message PresetsUpdatedNotification {
+  fixed32 timestamp = 1;
+}
+
+message QuickTextsUpdatedNotification {
+  fixed32 timestamp = 1;
+}
+
+message MessengerAccountsUpdatedNotification {
+  string phone_number = 1;
+}
+
+message DataTypeConfigExt {
+  GDI.Proto.InReachContactSync.SyncRequestInfo request_info = 1;
+  uint32 min_transaction_id = 2;
+  uint32 max_transaction_id = 3;
+  fixed32 low_watermark_timestamp = 4;
+  fixed32 high_watermark_timestamp = 5;
+}
+
+message DataTypeStatusExt {
+  enum Status {
+    UNSUPPORTED_PROTOCOL_VERSION = 1;
+    UNSUPPORTED_DATA_TYPE = 2;
+    MISSING_INFO = 3;
+    UP_TO_DATE = 4;
+  }
+  GDI.Proto.InReachContactSync.DataTypeStatusExt.Status status = 1;
+  fixed32 timestamp = 2;
+}
+
+message GenericItemReferenceExt {
+  message ContactReference {
+    GDI.Proto.DataTypes.UUID uuid = 1;
+    bool deleted = 2;
+    bool read_only = 3;
+    fixed32 name_edit_time = 4;
+    fixed32 email_edit_time = 5;
+    fixed32 mobile_edit_time = 6;
+    fixed32 inreach_edit_time = 7;
+    fixed32 imei_edit_time = 8;
+  }
+  message MessengerAccountReference {
+    string phone_number = 1;
+    fixed32 modified_time = 2;
+  }
+  GDI.Proto.InReachContactSync.GenericItemReferenceExt.ContactReference contact_ref = 1;
+  uint32 preset_code = 2;
+  GDI.Proto.InReachContactSync.QuickText quick_text = 3;
+  GDI.Proto.InReachContactSync.GenericItemReferenceExt.MessengerAccountReference messenger_account_ref = 4;
+}
+
+message GenericItemExt {
+  GDI.Proto.InReachContactSync.Contact contact = 1;
+  GDI.Proto.InReachContactSync.PresetMessage preset_message = 2;
+  GDI.Proto.InReachContactSync.MessengerAccount messenger_account = 3;
+}
+
+extend GDI.Proto.GenericItemTransfer.DataTypeConfig {
+  GDI.Proto.InReachContactSync.DataTypeConfigExt config_ext = 102;
+}
+
+extend GDI.Proto.GenericItemTransfer.DataTypeStatus {
+  GDI.Proto.InReachContactSync.DataTypeStatusExt status_ext = 102;
+}
+
+extend GDI.Proto.GenericItemTransfer.GenericItemReference {
+  GDI.Proto.InReachContactSync.GenericItemReferenceExt item_ref_ext = 102;
+}
+
+extend GDI.Proto.GenericItemTransfer.GenericItem {
+  GDI.Proto.InReachContactSync.GenericItemExt item_ext = 102;
+}

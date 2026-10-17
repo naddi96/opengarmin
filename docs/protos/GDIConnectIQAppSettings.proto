@@ -1,0 +1,102 @@
+syntax = "proto2";
+
+package GDI.Proto.ConnectIQAppSettings;
+
+message ConnectIQAppSettingsService {
+  GDI.Proto.ConnectIQAppSettings.GetAppSettingsRequest get_app_settings_request = 1;
+  GDI.Proto.ConnectIQAppSettings.GetAppSettingsResponse get_app_settings_response = 2;
+  GDI.Proto.ConnectIQAppSettings.SaveAppSettingsRequest save_app_settings_request = 3;
+  GDI.Proto.ConnectIQAppSettings.SaveAppSettingsResponse save_app_settings_response = 4;
+  GDI.Proto.ConnectIQAppSettings.SendAppSettingsRequest send_app_settings_request = 5;
+  GDI.Proto.ConnectIQAppSettings.SendAppSettingsResponse send_app_settings_response = 6;
+  GDI.Proto.ConnectIQAppSettings.OpenAppSettingsRequest open_app_settings_request = 7;
+  GDI.Proto.ConnectIQAppSettings.OpenAppSettingsResponse open_app_settings_response = 8;
+  GDI.Proto.ConnectIQAppSettings.VerifyAppSettingsRequest verify_app_settings_request = 9;
+  GDI.Proto.ConnectIQAppSettings.VerifyAppSettingsResponse verify_app_settings_response = 10;
+  GDI.Proto.ConnectIQAppSettings.VerifiedAppSettingsNotification verified_app_settings_notification = 11;
+}
+
+message GetAppSettingsRequest {
+  bytes app_identifier = 1;
+}
+
+message GetAppSettingsResponse {
+  enum Response {
+    UNKNOWN_RESPONSE = 0;
+    SUCCESS = 1;
+    APP_NOT_INSTALLED = 2;
+  }
+  bytes app_identifier = 1;
+  GDI.Proto.ConnectIQAppSettings.GetAppSettingsResponse.Response response = 2;
+}
+
+message SendAppSettingsRequest {
+  bytes app_identifier = 1;
+  bytes settings_values = 2;
+}
+
+message SendAppSettingsResponse {
+  enum Response {
+    UNKNOWN_RESPONSE = 0;
+    SUCCESS = 1;
+  }
+  GDI.Proto.ConnectIQAppSettings.SendAppSettingsResponse.Response response = 1;
+}
+
+message SaveAppSettingsRequest {
+  bytes app_identifier = 1;
+  bytes settings_values = 2;
+}
+
+message SaveAppSettingsResponse {
+  enum Response {
+    UNKNOWN_RESPONSE = 0;
+    SUCCESS = 1;
+    FAILED_TO_SAVE = 2;
+  }
+  bytes app_identifier = 1;
+  GDI.Proto.ConnectIQAppSettings.SaveAppSettingsResponse.Response response = 2;
+}
+
+message OpenAppSettingsRequest {
+  bytes store_uuid = 1;
+}
+
+message OpenAppSettingsResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE = 0;
+    SUCCESS = 1;
+  }
+  bytes app_identifier = 1;
+  GDI.Proto.ConnectIQAppSettings.OpenAppSettingsResponse.ResponseStatus status = 2;
+}
+
+message VerifyAppSettingsRequest {
+  bytes store_uuid = 1;
+  bytes key = 2;
+  bytes value = 3;
+}
+
+message VerifyAppSettingsResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 1;
+    APP_NOT_INSTALLED = 2;
+    APP_CANNOT_RUN = 3;
+  }
+  bytes store_uuid = 1;
+  GDI.Proto.ConnectIQAppSettings.VerifyAppSettingsResponse.ResponseStatus status = 2;
+}
+
+message VerifiedAppSettingsNotification {
+  enum Result {
+    VERIFIED = 0;
+    UNKNOWN_ERROR = 1;
+    APP_ERROR = 2;
+    VERIFICIATION_FAILED = 3;
+  }
+  bytes store_uuid = 1;
+  bytes key = 2;
+  GDI.Proto.ConnectIQAppSettings.VerifiedAppSettingsNotification.Result result = 3;
+  bytes error = 4;
+}

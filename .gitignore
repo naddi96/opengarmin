@@ -25,3 +25,6 @@ captures/
 
 # OS
 .DS_Store
+
+# Captures (HCI logs, adb output, bugreports)
+/captures/

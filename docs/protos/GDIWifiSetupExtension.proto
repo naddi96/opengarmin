@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIWifiSetup.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.WifiSetup.WifiSetupService wifi_setup_service = 11;
+}

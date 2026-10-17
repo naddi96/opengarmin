@@ -1,0 +1,40 @@
+syntax = "proto2";
+
+package GDI.Proto.ConnectionManagement;
+
+import "GDICore.proto";
+
+enum SupportedConnectionTypes {
+  OFF = 0;
+  SECURE = 1;
+  OPEN = 2;
+}
+
+message Service {
+  GDI.Proto.ConnectionManagement.ConnectionModeRequest connection_mode_request = 1;
+  GDI.Proto.ConnectionManagement.ConnectionModeResponse connection_mode_response = 2;
+}
+
+message CapabilitiesRequest {
+}
+
+message ConnectionManagementCapabilities {
+  bool is_connection_mode_request_supported = 1;
+}
+
+message CapabilitiesResponse {
+  GDI.Proto.ConnectionManagement.ConnectionManagementCapabilities connection_management_capabilities = 1;
+}
+
+message ConnectionModeRequest {
+  GDI.Proto.ConnectionManagement.SupportedConnectionTypes connection_mode = 1;
+}
+
+message ConnectionModeResponse {
+  enum Response {
+    ERROR = 0;
+    SUCCESS = 1;
+  }
+  GDI.Proto.ConnectionManagement.ConnectionModeResponse.Response response = 1;
+  GDI.Proto.ConnectionManagement.SupportedConnectionTypes connection_mode = 2;
+}

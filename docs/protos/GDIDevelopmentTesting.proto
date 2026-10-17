@@ -1,0 +1,31 @@
+syntax = "proto2";
+
+package GDI.Proto.DevelopmentTesting;
+
+import "GDIEventSharing.proto";
+
+message Service {
+  GDI.Proto.DevelopmentTesting.TestRequest test_request = 1;
+  GDI.Proto.DevelopmentTesting.TestResponse test_response = 2;
+  GDI.Proto.DevelopmentTesting.TestNotification test_notification = 3;
+}
+
+message TestRequest {
+  bytes test_data = 1;
+  fixed32 timestamp_sent_ms = 2;
+}
+
+message TestResponse {
+  bytes test_data = 1;
+  fixed32 timestamp_sent_ms = 2;
+}
+
+message TestNotification {
+  bytes test_data = 1;
+  fixed32 timestamp_sent_ms = 2;
+}
+
+message AlertDetails {
+  bytes test_data = 1;
+  fixed32 timestamp_sent_ms = 2;
+}

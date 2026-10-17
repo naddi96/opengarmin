@@ -1,0 +1,141 @@
+syntax = "proto2";
+
+package GDI.Proto.XeroChronograph;
+
+import "GDIEventSharing.proto";
+
+enum ResponseStatus {
+  SUCCESS = 0;
+  SYNCING = 1;
+  FAILURE = 2;
+}
+
+enum EventAlertType {
+  SESSION_STARTED = 0;
+  SESSION_ENDED = 1;
+  SHOT_DELETED = 2;
+  SHOT_EXCLUDED = 3;
+  SHOT_DETECTED = 4;
+}
+
+message Service {
+  GDI.Proto.XeroChronograph.StartSessionRequest start_session_request = 1;
+  GDI.Proto.XeroChronograph.StartSessionResponse start_session_response = 2;
+  GDI.Proto.XeroChronograph.DeleteShotRequest delete_shot_request = 3;
+  GDI.Proto.XeroChronograph.DeleteShotResponse delete_shot_response = 4;
+  GDI.Proto.XeroChronograph.StopSessionRequest end_session_request = 5;
+  GDI.Proto.XeroChronograph.StopSessionResponse end_session_response = 6;
+  GDI.Proto.XeroChronograph.ExcludeShotRequest exclude_shot_request = 7;
+  GDI.Proto.XeroChronograph.ExcludeShotResponse exclude_shot_response = 8;
+  GDI.Proto.XeroChronograph.ShotListRequest shot_list_request = 9;
+  GDI.Proto.XeroChronograph.ShotListResponse shot_list_response = 10;
+  GDI.Proto.XeroChronograph.SessionInfoRequest session_info_request = 11;
+  GDI.Proto.XeroChronograph.SessionInfoResponse session_info_response = 12;
+  GDI.Proto.XeroChronograph.TitleChangeRequest title_change_request = 13;
+  GDI.Proto.XeroChronograph.TitleChangeResponse title_change_response = 14;
+}
+
+message ShotMessage {
+  enum ShotStatus {
+    NORMAL = 0;
+    EXCLUDED = 1;
+    DELETED = 2;
+  }
+  uint32 shot_timestamp = 1;
+  float shot_velocity = 2;
+  GDI.Proto.XeroChronograph.ShotMessage.ShotStatus status = 3;
+}
+
+message SessionInfoMessage {
+  float min_shot_speed = 1;
+  float max_shot_speed = 2;
+  float avg_shot_speed = 3;
+  uint32 shot_count = 4;
+  float grain_weight = 5;
+  bool session_active = 6;
+  float standard_deviation = 7;
+  float average_pf = 8;
+  float average_ke = 9;
+  bytes sessionUUID = 10;
+}
+
+message StartSessionRequest {
+  enum ProjectileType {
+    ARROW = 0;
+    RIFLE = 1;
+    PISTOL = 2;
+    SHOTGUN = 3;
+    AIR_RIFLE = 4;
+    OTHER = 5;
+  }
+  enum VelocityRange {
+    LOW_RANGE = 0;
+    MID_RANGE = 1;
+    HIGH_RANGE = 2;
+  }
+  GDI.Proto.XeroChronograph.StartSessionRequest.ProjectileType projectile_type = 1;
+  GDI.Proto.XeroChronograph.StartSessionRequest.VelocityRange velocity_range = 2;
+  bytes sessionUUID = 3;
+  string session_title = 4;
+}
+
+message StartSessionResponse {
+  GDI.Proto.XeroChronograph.ResponseStatus status = 1;
+  bytes sessionUUID = 2;
+}
+
+message StopSessionRequest {
+  bool discard_session = 1;
+}
+
+message StopSessionResponse {
+  GDI.Proto.XeroChronograph.ResponseStatus status = 1;
+}
+
+message DeleteShotRequest {
+  uint32 shot_to_delete_timestamp = 1;
+}
+
+message DeleteShotResponse {
+  GDI.Proto.XeroChronograph.ResponseStatus status = 1;
+}
+
+message ExcludeShotRequest {
+  uint32 shot_to_exclude_timestamp = 1;
+}
+
+message ExcludeShotResponse {
+  GDI.Proto.XeroChronograph.ResponseStatus status = 1;
+}
+
+message ShotListRequest {
+}
+
+message ShotListResponse {
+  repeated GDI.Proto.XeroChronograph.ShotMessage shot_list = 1;
+  GDI.Proto.XeroChronograph.ResponseStatus status = 2;
+}
+
+message SessionInfoRequest {
+}
+
+message SessionInfoResponse {
+  GDI.Proto.XeroChronograph.SessionInfoMessage session_info = 1;
+  GDI.Proto.XeroChronograph.ResponseStatus status = 2;
+}
+
+message TitleChangeRequest {
+  string title = 1;
+}
+
+message TitleChangeResponse {
+  GDI.Proto.XeroChronograph.ResponseStatus status = 1;
+}
+
+message AlertDetails {
+  GDI.Proto.XeroChronograph.EventAlertType alert_type = 1;
+  GDI.Proto.XeroChronograph.ShotMessage shot_message = 2;
+  GDI.Proto.XeroChronograph.SessionInfoMessage session_info = 3;
+  repeated GDI.Proto.XeroChronograph.ShotMessage shot_list = 4;
+  float battery_level = 5;
+}

@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIEventSharing.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.EventSharing.EventSharingService event_sharing = 30;
+}

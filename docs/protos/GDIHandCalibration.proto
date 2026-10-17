@@ -1,0 +1,79 @@
+syntax = "proto2";
+
+package GDI.Proto.HandCalibration;
+
+enum HandType {
+  HOUR = 1;
+  MINUTE = 2;
+  SECOND = 3;
+}
+
+enum HandDirection {
+  CLOCKWISE = 1;
+  COUNTERCLOCKWISE = 2;
+}
+
+message CommandRequest {
+  enum Command {
+    START = 1;
+    ABORT = 2;
+    SAVE = 3;
+    IMAGE_START = 4;
+  }
+  GDI.Proto.HandCalibration.CommandRequest.Command command = 1;
+}
+
+message CommandResponse {
+  enum Status {
+    SUCCESS = 1;
+    BUSY = 2;
+    ERROR = 3;
+  }
+  GDI.Proto.HandCalibration.CommandResponse.Status status = 1;
+}
+
+message StepRequest {
+  GDI.Proto.HandCalibration.HandType hand_type = 1;
+  GDI.Proto.HandCalibration.HandDirection hand_dir = 2;
+  uint32 hand_steps = 3;
+}
+
+message StepResponse {
+  enum Status {
+    SUCCESS = 1;
+    ERROR = 2;
+  }
+  GDI.Proto.HandCalibration.StepResponse.Status status = 1;
+}
+
+message RotateRequest {
+  float sec_degrees = 1;
+  float min_degrees = 2;
+  float hr_degrees = 3;
+}
+
+message RotateResponse {
+  enum Status {
+    SUCCESS = 1;
+    ERROR = 2;
+  }
+  GDI.Proto.HandCalibration.RotateResponse.Status status = 1;
+}
+
+message RotateNotification {
+  enum Status {
+    SUCCESS = 1;
+    ERROR = 2;
+  }
+  GDI.Proto.HandCalibration.RotateNotification.Status status = 1;
+}
+
+message HandCalibrationService {
+  GDI.Proto.HandCalibration.CommandRequest command_request = 1;
+  GDI.Proto.HandCalibration.CommandResponse command_response = 2;
+  GDI.Proto.HandCalibration.StepRequest step_request = 3;
+  GDI.Proto.HandCalibration.StepResponse step_response = 4;
+  GDI.Proto.HandCalibration.RotateRequest rotate_request = 5;
+  GDI.Proto.HandCalibration.RotateResponse rotate_response = 6;
+  GDI.Proto.HandCalibration.RotateNotification rotate_notification = 7;
+}

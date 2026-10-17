@@ -1,0 +1,35 @@
+syntax = "proto2";
+
+package GDI.Proto.BluetoothClassic;
+
+import "GDIEventSharing.proto";
+
+message ProfileConnection {
+  enum Profile {
+    HFP = 0;
+    A2DP_SINK = 1;
+    SPP = 2;
+  }
+  enum State {
+    CONNECTED = 0;
+    DISCONNECTED = 1;
+  }
+  GDI.Proto.BluetoothClassic.ProfileConnection.Profile profile = 1;
+  GDI.Proto.BluetoothClassic.ProfileConnection.State state = 2;
+}
+
+message Handsfree {
+  enum State {
+    HFP_VOICE_RECOGNITION_STARTING = 0;
+    HFP_VOICE_RECOGNITION_STARTED = 1;
+    HFP_VOICE_RECOGNITION_STOPPED = 2;
+    HFP_VOICE_RECOGNITION_FAILED_TO_START = 3;
+  }
+  GDI.Proto.BluetoothClassic.Handsfree.State state = 1;
+}
+
+message StateChange {
+  bytes connection_identifier = 1;
+  GDI.Proto.BluetoothClassic.ProfileConnection connection = 2;
+  GDI.Proto.BluetoothClassic.Handsfree handsfree = 3;
+}

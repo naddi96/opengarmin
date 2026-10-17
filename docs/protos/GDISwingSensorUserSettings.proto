@@ -1,0 +1,38 @@
+syntax = "proto2";
+
+package GDI.Proto.SwingSensorUserSettings;
+
+message UserSettings {
+  enum Gender {
+    UNKNOWN_GENDER = 0;
+    MALE = 1;
+    FEMALE = 2;
+  }
+  enum Handedness {
+    UNKNOWN_HANDEDNESS = 0;
+    LEFT_HANDED = 1;
+    RIGHT_HANDED = 2;
+  }
+  GDI.Proto.SwingSensorUserSettings.UserSettings.Gender gender = 1;
+  GDI.Proto.SwingSensorUserSettings.UserSettings.Handedness handedness = 2;
+}
+
+message GetUserSettingsRequest {
+}
+
+message GetUserSettingsResponse {
+  GDI.Proto.SwingSensorUserSettings.UserSettings user_settings = 1;
+}
+
+message SetUserSettingsRequest {
+  GDI.Proto.SwingSensorUserSettings.UserSettings user_settings = 1;
+}
+
+message SetUserSettingsResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 1;
+    NO_REMOTE_DEVICE = 2;
+  }
+  GDI.Proto.SwingSensorUserSettings.SetUserSettingsResponse.ResponseStatus status = 1;
+}

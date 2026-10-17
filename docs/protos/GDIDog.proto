@@ -1,0 +1,192 @@
+syntax = "proto2";
+
+package GDI.Proto.Dog;
+
+import "GDICore.proto";
+import "GDIDataTypes.proto";
+
+enum Color {
+  TRACK_COLOR_NOT_SET = 0;
+  BLACK = 1;
+  DARK_RED = 2;
+  DARK_GREEN = 3;
+  DARK_YELLOW = 4;
+  DARK_BLUE = 5;
+  DARK_MAGENTA = 6;
+  DARK_CYAN = 7;
+  LITE_GRAY = 8;
+  DARK_GRAY = 9;
+  RED = 10;
+  GREEN = 11;
+  ALPHA_YELLOW = 12;
+  BLUE = 13;
+  MAGENTA = 14;
+  CYAN = 15;
+  WHITE = 16;
+  LITE_BLUE = 17;
+}
+
+enum AssetType {
+  ASSET_TYPE_NOT_SET = 0;
+  DOG = 1;
+  HANDHELD = 2;
+}
+
+enum SyncStartStatus {
+  SYNC_STATE_NOT_SET = 0;
+  READY_TO_START = 1;
+  FAILED_ANOTHER_SYNC_IN_PROGRESS = 2;
+}
+
+enum SyncCompleteStatus {
+  SYNC_COMPLETE_NOT_SET = 0;
+  FAILED = 1;
+  SUCCESS = 2;
+}
+
+message SetCompanionRequest {
+  uint32 new_esn = 1;
+}
+
+message SetCompanionResponse {
+  bool success = 1;
+}
+
+message GetCompanionRequest {
+}
+
+message GetCompanionResponse {
+  uint32 companion_esn = 1;
+  bool is_connected = 2;
+}
+
+message Asset {
+  uint32 sort_index = 1;
+  fixed32 sort_index_timestamp = 2;
+  GDI.Proto.Dog.Color color = 3;
+  fixed32 color_timestamp = 4;
+  bool active = 5;
+  fixed32 active_timestamp = 6;
+  GDI.Proto.DataTypes.UUID group_id = 7;
+  fixed32 group_id_timestamp = 8;
+  string control_code = 9;
+  string track_code = 10;
+  uint32 channel = 11;
+  uint32 window = 12;
+  fixed32 tracking_info_timestamp = 13;
+  string name = 14;
+  fixed32 name_timestamp = 15;
+  fixed32 esn = 16;
+  fixed32 esn_timestamp = 17;
+  uint32 device_capabilities = 18;
+  fixed32 device_capabilities_timestamp = 19;
+  uint32 asset_index = 20;
+  GDI.Proto.Dog.AssetType asset_type = 21;
+  fixed32 asset_index_timestamp = 22;
+  uint32 previous_esn = 128;
+  fixed32 previous_esn_timestamp = 129;
+  bool solo_deletion = 130;
+}
+
+message Group {
+  GDI.Proto.DataTypes.UUID id = 1;
+  uint32 order_idx = 2;
+  uint32 order_idx_timestamp = 3;
+  string name = 4;
+  fixed32 name_timestamp = 5;
+  bool deleted = 6;
+  fixed32 deleted_timestamp = 7;
+}
+
+message AssetAddedIndex {
+  fixed32 esn = 1;
+  uint32 asset_index = 2;
+}
+
+message StartSyncRequest {
+  bool needs_full_sync = 1;
+  uint32 locale = 2;
+}
+
+message StartSyncResponse {
+  GDI.Proto.Dog.SyncStartStatus start_status = 1;
+  bool send_full_list = 2;
+}
+
+message SyncCompleteRequest {
+  GDI.Proto.Dog.SyncCompleteStatus status = 1;
+}
+
+message SyncCompleteResponse {
+  GDI.Proto.Dog.SyncCompleteStatus status = 1;
+}
+
+message GroupListRequest {
+  repeated GDI.Proto.Dog.Group groups = 1;
+  bool more_to_send = 2;
+}
+
+message GroupListResponse {
+}
+
+message AssetListRequest {
+  repeated GDI.Proto.Dog.Asset assets = 1;
+  bool more_to_send = 2;
+}
+
+message AssetListResponse {
+  repeated GDI.Proto.Dog.AssetAddedIndex added_assets = 1;
+}
+
+message RealtimeAssetChangeRequest {
+  GDI.Proto.Dog.Asset asset = 1;
+}
+
+message RealtimeAssetChangeResponse {
+  GDI.Proto.Dog.AssetAddedIndex added_asset = 1;
+}
+
+message RealtimeGroupChangeRequest {
+  GDI.Proto.Dog.Group group = 1;
+}
+
+message RealtimeGroupChangeResponse {
+}
+
+message AskToStartSyncNotification {
+}
+
+message DogService {
+  oneof dog_message {
+    GDI.Proto.Dog.SetCompanionRequest set_companion_request = 1;
+    GDI.Proto.Dog.SetCompanionResponse set_companion_response = 2;
+    GDI.Proto.Dog.GetCompanionRequest get_companion_request = 3;
+    GDI.Proto.Dog.GetCompanionResponse get_companion_response = 4;
+    GDI.Proto.Dog.StartSyncRequest start_sync_request = 5;
+    GDI.Proto.Dog.StartSyncResponse start_sync_response = 6;
+    GDI.Proto.Dog.SyncCompleteRequest sync_complete_request = 7;
+    GDI.Proto.Dog.SyncCompleteResponse sync_complete_response = 8;
+    GDI.Proto.Dog.GroupListRequest group_list_request = 9;
+    GDI.Proto.Dog.GroupListResponse group_list_response = 10;
+    GDI.Proto.Dog.AssetListRequest asset_list_request = 11;
+    GDI.Proto.Dog.AssetListResponse asset_list_response = 12;
+    GDI.Proto.Dog.RealtimeAssetChangeRequest realtime_asset_change_request = 13;
+    GDI.Proto.Dog.RealtimeAssetChangeResponse realtime_asset_change_response = 14;
+    GDI.Proto.Dog.RealtimeGroupChangeRequest realtime_group_change_request = 15;
+    GDI.Proto.Dog.RealtimeGroupChangeResponse realtime_group_change_response = 16;
+    GDI.Proto.Dog.AskToStartSyncNotification ask_to_start_sync_notification = 17;
+  }
+}
+
+message CapabilitiesRequest {
+  bool supports_asset_sync = 1;
+  bool supports_group_sync = 2;
+}
+
+message CapabilitiesResponse {
+  bool supports_companion_pairing = 1;
+  bool supports_asset_sync = 2;
+  bool supports_group_sync = 3;
+  uint32 max_asset_count = 4;
+  uint32 max_group_count = 5;
+}

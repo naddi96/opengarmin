@@ -1,0 +1,337 @@
+syntax = "proto2";
+
+package GDI.Proto.FileAccess;
+
+import "GDICore.proto";
+import "GDIDataTypes.proto";
+
+enum ItemAccessResult {
+  SUCCESS = 0;
+  ITEM_TYPE_NOT_SUPPORTED = 1;
+  NO_SUPPORTED_TRANSPORT = 2;
+  NO_AVAILABLE_RESOURCES = 3;
+  INTERNAL_ERROR = 4;
+  INVALID_PARAMS = 5;
+  INVALID_OFFSET = 6;
+  AMBIGUOUS_DATA_TYPE = 7;
+  UNKNOWN_ITEM = 8;
+  NO_SPACE = 9;
+  DATA_TYPE_ERROR = 10;
+  CONFLICTING_PUSH_REQUEST = 11;
+}
+
+enum TransportProtocol {
+  MULTILINK_TRANSPORT_PIPE = 0;
+}
+
+enum TransferDirection {
+  PUSH = 0;
+  PULL = 1;
+}
+
+enum TransferPriorityLevel {
+  LOWEST_START = 0;
+  LOWEST_END = 9;
+  UTILITY_START = 10;
+  UTILITY_END = 19;
+  STANDARD_START = 20;
+  STANDARD_END = 29;
+  USER_INITIATED_START = 30;
+  USER_INITIATED_END = 39;
+  HIGHEST_START = 40;
+  HIGHEST_END = 49;
+}
+
+message Service {
+  GDI.Proto.FileAccess.PullItemDataRequest pull_item_request = 1;
+  GDI.Proto.FileAccess.PullItemDataResponse pull_item_response = 2;
+  GDI.Proto.FileAccess.PushItemDataRequest push_item_request = 3;
+  GDI.Proto.FileAccess.PushItemDataResponse push_item_response = 4;
+  GDI.Proto.FileAccess.TransferStatusRequest transfer_status_request = 5;
+  GDI.Proto.FileAccess.TransferStatusResponse transfer_status_response = 21;
+  GDI.Proto.FileAccess.PriorityUpdateRequest priority_update_request = 6;
+  GDI.Proto.FileAccess.PriorityUpdateResponse priority_update_response = 7;
+  GDI.Proto.FileAccess.ItemListRequest item_list_request = 9;
+  GDI.Proto.FileAccess.ItemListResponse item_list_response = 10;
+  GDI.Proto.FileAccess.ItemListCancelNotification item_list_cancel_notification = 11;
+  GDI.Proto.FileAccess.ItemAddedNotification item_added_notification = 12;
+  GDI.Proto.FileAccess.DeleteItemRequest delete_item_request = 13;
+  GDI.Proto.FileAccess.DeleteItemResponse delete_item_response = 14;
+  GDI.Proto.FileAccess.ModifyFlagsRequest modify_flags_request = 15;
+  GDI.Proto.FileAccess.ModifyFlagsResponse modify_flags_response = 16;
+  GDI.Proto.FileAccess.ItemUpdatedNotification item_updated_notification = 17;
+  GDI.Proto.FileAccess.CancelTransferRequest cancel_transfer_request = 18;
+  GDI.Proto.FileAccess.CancelTransferResponse cancel_transfer_response = 19;
+  GDI.Proto.FileAccess.ResourceUpdateNotification resource_update_notification = 20;
+  GDI.Proto.FileAccess.SyncButtonNotification sync_button_notification = 22;
+  GDI.Proto.FileAccess.SoftwareUpdatePartNumberRequest software_update_part_number_request = 23;
+  GDI.Proto.FileAccess.SoftwareUpdatePartNumberResponse software_update_part_number_response = 24;
+  GDI.Proto.FileAccess.GetItemChecksumRequest get_item_checksum_request = 25;
+  GDI.Proto.FileAccess.GetItemChecksumResponse get_item_checksum_response = 26;
+}
+
+message DataType {
+  enum Format {
+    GDXML_DATA_TYPE = 0;
+    SOFTWARE_UPDATE = 1;
+    SPECIAL_CASE = 2;
+    GDXML_FULL_FILE = 3;
+    DATA_XFER = 4;
+    GDXML_UPDATE_FILE = 5;
+  }
+  enum SpecialCase {
+    COUNTER_BYTE_TEST = 1;
+  }
+  GDI.Proto.FileAccess.DataType.Format format = 1;
+  string gdxml_string = 2;
+  uint32 gdxml_string_key = 3;
+  string gdxml_file_identifier = 4;
+  string software_update_path = 5;
+  GDI.Proto.FileAccess.DataType.SpecialCase special_case = 6;
+  string update_part_number = 7;
+}
+
+message ItemReference {
+  enum Urgency {
+    IMMEDIATE = 0;
+    NORMAL = 1;
+    SLOW = 2;
+  }
+  GDI.Proto.DataTypes.UUID uid = 1;
+  GDI.Proto.FileAccess.DataType data_type = 2;
+  uint64 data_size = 3;
+  uint32 requested_flags = 4;
+  uint32 transaction_id = 5;
+  GDI.Proto.FileAccess.ItemReference.Urgency urgency = 6;
+}
+
+message PullItemDataRequest {
+  GDI.Proto.FileAccess.ItemReference item = 1;
+  uint32 priority = 2;
+  repeated GDI.Proto.FileAccess.TransportProtocol supported_transports = 3;
+  uint64 offset = 4;
+  uint32 requested_compression_window = 5;
+}
+
+message PullItemDataResponse {
+  GDI.Proto.FileAccess.ItemAccessResult result = 1;
+  GDI.Proto.FileAccess.TransportProtocol transport = 2;
+  uint32 transfer_handle = 3;
+  string file_path = 4;
+  sint32 error_code = 5;
+  uint32 error_source = 6;
+  uint32 compression_window = 7;
+  uint32 data_specific_error_source = 8;
+  sint32 data_specific_error_code = 9;
+}
+
+message PushItemDataRequest {
+  GDI.Proto.FileAccess.ItemReference item = 1;
+  uint32 priority = 2;
+  repeated GDI.Proto.FileAccess.TransportProtocol supported_transports = 3;
+  uint32 requested_compression_window = 4;
+}
+
+message PushItemDataResponse {
+  GDI.Proto.FileAccess.ItemAccessResult result = 1;
+  uint64 offset = 2;
+  GDI.Proto.FileAccess.TransportProtocol transport = 3;
+  uint32 transfer_handle = 4;
+  string file_path = 5;
+  sint32 error_code = 6;
+  uint32 error_source = 7;
+  uint32 compression_window = 8;
+  uint32 data_specific_error_source = 9;
+  sint32 data_specific_error_code = 10;
+}
+
+message DeleteItemRequest {
+  GDI.Proto.DataTypes.UUID uid = 1;
+  GDI.Proto.FileAccess.TransferDirection direction = 2;
+}
+
+message DeleteItemResponse {
+  enum Result {
+    SUCCESS = 0;
+    ITEM_DOES_NOT_EXIST = 1;
+    ITEM_CANNOT_BE_DELETED = 2;
+    TRANSFER_IN_PROGRESS = 3;
+    DELETE_FAILED = 4;
+    INVALID_PARAMS = 5;
+    OPERATION_NOT_SUPPORTED = 6;
+  }
+  GDI.Proto.FileAccess.DeleteItemResponse.Result result = 1;
+  uint32 error_code = 2;
+  uint32 error_source = 3;
+}
+
+message TransferStatusRequest {
+  enum FailureReason {
+    TRANSPORT_FAILED = 0;
+    HIGHER_PRIORITY_REQUEST_RECEIVED = 1;
+    ITEM_DELETED = 2;
+    CANCELLED_BY_CLIENT = 3;
+    CANCELLED_BY_DEVICE = 4;
+    COMPRESSION_FAILED = 5;
+  }
+  GDI.Proto.DataTypes.UUID uid = 1;
+  uint32 transfer_handle = 2;
+  GDI.Proto.FileAccess.TransferStatusRequest.FailureReason failure_reason = 3;
+  uint32 transport_status = 4;
+  uint32 transport_provider_id = 5;
+  uint32 transport_error_code = 6;
+  uint32 new_priority = 7;
+}
+
+message TransferStatusResponse {
+  uint32 next_transfer_priority = 1;
+}
+
+message PriorityUpdateRequest {
+  uint32 transfer_handle = 1;
+  uint32 new_priority = 2;
+}
+
+message PriorityUpdateResponse {
+  enum Status {
+    SUCCESS = 0;
+    INVALID_PRIORITY = 1;
+    UNKNOWN_TRANSFER = 2;
+  }
+  GDI.Proto.FileAccess.PriorityUpdateResponse.Status status = 1;
+}
+
+message ItemListRequest {
+  uint32 session_id = 1;
+  uint32 transaction_id = 2;
+  uint32 max_item_count = 3;
+  repeated GDI.Proto.DataTypes.UUID exclude_all_flags = 4;
+  repeated GDI.Proto.DataTypes.UUID get_flags = 5;
+  repeated GDI.Proto.FileAccess.DataType included_data_types = 6;
+}
+
+message ItemListResponse {
+  enum Status {
+    SUCCESS = 0;
+    FAIL_UNKNOWN_SESSION_ID = 1;
+    FAIL_TOO_MANY_EXCLUDE_FLAGS = 2;
+    FAIL_TOO_MANY_GET_FLAGS = 3;
+    FAIL_OTHER = 4;
+    FAIL_TOO_MANY_INCLUDE_TYPES = 5;
+    FAIL_INVALID_DATA_TYPE = 6;
+  }
+  GDI.Proto.FileAccess.ItemListResponse.Status status = 1;
+  uint32 session_id = 2;
+  uint32 next_transaction_id = 3;
+  repeated GDI.Proto.FileAccess.ItemReference items = 4;
+  uint32 error_code = 5;
+  uint32 abandoned_session_id = 6;
+  GDI.Proto.FileAccess.DataType malformed_data_type = 7;
+}
+
+message ItemListCancelNotification {
+  uint32 session_id = 1;
+}
+
+message ItemAddedNotification {
+  repeated GDI.Proto.FileAccess.ItemReference items = 1;
+}
+
+message ModifyFlagsRequest {
+  GDI.Proto.DataTypes.UUID uid = 1;
+  repeated GDI.Proto.DataTypes.UUID set_flags = 2;
+  repeated GDI.Proto.DataTypes.UUID clear_flags = 3;
+}
+
+message ModifyFlagsResponse {
+  enum Status {
+    SUCCESS = 0;
+    FAIL_ITEM_NOT_PROVIDED = 1;
+    FAIL_ITEM_NOT_FOUND = 2;
+    FAIL_FLAGS_NOT_PROVIDED = 3;
+    FAIL_MAX_FLAGS_REACHED = 4;
+    FAIL_OTHER = 5;
+  }
+  GDI.Proto.FileAccess.ModifyFlagsResponse.Status status = 1;
+  uint32 error_source = 2;
+  uint32 error_code = 3;
+}
+
+message ItemUpdatedNotification {
+  GDI.Proto.DataTypes.UUID uid = 1;
+  repeated GDI.Proto.DataTypes.UUID changed_flags_set = 2;
+  repeated GDI.Proto.DataTypes.UUID changed_flags_clear = 3;
+}
+
+message CancelTransferRequest {
+  uint32 transfer_handle = 1;
+}
+
+message CancelTransferResponse {
+  enum Status {
+    SUCCESS = 0;
+    UNKNOWN_TRANSFER = 1;
+  }
+  GDI.Proto.FileAccess.CancelTransferResponse.Status status = 1;
+}
+
+message ResourceUpdateNotification {
+  enum Status {
+    CURRENT_PRIORITY_LOWERED = 1;
+    FILE_SPACE_FREED = 2;
+  }
+  GDI.Proto.FileAccess.ResourceUpdateNotification.Status status = 1;
+  uint32 current_priority = 2;
+}
+
+message SyncButtonNotification {
+}
+
+message Capabilities {
+  enum ChecksumMethod {
+    NOT_SUPPORTED = 0;
+    TRUNCATED_MD5 = 1;
+  }
+  bool server_push_file_bundle_support = 1;
+  bool software_update_part_number_request_support = 2;
+  GDI.Proto.FileAccess.Capabilities.ChecksumMethod server_file_checksum_method = 3;
+  uint32 checksum_max_file_size_byte = 4;
+}
+
+message SoftwareUpdatePartNumberRequest {
+  enum Requestor {
+    DISPLAY = 0;
+    APP = 1;
+  }
+  GDI.Proto.FileAccess.SoftwareUpdatePartNumberRequest.Requestor requestor = 1;
+}
+
+message SoftwareUpdatePartNumberResponse {
+  repeated string part_number = 1;
+}
+
+message GetItemChecksumRequest {
+  GDI.Proto.DataTypes.UUID uid = 1;
+}
+
+message GetItemChecksumResponse {
+  enum Result {
+    UNSPECIFIED = 0;
+    SUCCESS = 1;
+    FAIL_ITEM_DOES_NOT_EXIST = 2;
+    FAIL_ITEM_SIZE_TOO_LARGE = 3;
+    FAIL_INTERNAL_ERROR = 4;
+    FAIL_DEVICE_IS_BUSY = 5;
+  }
+  GDI.Proto.DataTypes.UUID uid = 1;
+  GDI.Proto.FileAccess.GetItemChecksumResponse.Result result = 2;
+  fixed64 checksum_truncated_md5 = 3;
+}
+
+extend GDI.Proto.Core.FeatureCapabilitiesRequest {
+  GDI.Proto.FileAccess.Capabilities request_file_access_capabilities = 16;
+}
+
+extend GDI.Proto.Core.FeatureCapabilitiesResponse {
+  GDI.Proto.FileAccess.Capabilities response_file_access_capabilities = 16;
+}

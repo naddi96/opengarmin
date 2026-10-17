@@ -1,0 +1,267 @@
+syntax = "proto2";
+
+package GDI.Proto.HSAData;
+
+enum HSAFeatures {
+  UNITED_HEALTHCARE = 1;
+  CUSTOM_DATA_LOGGING = 2;
+  CUSTOM_DATA_COMPRESSION = 4;
+  GENERIC_MSG = 8;
+  CUSTOM_DATA_SYNC2 = 16;
+}
+
+enum HSAFitLogCapabilities {
+  HRV = 1;
+  ZERO_CROSSING = 2;
+  HEART_RATE = 4;
+  RAW_ACCEL = 8;
+  RAW_PPG = 16;
+  RESPIRATION = 32;
+  SPO2 = 64;
+  STEPS = 128;
+  STRESS = 256;
+  HYDRATION = 512;
+  BODY_BATTERY = 1024;
+  RAW_GYRO = 2048;
+}
+
+enum HSAFitFilesToCompress {
+  UNITED_HEALTHCARE_FILES = 1;
+  CUSTOM_DATA_LOG_FILES = 2;
+}
+
+message HSADataService {
+  GDI.Proto.HSAData.HSAFileXferRequest hsa_file_xfer_request = 1;
+  GDI.Proto.HSAData.HSAFileXferNotification hsa_file_xfer_ntfctn = 2;
+  GDI.Proto.HSAData.UHCAccelParametersSetRequest uhc_accel_params_set_request = 3;
+  GDI.Proto.HSAData.UHCAccelParametersSetResponse uhc_accel_params_set_response = 4;
+  GDI.Proto.HSAData.UHCAccelParametersGetRequest uhc_accel_params_get_request = 5;
+  GDI.Proto.HSAData.UHCAccelParametersGetResponse uhc_accel_params_get_response = 6;
+  GDI.Proto.HSAData.UHCActivationRequest uhc_activation_request = 7;
+  GDI.Proto.HSAData.UHCActivationResponse uhc_activation_response = 8;
+  GDI.Proto.HSAData.UHCFitParametersSetRequest uhc_fit_parameters_set_request = 9;
+  GDI.Proto.HSAData.UHCFitParametersSetResponse uhc_fit_parameters_set_response = 10;
+  GDI.Proto.HSAData.UHCFitParametersGetRequest uhc_fit_parameters_get_request = 11;
+  GDI.Proto.HSAData.UHCFitParametersGetResponse uhc_fit_parameters_get_response = 12;
+  GDI.Proto.HSAData.UHCTimeVarsSetRequest uhc_time_vars_set_request = 13;
+  GDI.Proto.HSAData.UHCTimeVarsSetResponse uhc_time_vars_set_response = 14;
+  GDI.Proto.HSAData.HSAFitLogConfigRequest hsa_fit_log_config_request = 15;
+  GDI.Proto.HSAData.HSAFitLogConfigResponse hsa_fit_log_config_response = 16;
+  GDI.Proto.HSAData.HSAFitLogCapabilitiesRequest hsa_fit_log_capabilities_request = 17;
+  GDI.Proto.HSAData.HSAFitLogCapabilitiesResponse hsa_fit_log_capabilities_response = 18;
+  GDI.Proto.HSAData.HSAFeaturesRequest hsa_features_request = 19;
+  GDI.Proto.HSAData.HSAFeaturesResponse hsa_features_response = 20;
+  GDI.Proto.HSAData.HSAFitFileCompressionRequest hsa_fit_file_compression_request = 21;
+  GDI.Proto.HSAData.HSAFitFileCompressionResponse hsa_fit_file_compression_response = 22;
+  GDI.Proto.HSAData.HSAGenericRequest hsa_generic_request = 23;
+  GDI.Proto.HSAData.HSAGenericResponse hsa_generic_response = 24;
+}
+
+message HSAFeaturesRequest {
+}
+
+message HSAFeaturesResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 100;
+    ERROR = 200;
+    UNSUPPORTED = 300;
+  }
+  GDI.Proto.HSAData.HSAFeaturesResponse.ResponseStatus status = 1;
+  uint32 features_bf = 2;
+}
+
+message HSAFileXferRequest {
+  enum RequestType {
+    UHC = 0;
+    CUSTOM = 1;
+    ECG_CLINICAL = 2;
+  }
+  bool request_sync = 1;
+  GDI.Proto.HSAData.HSAFileXferRequest.RequestType request_type = 2;
+}
+
+message HSAFileXferNotification {
+  repeated GDI.Proto.HSAData.HSADataTransferItem file_xfer_list = 1;
+  uint32 total_file_count = 2;
+  uint32 total_file_size = 3;
+}
+
+message HSADataTransferItem {
+  uint32 id = 1;
+  uint32 size = 2;
+}
+
+message UHCAccelParametersSetRequest {
+  uint32 sessions_per_day = 1;
+  uint32 pre_collection_intervals = 2;
+  uint32 num_collection_intervals = 3;
+  uint32 min_steps_per_interval = 4;
+  uint32 max_steps_per_interval = 5;
+  uint32 interval_sample_size = 6;
+}
+
+message UHCAccelParametersSetResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 100;
+    ERROR = 200;
+  }
+  GDI.Proto.HSAData.UHCAccelParametersSetResponse.ResponseStatus status = 1;
+}
+
+message UHCAccelParametersGetRequest {
+  bool get_parameters = 1;
+}
+
+message UHCAccelParametersGetResponse {
+  uint32 sessions_per_day = 1;
+  uint32 pre_collection_intervals = 2;
+  uint32 num_collection_intervals = 3;
+  uint32 min_steps_per_interval = 4;
+  uint32 max_steps_per_interval = 5;
+  uint32 interval_sample_size = 6;
+}
+
+message UHCActivationRequest {
+  bool activate_uhc = 1;
+  uint32 activation_key = 2;
+}
+
+message UHCActivationResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 100;
+    ERROR = 200;
+  }
+  GDI.Proto.HSAData.UHCActivationResponse.ResponseStatus status = 1;
+  int32 uhc_UUID = 2;
+}
+
+message UHCFitParametersSetRequest {
+  uint32 freq_period_step_goal = 1;
+  uint32 freq_period_len_mins = 2;
+  uint32 freq_delay_len_mins = 3;
+  uint32 freq_daily_goal_cnt = 4;
+  uint32 inten_step_goal = 5;
+  uint32 inten_active_min_goal = 6;
+  uint32 tenac_daily_step_goal = 7;
+}
+
+message UHCFitParametersSetResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 100;
+    ERROR = 200;
+  }
+  GDI.Proto.HSAData.UHCFitParametersSetResponse.ResponseStatus status = 1;
+}
+
+message UHCFitParametersGetRequest {
+  bool get_parameters = 1;
+}
+
+message UHCFitParametersGetResponse {
+  uint32 freq_period_step_goal = 1;
+  uint32 freq_period_len_mins = 2;
+  uint32 freq_delay_len_mins = 3;
+  uint32 freq_daily_goal_cnt = 4;
+  uint32 inten_step_goal = 5;
+  uint32 inten_active_min_goal = 6;
+  uint32 tenac_daily_step_goal = 7;
+}
+
+message UHCTimeVarsSetRequest {
+  bool set_time = 1;
+  uint32 rtc_time_sec = 2;
+  uint32 time_to_midnight_sec = 3;
+  int32 timezone_offset = 4;
+}
+
+message UHCTimeVarsSetResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 100;
+    ERROR = 200;
+  }
+  GDI.Proto.HSAData.UHCTimeVarsSetResponse.ResponseStatus status = 1;
+  uint32 rtc_time_sec = 2;
+  uint32 time_to_midnight_sec = 3;
+}
+
+message HSAFitLogConfigRequest {
+  GDI.Proto.HSAData.HSAFitLogConfig config = 1;
+}
+
+message HSAFitLogConfigResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 100;
+    ERROR = 200;
+  }
+  GDI.Proto.HSAData.HSAFitLogConfigResponse.ResponseStatus status = 1;
+  GDI.Proto.HSAData.HSAFitLogConfig config = 2;
+}
+
+message HSAFitLogConfig {
+  enum SourceType {
+    HRV = 0;
+    ZERO_CROSSING = 1;
+    HEART_RATE = 2;
+    RAW_ACCEL = 3;
+    RAW_PPG = 4;
+    RESPIRATION = 5;
+    SPO2 = 6;
+    STEPS = 7;
+    STRESS = 8;
+    HYDRATION = 9;
+    BODY_BATTERY = 10;
+    RAW_GYRO = 11;
+  }
+  bool state = 1;
+  GDI.Proto.HSAData.HSAFitLogConfig.SourceType source = 2;
+  uint32 processing_interval = 3;
+}
+
+message HSAGenericRequest {
+  int32 id = 1;
+  bytes data = 2;
+}
+
+message HSAGenericResponse {
+  enum ResponseStatus {
+    UNKNOWN_STATUS = 0;
+    OK = 100;
+    ERROR = 200;
+  }
+  int32 id = 1;
+  GDI.Proto.HSAData.HSAGenericResponse.ResponseStatus status = 2;
+  bytes data = 3;
+}
+
+message HSAFitLogCapabilitiesRequest {
+}
+
+message HSAFitLogCapabilitiesResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 100;
+    ERROR = 200;
+  }
+  GDI.Proto.HSAData.HSAFitLogCapabilitiesResponse.ResponseStatus status = 1;
+  uint32 capabilities_bf = 2;
+}
+
+message HSAFitFileCompressionRequest {
+  uint32 files_to_compress_bf = 1;
+}
+
+message HSAFitFileCompressionResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 100;
+    ERROR = 200;
+  }
+  GDI.Proto.HSAData.HSAFitFileCompressionResponse.ResponseStatus status = 1;
+  uint32 files_compressed_bf = 2;
+}

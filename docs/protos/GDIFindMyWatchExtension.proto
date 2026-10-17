@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIFindMyWatch.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.FindMyWatch.FindMyWatchService find_my_watch_service = 12;
+}

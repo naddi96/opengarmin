@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIExpresspayCommand.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.ExpresspayCommand.ExpresspayCommandService expresspay_command_service = 15;
+}

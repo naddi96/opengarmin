@@ -1,0 +1,65 @@
+syntax = "proto2";
+
+package GDI.Proto.MessengerOnDevice;
+
+import "GDICore.proto";
+import "GDIDataTypes.proto";
+
+enum HermesEnvironment {
+  DEV = 1;
+  TEST = 2;
+  PRODUCTION = 3;
+}
+
+message MessengerOnDeviceService {
+  GDI.Proto.MessengerOnDevice.HermesTokenRequest hermes_token_request = 1;
+  GDI.Proto.MessengerOnDevice.HermesTokenResponse hermes_token_response = 2;
+  GDI.Proto.MessengerOnDevice.HermesProviderNotification hermes_provider_notifications = 3;
+}
+
+message HermesTokenRequest {
+  string phone_number = 1;
+  GDI.Proto.DataTypes.UUID instance_id = 2;
+}
+
+message HermesTokenResponse {
+  enum Status {
+    OK = 1;
+    GENERIC_ERROR = 2;
+    SERVICE_UNAVAILABLE = 3;
+    SERVICE_ERROR = 4;
+    NO_INTERNET_GENERIC = 5;
+  }
+  GDI.Proto.MessengerOnDevice.HermesTokenResponse.Status status = 1;
+  string phone_number = 2;
+  GDI.Proto.DataTypes.UUID instance_id = 3;
+  string bearer_token = 4;
+  fixed32 bearer_token_expiration = 5;
+  string refresh_token = 6;
+  GDI.Proto.MessengerOnDevice.HermesEnvironment environment = 7;
+}
+
+message HermesProviderNotification {
+  enum ServiceStatus {
+    AVAILABLE = 1;
+    UNAVAILABLE = 2;
+    SERVICE_ERROR = 3;
+    NO_INTERNET_GENERIC = 4;
+  }
+  GDI.Proto.MessengerOnDevice.HermesProviderNotification.ServiceStatus service_status = 1;
+  bool hermes_token_available = 2;
+  string phone_number = 3;
+  GDI.Proto.MessengerOnDevice.HermesEnvironment environment = 4;
+}
+
+message CapabilitiesRequest {
+  bool inreach_contact_sync_support = 1;
+  bool inreach_message_sync_support = 2;
+  bool inreach_call_sync_support = 3;
+}
+
+message CapabilitiesResponse {
+  bool inreach_contact_sync_support = 1;
+  bool inreach_message_sync_support = 2;
+  bool inreach_call_sync_support = 3;
+}

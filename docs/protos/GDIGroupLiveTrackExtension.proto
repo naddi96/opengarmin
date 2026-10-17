@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIGroupLiveTrack.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.GroupLiveTrack.GroupLiveTrackService group_live_track_service = 14;
+}

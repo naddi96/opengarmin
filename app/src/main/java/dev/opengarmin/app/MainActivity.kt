@@ -30,6 +30,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.ble.GarminBleClient
+import dev.opengarmin.protocol.Gdi
+import dev.opengarmin.protocol.GdiClient
+import dev.opengarmin.protocol.Handshake
+import dev.opengarmin.protocol.Hex
 import dev.opengarmin.protocol.ServiceId
 
 class MainActivity : ComponentActivity() {
@@ -68,7 +72,76 @@ class MainActivity : ComponentActivity() {
         )
         client = c
         c.session.onGfdiMessage = { frame ->
-            main.post { log("GFDI type=${frame.type} seq=${frame.seq} len=${frame.payload.size}") }
+            main.post {
+                val payload = Hex.encode(frame.payload)
+                val shown = if (payload.length <= 120) payload else payload.take(120) + "…"
+                log("GFDI type=${frame.type} seq=${frame.seq} len=${frame.payload.size} $shown")
+            }
+        }
+
+        val gdi = GdiClient(c.session) { log(it) }
+        var requestedCapabilities = false
+        var requestedList = false
+
+        fun handleItemList(response: ByteArray) {
+            val fields = Gdi.smartFields(response)
+            val fa = fields[Gdi.SMART_FILE_ACCESS]
+            if (fa == null) {
+                log("GDI: response fields=${fields.keys} (no FileAccess)")
+                return
+            }
+            val svc = Gdi.parseFileAccessService(fa)
+            val list = svc.itemListResponse
+            if (list == null) {
+                log("GDI: FileAccess had no item_list_response")
+                return
+            }
+            log("FILE LIST status=${list.status} session=${list.sessionId} nextTx=${list.nextTransactionId} items=${list.items.size}")
+            list.items.forEach { item ->
+                val dt = item.dataType
+                log(
+                    "  item uid=${item.uid?.hex()} fmt=${dt?.format} id=${dt?.gdxmlFileIdentifier} " +
+                        "str=${dt?.gdxmlString} size=${item.dataSize} flags=${item.requestedFlags} tx=${item.transactionId}",
+                )
+            }
+        }
+
+        fun requestList() {
+            if (requestedList) return
+            requestedList = true
+            log("GDI → ItemListRequest (FileAccess)")
+            gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.itemListRequest(maxItemCount = 100))) { response ->
+                main.post { handleItemList(response) }
+            }
+        }
+
+        gdi.onSmart = { smart ->
+            val fields = Gdi.smartFields(smart)
+            main.post {
+                log("GDI smart fields=${fields.keys} sizes=${fields.mapValues { it.value.size }}")
+                if (Gdi.coreFeatureCapabilitiesResponse(smart) != null) {
+                    requestList()
+                }
+                if (fields.containsKey(Gdi.SMART_FILE_ACCESS)) {
+                    handleItemList(smart)
+                }
+            }
+        }
+
+        c.session.onReady = {
+            main.postDelayed({
+                if (!requestedCapabilities) {
+                    requestedCapabilities = true
+                    log("GFDI ready → FeatureCapabilitiesRequest")
+                    gdi.sendSmart(Gdi.featureCapabilitiesRequest()) { response ->
+                        val caps = Gdi.coreFeatureCapabilitiesResponse(response)
+                        main.post {
+                            log("GDI: capabilities response ${caps?.size ?: -1} bytes")
+                            requestList()
+                        }
+                    }
+                }
+            }, 1000)
         }
 
         setContent {
@@ -99,6 +172,18 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        if (c.hasPermissions()) {
+            main.post {
+                val watch = c.findBondedWatch()
+                if (watch != null) {
+                    log("auto-connecting to bonded ${watch.name}")
+                    c.connect(watch)
+                } else {
+                    log("no bonded Garmin watch found")
+                }
+            }
+        }
     }
 
     private fun startScan() {
@@ -118,6 +203,7 @@ class MainActivity : ComponentActivity() {
         }
 
     private fun log(message: String) {
+        android.util.Log.d("OpenGarmin", message)
         main.post {
             logs.add(0, message)
             if (logs.size > 300) logs.removeAt(logs.lastIndex)

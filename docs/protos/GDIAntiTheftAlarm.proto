@@ -1,0 +1,78 @@
+syntax = "proto2";
+
+package GDI.Proto.AntiTheftAlarm;
+
+message AntiTheftAlarmService {
+  GDI.Proto.AntiTheftAlarm.SettingChangeRequest setting_change_request = 1;
+  GDI.Proto.AntiTheftAlarm.SettingChangeResponse setting_change_response = 11;
+  GDI.Proto.AntiTheftAlarm.TriggerRequest trigger_request = 2;
+  GDI.Proto.AntiTheftAlarm.TriggerResponse trigger_response = 3;
+  GDI.Proto.AntiTheftAlarm.DisableRequest disable_request = 4;
+  GDI.Proto.AntiTheftAlarm.DisableResponse disable_response = 5;
+  GDI.Proto.AntiTheftAlarm.MovementAlertNotification movement_alert_notification = 6;
+  GDI.Proto.AntiTheftAlarm.ResetPINRequest reset_pin_request = 7;
+  GDI.Proto.AntiTheftAlarm.ResetPINResponse reset_pin_response = 8;
+  GDI.Proto.AntiTheftAlarm.SettingRequest setting_request = 9;
+  GDI.Proto.AntiTheftAlarm.SettingResponse setting_response = 10;
+}
+
+message SettingChangeRequest {
+  bool is_enabled = 1;
+}
+
+message SettingChangeResponse {
+  enum Response {
+    ERROR = 0;
+    SUCCESS = 1;
+    ERROR_MODE_ALREADY_SET = 2;
+  }
+  GDI.Proto.AntiTheftAlarm.SettingChangeResponse.Response response = 1;
+}
+
+message TriggerRequest {
+}
+
+message TriggerResponse {
+  enum Response {
+    ERROR = 0;
+    SUCCESS = 1;
+    ERROR_ALREADY_IN_PROGRESS = 2;
+  }
+  GDI.Proto.AntiTheftAlarm.TriggerResponse.Response response = 1;
+}
+
+message DisableRequest {
+}
+
+message DisableResponse {
+  enum Response {
+    ERROR = 0;
+    SUCCESS = 1;
+    ERROR_ALREADY_CANCELLED = 2;
+  }
+  GDI.Proto.AntiTheftAlarm.DisableResponse.Response response = 1;
+}
+
+message MovementAlertNotification {
+}
+
+message ResetPINRequest {
+  uint32 pin = 1;
+}
+
+message ResetPINResponse {
+  enum Response {
+    ERROR = 0;
+    SUCCESS = 1;
+  }
+  GDI.Proto.AntiTheftAlarm.ResetPINResponse.Response response = 1;
+}
+
+message SettingRequest {
+}
+
+message SettingResponse {
+  uint32 pin = 1;
+  bool is_enabled = 2;
+  bool is_triggered = 3;
+}

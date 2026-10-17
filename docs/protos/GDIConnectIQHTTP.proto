@@ -1,0 +1,217 @@
+syntax = "proto2";
+
+package GDI.Proto.ConnectIQHTTP;
+
+import "GDICore.proto";
+import "GDIDataTypes.proto";
+
+message ConnectIQHTTPService {
+  GDI.Proto.ConnectIQHTTP.ConnectIQHTTPRequest connect_iq_http_request = 1;
+  GDI.Proto.ConnectIQHTTP.ConnectIQHTTPResponse connect_iq_http_response = 2;
+  GDI.Proto.ConnectIQHTTP.ConnectIQImageRequest connect_iq_image_request = 3;
+  GDI.Proto.ConnectIQHTTP.ConnectIQImageResponse connect_iq_image_response = 4;
+  GDI.Proto.ConnectIQHTTP.RawResourceRequest raw_resource_request = 5;
+  GDI.Proto.ConnectIQHTTP.RawResourceResponse raw_resource_response = 6;
+  GDI.Proto.ConnectIQHTTP.ConnectIQOAuthRequest connect_iq_oauth_request = 7;
+  GDI.Proto.ConnectIQHTTP.ConnectIQOAuthResponse connect_iq_oauth_response = 8;
+  GDI.Proto.ConnectIQHTTP.ConnectIQOAuthCompleteRequest connect_iq_oauth_complete_request = 9;
+  GDI.Proto.ConnectIQHTTP.ConnectIQOAuthCompleteResponse connect_iq_oauth_complete_response = 10;
+  GDI.Proto.ConnectIQHTTP.OpenWebpageNotification open_webpage_notification = 11;
+}
+
+message ConnectIQHTTPRequest {
+  enum HTTPMethod {
+    UNKNOWN = 0;
+    GET = 1;
+    PUT = 2;
+    POST = 3;
+    DELETE = 4;
+    PATCH = 5;
+    HEAD = 6;
+  }
+  enum ResponseType {
+    JSON = 0;
+    URL_ENCODED = 1;
+    PLAIN_TEXT = 2;
+    XML = 3;
+  }
+  enum Version {
+    VERSION_1 = 0;
+    VERSION_2 = 1;
+  }
+  string url = 1;
+  GDI.Proto.ConnectIQHTTP.ConnectIQHTTPRequest.HTTPMethod http_method = 2;
+  bytes http_header_fields = 3;
+  bytes http_body = 4;
+  uint32 max_response_length = 5;
+  bool include_http_header_fields_in_response = 6;
+  bool compress_response_body = 7;
+  GDI.Proto.ConnectIQHTTP.ConnectIQHTTPRequest.ResponseType response_type = 8;
+  GDI.Proto.ConnectIQHTTP.ConnectIQHTTPRequest.Version version = 9;
+}
+
+message ConnectIQHTTPResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 100;
+    INVALID_HTTP_HEADER_FIELDS_IN_REQUEST = 200;
+    INVALID_HTTP_BODY_IN_REQUEST = 201;
+    INVALID_HTTP_METHOD_IN_REQUEST = 202;
+    NETWORK_REQUEST_TIMED_OUT = 300;
+    INVALID_HTTP_BODY_IN_NETWORK_RESPONSE = 400;
+    INVALID_HTTP_HEADER_FIELDS_IN_NETWORK_RESPONSE = 401;
+    NETWORK_RESPONSE_TOO_LARGE = 402;
+    INSECURE_REQUEST = 1001;
+  }
+  GDI.Proto.ConnectIQHTTP.ConnectIQHTTPResponse.ResponseStatus status = 1;
+  int32 http_status_code = 2;
+  bytes http_body = 3;
+  bytes http_header_fields = 4;
+  uint32 inflated_size = 5;
+  GDI.Proto.ConnectIQHTTP.ConnectIQHTTPRequest.ResponseType response_type = 6;
+}
+
+message ConnectIQImageRequest {
+  enum Dithering {
+    NONE = 0;
+    FLOYD_STEINBERG = 1;
+  }
+  string url = 1;
+  uint32 partNumber = 2;
+  uint32 max_width = 3;
+  uint32 max_height = 4;
+  uint32 max_size = 5;
+  bytes palette = 6;
+  GDI.Proto.ConnectIQHTTP.ConnectIQImageRequest.Dithering dithering = 7;
+  bool use_data_xfer = 8;
+}
+
+message ConnectIQImageResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 100;
+    NETWORK_REQUEST_TIMED_OUT = 200;
+    IMAGE_TOO_LARGE = 300;
+  }
+  GDI.Proto.ConnectIQHTTP.ConnectIQImageResponse.ResponseStatus status = 1;
+  int32 http_status_code = 2;
+  bytes image_data = 3;
+  uint32 width = 4;
+  uint32 height = 5;
+  uint32 inflated_size = 6;
+  GDI.Proto.DataTypes.DataTransferItem xfer_data = 7;
+}
+
+message RawResourceRequest {
+  enum HTTPMethod {
+    UNKNOWN = 0;
+    GET = 1;
+    PUT = 2;
+    POST = 3;
+    DELETE = 4;
+    PATCH = 5;
+    HEAD = 6;
+  }
+  message HTTPHeader {
+    string key = 1;
+    string value = 2;
+  }
+  message MultipartForm {
+    string name = 1;
+    string filename = 2;
+    string content_type = 3;
+    bytes resource_data = 4;
+    GDI.Proto.DataTypes.DataTransferItem xfer_data = 5;
+  }
+  string url = 1;
+  uint32 max_size = 2;
+  GDI.Proto.ConnectIQHTTP.RawResourceRequest.HTTPMethod method = 3;
+  string body = 4;
+  repeated GDI.Proto.ConnectIQHTTP.RawResourceRequest.HTTPHeader headers = 5;
+  bool use_data_xfer = 6;
+  bytes raw_body = 7;
+  repeated GDI.Proto.ConnectIQHTTP.RawResourceRequest.MultipartForm forms = 8;
+  int32 connection_timeout_seconds = 9;
+  int32 read_timeout_seconds = 10;
+}
+
+message RawResourceResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 100;
+    NETWORK_REQUEST_TIMED_OUT = 200;
+    FILE_TOO_LARGE = 300;
+    DATA_TRANSFER_ITEM_FAILURE = 400;
+  }
+  message HTTPHeader {
+    string key = 1;
+    string value = 2;
+  }
+  GDI.Proto.ConnectIQHTTP.RawResourceResponse.ResponseStatus status = 1;
+  int32 http_status_code = 2;
+  bytes resource_data = 3;
+  GDI.Proto.DataTypes.DataTransferItem xfer_data = 4;
+  repeated GDI.Proto.ConnectIQHTTP.RawResourceResponse.HTTPHeader headers = 5;
+}
+
+message CapabilitiesRequest {
+  uint32 service_version = 1;
+}
+
+message CapabilitiesResponse {
+}
+
+message ConnectIQOAuthRequest {
+  enum ResultFormat {
+    URL = 0;
+    BODY_JSON = 1;
+  }
+  string initial_url = 1;
+  bytes initial_url_parameters = 2;
+  bool parameters_encrypted = 3;
+  bool parameters_compressed = 4;
+  string result_url = 5;
+  GDI.Proto.ConnectIQHTTP.ConnectIQOAuthRequest.ResultFormat result_type = 6;
+  bytes result_keys = 7;
+  string app_name = 8;
+  bytes app_uuid = 9;
+  bytes store_uuid = 10;
+}
+
+message ConnectIQOAuthResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 1;
+    BAD_REQUEST = 2;
+    NOTIFICATION_FAILURE = 3;
+  }
+  GDI.Proto.ConnectIQHTTP.ConnectIQOAuthResponse.ResponseStatus status = 1;
+}
+
+message ConnectIQOAuthCompleteRequest {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 1;
+    WEB_REQUEST_ERROR = 2;
+  }
+  GDI.Proto.ConnectIQHTTP.ConnectIQOAuthCompleteRequest.ResponseStatus status = 1;
+  int32 http_status_code = 2;
+  bytes app_uuid = 3;
+  bytes data = 4;
+  bool encrypted = 5;
+  bool compressed = 6;
+}
+
+message ConnectIQOAuthCompleteResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 1;
+  }
+  GDI.Proto.ConnectIQHTTP.ConnectIQOAuthCompleteResponse.ResponseStatus status = 1;
+}
+
+message OpenWebpageNotification {
+  string url = 1;
+  bytes params = 2;
+  string app_name = 3;
+}

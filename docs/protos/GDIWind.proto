@@ -1,0 +1,29 @@
+syntax = "proto2";
+
+package GDI.Proto.Wind;
+
+import "GDIDataTypes.proto";
+
+message WindService {
+  GDI.Proto.Wind.WindDataRequest wind_data_request = 1;
+  GDI.Proto.Wind.WindDataResponse wind_data_response = 2;
+}
+
+message WindDataRequest {
+  GDI.Proto.DataTypes.ScPoint current_location = 1;
+}
+
+message WindDataResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 1;
+    DATA_UNAVAILABLE = 2;
+    NETWORK_ERROR = 3;
+    MOBILE_LOCATION_NOT_AVAILABLE = 4;
+  }
+  GDI.Proto.Wind.WindDataResponse.ResponseStatus status = 1;
+  int32 wind_origin = 2;
+  int32 wind_heading = 3;
+  GDI.Proto.DataTypes.CompassDirection wind_compass_direction = 4;
+  double wind_speed = 5;
+}

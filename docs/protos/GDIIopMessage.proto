@@ -1,0 +1,25 @@
+syntax = "proto2";
+
+package GDI.Proto.IopMessage;
+
+message Service {
+  GDI.Proto.IopMessage.IopMessageRequest iop_message_request = 1;
+  GDI.Proto.IopMessage.IopMessageResponse iop_message_response = 2;
+}
+
+message IopMessageRequest {
+  GDI.Proto.IopMessage.IopPacket iop_packet = 1;
+}
+
+message IopMessageResponse {
+  enum ResponseStatus {
+    OK = 0;
+    ERROR = 1;
+  }
+  GDI.Proto.IopMessage.IopMessageResponse.ResponseStatus status = 1;
+}
+
+message IopPacket {
+  uint32 id = 1;
+  bytes data = 2;
+}

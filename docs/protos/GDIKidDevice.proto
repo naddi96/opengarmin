@@ -1,0 +1,92 @@
+syntax = "proto2";
+
+package GDI.Proto.KidDevice;
+
+import "GDICredentials.proto";
+
+enum GCSLocation {
+  PRODUCTION = 0;
+  CHINA = 1;
+  TEST = 2;
+  STAGE = 3;
+}
+
+enum InitialSetupItem {
+  CONTACTS = 0;
+  GEOFENCES = 1;
+  PRESET_TEXT_MESSAGES = 2;
+  CHORES = 3;
+  LEADERBOARD = 4;
+}
+
+message KidDeviceService {
+  GDI.Proto.KidDevice.ITOAuthCredentialsRequest it_oauth_request = 1;
+  GDI.Proto.KidDevice.ITOAuthCredentialsResponse it_oauth_response = 2;
+  GDI.Proto.KidDevice.KidCredentialsRequest kid_credentials_request = 5;
+  GDI.Proto.KidDevice.KidCredentialsResponse kid_credentials_response = 6;
+  GDI.Proto.KidDevice.UserTimerDetailsNotification user_timer_details = 16;
+  GDI.Proto.KidDevice.InitialSetupItemsCompletedNotification initial_setup_items_completed_notification = 17;
+  GDI.Proto.KidDevice.InitialSetupItemsBeginNotification initial_setup_items_begin_notification = 18;
+}
+
+message OAuth2Credentials {
+  string access_token = 1;
+  string token_type = 2;
+  string refresh_token = 3;
+  uint32 expires_in = 4;
+  string scope = 5;
+  string refresh_token_expires_in = 6;
+  string customer_id = 7;
+}
+
+message ITOAuthCredentialsRequest {
+}
+
+message KidCredentialsResponse {
+}
+
+message UserTimerDetailsNotification {
+  enum TimerType {
+    TOOTHBRUSH = 0;
+    PRACTICE = 1;
+    SCREENTIME = 2;
+    EATING = 3;
+    PENCIL = 4;
+    TOYTRAIN = 5;
+    GENERIC = 6;
+  }
+  enum TimerAction {
+    STARTED = 0;
+    STOPPED = 1;
+    PAUSED = 2;
+    RESUMED = 3;
+    RESET = 4;
+    CANCELED = 5;
+  }
+  uint32 current_timestamp = 1;
+  uint32 timer_duration_seconds = 2;
+  GDI.Proto.KidDevice.UserTimerDetailsNotification.TimerAction timer_action = 3;
+  GDI.Proto.KidDevice.UserTimerDetailsNotification.TimerType timer_type = 4;
+}
+
+message InitialSetupItemsCompletedNotification {
+  repeated GDI.Proto.KidDevice.InitialSetupItem successful_items = 1;
+  repeated GDI.Proto.KidDevice.InitialSetupItem failed_items = 2;
+  repeated GDI.Proto.KidDevice.InitialSetupItem unsupported_items = 3;
+}
+
+message ITOAuthCredentialsResponse {
+  GDI.Proto.KidDevice.OAuth2Credentials credentials = 1;
+  GDI.Proto.KidDevice.GCSLocation gcs_location = 2;
+}
+
+message KidCredentialsRequest {
+  GDI.Proto.KidDevice.OAuth2Credentials it_oauth_2_credentials = 1;
+  GDI.Proto.KidDevice.GCSLocation gcs_location = 2;
+  GDI.Proto.Credentials.DIOAuth2Credentials di_oauth_2_credentials = 4;
+  GDI.Proto.Credentials.SIPCredentials sip_credentials = 5;
+}
+
+message InitialSetupItemsBeginNotification {
+  repeated GDI.Proto.KidDevice.InitialSetupItem items_to_request = 1;
+}

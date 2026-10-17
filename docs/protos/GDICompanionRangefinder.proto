@@ -1,0 +1,16 @@
+syntax = "proto2";
+
+package GDI.Proto.CompanionRangefinder;
+
+import "GDIEventSharing.proto";
+
+message CompanionRangefinderService {
+}
+
+message RangefinderMeasurementNotification {
+  float measured_distance = 1;
+  bool flag_locked = 2;
+  float plays_like_distance = 3;
+  float flat_distance = 4;
+  float device_pitch = 5;
+}

@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIDevelopmentTesting.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.DevelopmentTesting.Service development_testing_service = 65;
+}

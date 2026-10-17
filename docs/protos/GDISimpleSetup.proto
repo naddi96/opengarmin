@@ -1,0 +1,58 @@
+syntax = "proto2";
+
+package GDI.Proto.SimpleSetup;
+
+enum FeatureType {
+  ACTIVITY_PROFILE_MIGRATION = 1;
+  SENSOR_PRE_PAIR = 2;
+  POPULAR_PROFILES = 3;
+  ALTERNATE_MODE = 4;
+}
+
+enum SensorType {
+  HEART_RATE = 1;
+  POWER = 2;
+  CADENCE = 3;
+}
+
+enum AlternateMode {
+  NONE = 0;
+  GYM = 1;
+}
+
+message SimpleSetupService {
+  GDI.Proto.SimpleSetup.SupportedFeaturesListRequest supported_feature_list_request = 1;
+  GDI.Proto.SimpleSetup.SupportedFeaturesListResponse supported_feature_list_response = 2;
+  GDI.Proto.SimpleSetup.SelectedRestoreListNotification selected_restore_list_notification = 3;
+  GDI.Proto.SimpleSetup.SelectedSensorListNotification selected_sensor_list_notification = 4;
+  GDI.Proto.SimpleSetup.AlternateModeRequest alternate_mode_request = 5;
+  GDI.Proto.SimpleSetup.AlternateModeResponse alternate_mode_response = 6;
+}
+
+message SupportedFeaturesListRequest {
+}
+
+message SupportedFeaturesListResponse {
+  repeated GDI.Proto.SimpleSetup.Feature feature = 1;
+}
+
+message SelectedRestoreListNotification {
+  repeated GDI.Proto.SimpleSetup.FeatureType feature_type = 1;
+}
+
+message SelectedSensorListNotification {
+  repeated GDI.Proto.SimpleSetup.SensorType sensor_type = 1;
+}
+
+message AlternateModeRequest {
+  GDI.Proto.SimpleSetup.AlternateMode requested_mode = 1;
+}
+
+message AlternateModeResponse {
+  GDI.Proto.SimpleSetup.AlternateMode current_mode = 1;
+}
+
+message Feature {
+  GDI.Proto.SimpleSetup.FeatureType feature_type = 1;
+  repeated int32 compatibility_id = 2;
+}

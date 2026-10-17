@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIIncidentDetection.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.IncidentDetection.IncidentDetectionService incident_detection_service = 9;
+}

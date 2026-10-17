@@ -1,0 +1,118 @@
+syntax = "proto2";
+
+package GDI.Proto.BikePower;
+
+import "GDICore.proto";
+import "GDIEventSharing.proto";
+
+message Service {
+  GDI.Proto.BikePower.ConfigurationRequest config_request = 1;
+  GDI.Proto.BikePower.ConfigurationResponse config_response = 2;
+  GDI.Proto.BikePower.ConfigurationNotification config_notification = 3;
+  GDI.Proto.BikePower.CalibrationRequest calibration_request = 4;
+  GDI.Proto.BikePower.CalibrationResponse calibration_response = 5;
+  GDI.Proto.BikePower.PedalIQNotification pedal_iq_notification = 6;
+  GDI.Proto.BikePower.StatusNotification status_notification = 7;
+}
+
+message CapabilitiesRequest {
+}
+
+message BikePowerCapabilities {
+  bool is_pedal_iq_notification_supported = 1;
+}
+
+message CapabilitiesResponse {
+  GDI.Proto.BikePower.BikePowerCapabilities bike_power_capabilities = 1;
+}
+
+message ConfigurationFields {
+  enum InstallAngleStatus {
+    NOT_SET = 0;
+    RIGHT_SET = 1;
+    LEFT_SET = 2;
+    BOTH_SET = 3;
+  }
+  uint32 crank_length = 1;
+  uint32 transition_time_offset = 2;
+  uint32 peak_power_phase_range = 3;
+  uint32 left_torque_scale = 4;
+  uint32 right_torque_scale = 5;
+  bool auto_zero_enabled = 6;
+  uint32 paired_pedal_id = 7;
+  GDI.Proto.BikePower.ConfigurationFields.InstallAngleStatus install_angle_status = 8;
+}
+
+message ConfigurationRequest {
+  GDI.Proto.BikePower.ConfigurationFields config = 1;
+}
+
+message ConfigurationResponse {
+  enum ConfigurationStatus {
+    ACCEPTED = 0;
+    REJECTED = 1;
+  }
+  GDI.Proto.BikePower.ConfigurationResponse.ConfigurationStatus status = 1;
+  GDI.Proto.BikePower.ConfigurationFields config = 2;
+}
+
+message ConfigurationNotification {
+  GDI.Proto.BikePower.ConfigurationFields config = 1;
+}
+
+message StatusNotification {
+  enum P2PConnectionStatus {
+    NOT_CONNECTED = 0;
+    CONNECTED = 1;
+  }
+  GDI.Proto.BikePower.StatusNotification.P2PConnectionStatus p2p_connected = 1;
+}
+
+message CalibrationRequest {
+}
+
+message CalibrationResponse {
+  uint32 status = 1;
+}
+
+message PedalIQNotification {
+  enum DetectedChange {
+    Temperature = 0;
+    CalibrationTime = 1;
+    CorrectedTorque = 2;
+    InstallAngle = 3;
+  }
+  GDI.Proto.BikePower.PedalIQNotification.DetectedChange detected_change = 1;
+}
+
+message PedalData {
+  sint32 pco_1_2_mm = 1;
+  uint32 power_phase_start_1024_brads = 2;
+  uint32 power_phase_end_1024_brads = 3;
+  uint32 power_phase_peak_start_1024_brads = 4;
+  uint32 power_phase_peak_end_1024_brads = 5;
+  uint32 te_percent = 6;
+  uint32 ps_percent = 7;
+}
+
+message MeasurementNotification {
+  enum RiderPosition {
+    SEATED = 0;
+    TRANSITION_TO_SEATED = 1;
+    STANDING = 2;
+    TRANSITION_TO_STANDING = 3;
+  }
+  uint32 event_timestamp_1_2048_s = 1;
+  uint32 crank_angle_1024_brads = 2;
+  sint32 cumulative_work_1_4_j = 3;
+  uint32 cycle_period_1_2048_s = 4;
+  bool coasting_flag = 5;
+  uint32 power_1_2_w = 6;
+  uint32 balance_percent = 7;
+  GDI.Proto.BikePower.PedalData left_pedal_data = 8;
+  GDI.Proto.BikePower.PedalData right_pedal_data = 9;
+  GDI.Proto.BikePower.MeasurementNotification.RiderPosition rider_position = 10;
+  sint32 coasting_torque_1_32_Nm = 11;
+  uint32 cadence_1_8_rpm = 12;
+  sint32 torque_1_32_Nm = 13;
+}

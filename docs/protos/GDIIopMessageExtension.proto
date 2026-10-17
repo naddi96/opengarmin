@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package GDI.Proto.Smart;
+
+import "GDISmart.proto";
+import "GDIIopMessage.proto";
+
+extend GDI.Proto.Smart.Smart {
+  GDI.Proto.IopMessage.Service iop_message_service = 59;
+}

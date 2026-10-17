@@ -1,0 +1,190 @@
+syntax = "proto2";
+
+package GDI.Proto.Core;
+
+import "GDIDataTypes.proto";
+
+enum NotificationDisabledReason {
+  LOW_RAM_MOBILE_DEVICE = 1;
+  PERMISSION_NOT_GRANTED = 2;
+  SERVICE_NOT_BOUND = 3;
+}
+
+message CoreService {
+  GDI.Proto.Core.SyncRequest sync_request = 1;
+  GDI.Proto.Core.SyncResponse sync_response = 2;
+  GDI.Proto.Core.GetLocationRequest get_location_request = 3;
+  GDI.Proto.Core.GetLocationResponse get_location_response = 4;
+  GDI.Proto.Core.LocationUpdatedSetEnabledRequest location_updated_set_enabled_request = 5;
+  GDI.Proto.Core.LocationUpdatedSetEnabledResponse location_updated_set_enabled_response = 6;
+  GDI.Proto.Core.LocationUpdatedNotification location_updated_notification = 7;
+  GDI.Proto.Core.FeatureCapabilitiesRequest feature_capabilities_request = 8;
+  GDI.Proto.Core.FeatureCapabilitiesResponse feature_capabilities_response = 9;
+  GDI.Proto.Core.GarminGuidOverwriteRequest garmin_guid_overwrite_request = 10;
+  GDI.Proto.Core.GarminGuidOverwriteResponse garmin_guid_overwrite_response = 11;
+  GDI.Proto.Core.DualPairingRequest dual_pairing_request = 12;
+  GDI.Proto.Core.DualPairingResponse dual_pairing_response = 13;
+  GDI.Proto.Core.ConnectionReadyNotification connection_ready_notification = 14;
+  GDI.Proto.Core.CheckPendingSoftwareRequest check_pending_software_request = 15;
+  GDI.Proto.Core.CheckPendingSoftwareResponse check_pending_software_response = 16;
+  GDI.Proto.Core.TimeSyncRequest time_sync_request = 17;
+  GDI.Proto.Core.TimeSyncResponse time_sync_response = 18;
+}
+
+message LocationCapabilitiesRequest {
+  GDI.Proto.Core.NotificationDisabledReason notification_disabled_reason = 1;
+}
+
+message LocationData {
+  enum DataType {
+    SIGNIFICANT_LOCATION = 0;
+    GENERAL_LOCATION = 1;
+    REALTIME_TRACKING = 2;
+    INREACH_TRACKING = 3;
+    TRACKING_EVENT = 4;
+  }
+  GDI.Proto.DataTypes.ScPoint position = 1;
+  float altitude = 2;
+  uint32 timestamp = 3;
+  float horizontal_accuracy = 4;
+  float vertical_accuracy = 5;
+  GDI.Proto.Core.LocationData.DataType datatype = 6;
+  GDI.Proto.DataTypes.UUID session_uuid = 7;
+  GDI.Proto.DataTypes.GPSFixType gps_fix = 8;
+  float course = 9;
+  float speed = 10;
+}
+
+message GetLocationRequest {
+  enum RequestType {
+    STANDARD = 0;
+    EMERGENCY = 1;
+  }
+  GDI.Proto.Core.GetLocationRequest.RequestType request_type = 1;
+}
+
+message GetLocationResponse {
+  enum Status {
+    OK = 1;
+    NO_VALID_LOCATION = 2;
+    LOCATION_SERVICES_UNAVAILABLE = 3;
+    LOCATION_SERVICES_DISABLED = 4;
+    TRY_AGAIN_LATER = 5;
+  }
+  GDI.Proto.Core.GetLocationResponse.Status status = 1;
+  GDI.Proto.Core.LocationData location_data = 2;
+}
+
+message LocationUpdatedSetEnabledRequest {
+  message Request {
+    GDI.Proto.Core.LocationData.DataType requested = 1;
+    uint32 min_update_threshold = 2;
+    float distance_threshold = 3;
+  }
+  bool enabled = 1;
+  repeated GDI.Proto.Core.LocationUpdatedSetEnabledRequest.Request requests = 2;
+}
+
+message LocationUpdatedSetEnabledResponse {
+  enum Status {
+    OK = 1;
+    NOT_AVAILABLE = 2;
+  }
+  message RequestStatus {
+    enum Status {
+      OK = 1;
+      NOT_AVAILABLE = 2;
+      UNSUPPORTED_CRITERIA = 3;
+      GENERIC_ERROR = 4;
+    }
+    GDI.Proto.Core.LocationData.DataType requested = 1;
+    GDI.Proto.Core.LocationUpdatedSetEnabledResponse.RequestStatus.Status status = 2;
+  }
+  GDI.Proto.Core.LocationUpdatedSetEnabledResponse.Status status = 1;
+  repeated GDI.Proto.Core.LocationUpdatedSetEnabledResponse.RequestStatus requests = 2;
+}
+
+message LocationUpdatedNotification {
+  repeated GDI.Proto.Core.LocationData location_data = 1;
+}
+
+message SyncRequest {
+  bool use_this_connection = 1;
+}
+
+message SyncResponse {
+  enum ResponseStatus {
+    UNKNOWN_RESPONSE_STATUS = 0;
+    OK = 1;
+    BUSY_WITH_ANOTHER_APP = 2;
+  }
+  GDI.Proto.Core.SyncResponse.ResponseStatus status = 1;
+}
+
+message FeatureCapabilitiesRequest {
+  bytes garmin_guid = 1;
+  uint32 client_version = 2;
+}
+
+message FeatureCapabilitiesResponse {
+  enum GuidStatus {
+    UNSET = 0;
+    MATCH = 1;
+    NO_MATCH = 2;
+  }
+  GDI.Proto.Core.FeatureCapabilitiesResponse.GuidStatus guid_status = 1;
+  uint32 version = 2;
+}
+
+message GarminGuidOverwriteRequest {
+  bytes garmin_guid = 1;
+}
+
+message GarminGuidOverwriteResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 1;
+    FAIL = 2;
+  }
+  GDI.Proto.Core.GarminGuidOverwriteResponse.ResponseStatus status = 1;
+}
+
+message DualPairingRequest {
+  enum RequestType {
+    PAIR_BT_CLASSIC = 0;
+  }
+  GDI.Proto.Core.DualPairingRequest.RequestType request_type = 1;
+}
+
+message DualPairingResponse {
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 1;
+    UNABLE_TO_PAIR = 2;
+  }
+  GDI.Proto.Core.DualPairingResponse.ResponseStatus status = 1;
+}
+
+message ConnectionReadyNotification {
+}
+
+message CheckPendingSoftwareRequest {
+  bool apply_updates = 1;
+}
+
+message CheckPendingSoftwareResponse {
+  enum Status {
+    NO_UPDATES = 0;
+    PENDING_UPDATES = 1;
+    APPLYING_UPDATES = 2;
+  }
+  GDI.Proto.Core.CheckPendingSoftwareResponse.Status status = 1;
+  uint32 pending_version = 2;
+}
+
+message TimeSyncRequest {
+}
+
+message TimeSyncResponse {
+  uint64 current_time = 1;
+}

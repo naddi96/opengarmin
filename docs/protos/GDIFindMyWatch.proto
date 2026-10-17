@@ -1,0 +1,31 @@
+syntax = "proto2";
+
+package GDI.Proto.FindMyWatch;
+
+enum ResponseStatus {
+  UNKNOWN_RESPONSE_STATUS = 0;
+  OK = 100;
+  ERROR = 200;
+}
+
+message FindMyWatchRequest {
+  int32 timeout = 1;
+}
+
+message FindMyWatchResponse {
+  GDI.Proto.FindMyWatch.ResponseStatus status = 1;
+}
+
+message FindMyWatchCancelRequest {
+}
+
+message FindMyWatchCancelResponse {
+  GDI.Proto.FindMyWatch.ResponseStatus status = 1;
+}
+
+message FindMyWatchService {
+  GDI.Proto.FindMyWatch.FindMyWatchRequest find_request = 1;
+  GDI.Proto.FindMyWatch.FindMyWatchResponse find_response = 2;
+  GDI.Proto.FindMyWatch.FindMyWatchCancelRequest cancel_request = 3;
+  GDI.Proto.FindMyWatch.FindMyWatchResponse cancel_response = 4;
+}
