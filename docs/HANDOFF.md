@@ -59,7 +59,7 @@ The tree is clean. `captures/`, `apk/`, `tools/` binary downloads are gitignored
 | M3 file directory | ✅ 100 items listed (3697-byte response, 8 chunks) |
 | M4 file download + decode | ✅ **99,357 compressed bytes → 198,627 bytes** (zlib, valid FIT: `.FIT`, profile 21184) |
 | M5 FIT parser | ✅ pure-JVM parser: 7,931 messages, 2,488 records, 6 laps |
-| M6 Room → dashboard | ✅ activities + record samples + laps; list/detail UI with HR chart and lap table |
+| M6 Room → dashboard | ✅ activities + records + laps; list/detail UI with HR + elevation charts and lap table |
 
 The M4 download was proven end-to-end earlier: `PullItemDataRequest` →
 `transfer_handle` → MLR transport pipe on service `0x2018` → zlib stream →
@@ -134,6 +134,11 @@ messages. The root cause was three protocol details:
 With those fixed, a full sync completed on 2026-10-17 18:20:
 `capabilities → ItemListResponse (100 items, 3697 B, 8 chunks) → PullItemData
 → transport pipe → 99,357 compressed B → 198,627 B FIT`.
+
+A cold start (app data cleared, no cached FIT) was re-verified afterwards:
+fresh Room v3 database, 1 activity, 2,488 records, 6 laps, dashboard rendered.
+A second connect with the same item UID skips the PULL and reports
+`SYNC up to date`.
 
 ## Immediate next steps
 
