@@ -519,6 +519,9 @@ private fun ActivityDetail(
         Text("Heart rate", style = MaterialTheme.typography.titleMedium)
         HeartRateChart(records)
 
+        Text("Elevation", style = MaterialTheme.typography.titleMedium)
+        ElevationChart(records)
+
         if (laps.isNotEmpty()) {
             Text("Laps", style = MaterialTheme.typography.titleMedium)
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -590,6 +593,38 @@ private fun HeartRateChart(records: List<RecordEntity>) {
         Text("$minHr bpm", style = MaterialTheme.typography.bodySmall)
         Spacer(modifier = Modifier.weight(1f))
         Text("$maxHr bpm", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun ElevationChart(records: List<RecordEntity>) {
+    val points = remember(records) { records.mapNotNull { it.altitudeMeters } }
+    if (points.size < 2) {
+        Text(
+            "No altitude samples in this activity.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+    val minAlt = points.min()
+    val maxAlt = points.max()
+    val range = (maxAlt - minAlt).coerceAtLeast(0.1).toFloat()
+    val lineColor = MaterialTheme.colorScheme.tertiary
+
+    Canvas(modifier = Modifier.fillMaxWidth().height(120.dp)) {
+        val path = Path()
+        points.forEachIndexed { index, altitude ->
+            val x = size.width * index / (points.size - 1).toFloat()
+            val y = size.height - (altitude.toFloat() - minAlt.toFloat()) / range * size.height
+            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        drawPath(path, color = lineColor, style = Stroke(width = 3f))
+    }
+    Row {
+        Text("%.0f m".format(minAlt), style = MaterialTheme.typography.bodySmall)
+        Spacer(modifier = Modifier.weight(1f))
+        Text("%.0f m".format(maxAlt), style = MaterialTheme.typography.bodySmall)
     }
 }
 
