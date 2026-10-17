@@ -207,6 +207,12 @@ interface ActivityDao {
     @Query("SELECT * FROM wellness_days ORDER BY date DESC")
     fun observeWellnessDays(): Flow<List<WellnessDayEntity>>
 
+    @Query("SELECT * FROM wellness_days WHERE date BETWEEN :start AND :end ORDER BY date")
+    suspend fun wellnessDaysBetween(start: String, end: String): List<WellnessDayEntity>
+
+    @Query("SELECT * FROM wellness_samples WHERE kind = :kind AND timestamp BETWEEN :start AND :end ORDER BY timestamp")
+    suspend fun wellnessSamplesBetween(kind: String, start: Long, end: Long): List<WellnessSampleEntity>
+
     @Query("SELECT * FROM wellness_days WHERE date = :date")
     suspend fun wellnessDay(date: String): WellnessDayEntity?
 
@@ -230,6 +236,12 @@ interface ActivityDao {
 
     @Query("SELECT * FROM activities")
     suspend fun all(): List<ActivityEntity>
+
+    @Query("SELECT * FROM activities WHERE id = :id")
+    suspend fun activityById(id: Long): ActivityEntity?
+
+    @Query("SELECT * FROM activities WHERE startTime BETWEEN :start AND :end ORDER BY startTime DESC LIMIT :limit")
+    suspend fun activitiesBetween(start: Long, end: Long, limit: Int): List<ActivityEntity>
 
     @Query("SELECT COUNT(*) FROM laps WHERE activityId = :activityId")
     suspend fun lapCount(activityId: Long): Int
@@ -402,6 +414,17 @@ class ActivityRepository(private val dao: ActivityDao) {
 
     suspend fun wellnessSamples(dayId: Long): List<WellnessSampleEntity> = dao.wellnessSamples(dayId)
 
+    suspend fun wellnessDaysBetween(start: String, end: String): List<WellnessDayEntity> =
+        dao.wellnessDaysBetween(start, end)
+
+    suspend fun wellnessSamplesBetween(kind: String, start: Long, end: Long): List<WellnessSampleEntity> =
+        dao.wellnessSamplesBetween(kind, start, end)
+
+    suspend fun activitiesBetween(start: Long, end: Long, limit: Int): List<ActivityEntity> =
+        dao.activitiesBetween(start, end, limit)
+
+    suspend fun activity(id: Long): ActivityEntity? = dao.activityById(id)
+
     suspend fun clear() = dao.clear()
 
     /**
@@ -536,7 +559,7 @@ class ActivityRepository(private val dao: ActivityDao) {
                 )
         }
         val hrSamples = messages.filter { it.name == "monitoring" }.mapNotNull { message ->
-            val hr = msgInt(message, "heart_rate") ?: return@mapNotNull null
+            val hr = msgInt(message, "heart_rate")?.takeIf { it in 1..250 } ?: return@mapNotNull null
             val ts = message.timestamp
                 ?: msgInt(message, "timestamp_16")?.let { resolveTimestamp16(baseTs, it) }
                 ?: baseTs
@@ -570,18 +593,21 @@ class ActivityRepository(private val dao: ActivityDao) {
         val restingHeartRate = messages.filter { it.name == "monitoring_hr_data" }
             .lastOrNull()
             ?.let {
-                msgInt(it, "current_day_resting_heart_rate") ?: msgInt(it, "resting_heart_rate")
+                (msgInt(it, "current_day_resting_heart_rate") ?: msgInt(it, "resting_heart_rate"))
+                    ?.takeIf { value -> value in 1..250 }
             }
 
         val stress = messages.filter { it.name == "stress_level" }.mapNotNull { message ->
-            val value = msgInt(message, "stress_level_value") ?: return@mapNotNull null
+            val value = msgInt(message, "stress_level_value")?.takeIf { it in 0..100 }
+                ?: return@mapNotNull null
             val ts = msgDouble(message, "stress_level_time")?.toLong()
                 ?: message.timestamp
                 ?: baseTs
             WellnessSampleEntity(dayId = 0, timestamp = ts, kind = "stress", value = value.toDouble())
         }
         val spo2 = messages.filter { it.name == "spo2_data" }.mapNotNull { message ->
-            val value = msgInt(message, "reading_spo2") ?: return@mapNotNull null
+            val value = msgInt(message, "reading_spo2")?.takeIf { it in 1..100 }
+                ?: return@mapNotNull null
             WellnessSampleEntity(
                 dayId = 0,
                 timestamp = message.timestamp ?: baseTs,
@@ -590,7 +616,8 @@ class ActivityRepository(private val dao: ActivityDao) {
             )
         }
         val respiration = messages.filter { it.name == "respiration_rate" }.mapNotNull { message ->
-            val value = msgDouble(message, "respiration_rate") ?: return@mapNotNull null
+            val value = msgDouble(message, "respiration_rate")?.takeIf { it > 0.0 }
+                ?: return@mapNotNull null
             WellnessSampleEntity(
                 dayId = 0,
                 timestamp = message.timestamp ?: baseTs,

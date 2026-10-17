@@ -56,6 +56,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
 import dev.opengarmin.app.ble.GarminBleClient
+import dev.opengarmin.app.coach.ChatStore
+import dev.opengarmin.app.coach.CoachController
+import dev.opengarmin.app.coach.RepositoryHealthDataSource
+import dev.opengarmin.app.coach.tools.ToolRegistry
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.ActivityRepository
 import dev.opengarmin.app.data.AppDatabase
@@ -64,7 +68,12 @@ import dev.opengarmin.app.data.LapEntity
 import dev.opengarmin.app.data.RecordEntity
 import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessSampleEntity
+import dev.opengarmin.app.llm.ProviderStore
+import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.SyncCoordinator
+import dev.opengarmin.app.ui.PulseApp
+import dev.opengarmin.app.ui.theme.PulseColors
+import dev.opengarmin.app.ui.theme.PulseTheme
 import dev.opengarmin.protocol.Hex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -93,6 +102,9 @@ class MainActivity : ComponentActivity() {
     private var syncAttempts = 0
     private var watchdog: Runnable? = null
     private lateinit var repository: ActivityRepository
+    private lateinit var settings: PulseSettings
+    private lateinit var providerStore: ProviderStore
+    private lateinit var coachController: CoachController
 
     private val devices = mutableStateListOf<DeviceEntry>()
     private val logs = mutableStateListOf<String>()
@@ -103,6 +115,7 @@ class MainActivity : ComponentActivity() {
     private var selectedLaps by mutableStateOf<List<LapEntity>>(emptyList())
     private var selectedWellnessDay by mutableStateOf<WellnessDayEntity?>(null)
     private var wellnessSamples by mutableStateOf<List<WellnessSampleEntity>>(emptyList())
+    private var latestHrSamples by mutableStateOf<List<WellnessSampleEntity>>(emptyList())
     private var dataActivity by mutableStateOf<ActivityEntity?>(null)
     private var dataMessages by mutableStateOf<List<FitMessageEntity>>(emptyList())
     private var dataLoading by mutableStateOf(false)
@@ -130,6 +143,15 @@ class MainActivity : ComponentActivity() {
         }
 
         repository = ActivityRepository(AppDatabase.get(this).activityDao())
+        settings = PulseSettings(this)
+        providerStore = ProviderStore(this)
+        coachController = CoachController(
+            scope = lifecycleScope,
+            providerStore = providerStore,
+            tools = ToolRegistry(RepositoryHealthDataSource(repository)),
+            chatStore = ChatStore(this),
+            settings = settings,
+        )
         lifecycleScope.launch {
             repository.activities.collect { list ->
                 activities.clear()
@@ -140,6 +162,13 @@ class MainActivity : ComponentActivity() {
             repository.wellnessDays.collect { list ->
                 wellnessDays.clear()
                 wellnessDays.addAll(list)
+                val latest = list.firstOrNull()
+                if (latest != null) {
+                    val samples = withContext(Dispatchers.IO) { repository.wellnessSamples(latest.id) }
+                    latestHrSamples = samples
+                } else {
+                    latestHrSamples = emptyList()
+                }
             }
         }
         lifecycleScope.launch(Dispatchers.IO) {
@@ -162,7 +191,13 @@ class MainActivity : ComponentActivity() {
                     when (s) {
                         "connected" -> {
                             coordinator?.reset()
+                            settings.recordSyncStarted()
+                            client?.findBondedWatch()?.name?.let { settings.updateWatchName(it) }
                             armWatchdog()
+                        }
+                        "failed" -> {
+                            settings.recordSyncError("Sync failed")
+                            cancelWatchdog()
                         }
                         "disconnected", "reconnecting" -> cancelWatchdog()
                     }
@@ -198,63 +233,68 @@ class MainActivity : ComponentActivity() {
             onUpToDate = {
                 cancelWatchdog()
                 state = "up to date"
+                settings.recordSyncSuccess()
                 log("SYNC up to date: all activity files already imported")
             },
         )
 
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Screen(
-                        state = state,
-                        lastFile = lastFile,
-                        importing = importing,
-                        activities = activities,
-                        selectedActivity = selectedActivity,
-                        selectedRecords = selectedRecords,
-                        selectedLaps = selectedLaps,
-                        wellnessDays = wellnessDays,
-                        selectedWellnessDay = selectedWellnessDay,
-                        wellnessSamples = wellnessSamples,
-                        dataActivity = dataActivity,
-                        dataMessages = dataMessages,
-                        dataLoading = dataLoading,
-                        devices = devices,
-                        logs = logs,
-                        onScan = { startScan() },
-                        onSync = { syncNow() },
-                        onStop = { client?.stopScan() },
-                        onConnect = {
-                            syncAttempts = 0
-                            client?.connect(it)
-                        },
-                        onDisconnect = {
-                            cancelWatchdog()
-                            client?.disconnect()
-                        },
-                        onSelect = { selectActivity(it) },
-                        onClearSelection = {
-                            selectedActivity = null
-                            selectedRecords = emptyList()
-                            selectedLaps = emptyList()
-                        },
-                        onExploreData = { openDataExplorer(it) },
-                        onCloseData = { closeDataExplorer() },
-                        onSelectWellness = { selectWellness(it) },
-                        onCloseWellness = { closeWellness() },
-                        deviceInfo = {
-                            val s = c.session
-                            listOf(
-                                "GFDI handle" to if (s.gfdiHandle >= 0) "${s.gfdiHandle}" else "—",
-                                "product" to if (s.productNumber != 0) "${s.productNumber}" else "—",
-                                "firmware" to if (s.firmwareVersion != 0) "${s.firmwareVersion}" else "—",
-                                "unit id" to if (s.unitId != 0L) "${s.unitId}" else "—",
-                                "services mask" to "0x%06x".format(s.supportedServicesMask),
-                                "sync attempts" to "$syncAttempts",
-                            )
-                        },
-                    )
+            PulseTheme {
+                val syncLabel = when {
+                    state == "importing" || state == "syncing" || settings.lastSyncStatus == "syncing" -> "Syncing…"
+                    state == "failed" || settings.lastSyncStatus == "failed" -> "Sync failed"
+                    settings.lastSyncAt != null -> "Synced ${relativeSync(settings.lastSyncAt!!)}"
+                    else -> "Not synced"
                 }
+                val syncColor = when {
+                    state == "failed" || settings.lastSyncStatus == "failed" -> PulseColors.Coral
+                    state == "importing" || state == "syncing" || settings.lastSyncStatus == "syncing" -> PulseColors.Orange
+                    settings.lastSyncStatus == "synced" -> PulseColors.Teal
+                    else -> PulseColors.TextMuted
+                }
+                PulseApp(
+                    activities = activities,
+                    wellnessDays = wellnessDays,
+                    hrSamples = latestHrSamples,
+                    selectedActivity = selectedActivity,
+                    selectedRecords = selectedRecords,
+                    selectedLaps = selectedLaps,
+                    dataActivity = dataActivity,
+                    dataMessages = dataMessages,
+                    dataLoading = dataLoading,
+                    settings = settings,
+                    providerStore = providerStore,
+                    coachController = coachController,
+                    syncLabel = syncLabel,
+                    syncColor = syncColor,
+                    logs = logs,
+                    deviceInfo = {
+                        val session = c.session
+                        listOf(
+                            "GFDI handle" to if (session.gfdiHandle >= 0) "${session.gfdiHandle}" else "—",
+                            "product" to if (session.productNumber != 0) "${session.productNumber}" else "—",
+                            "firmware" to if (session.firmwareVersion != 0) "${session.firmwareVersion}" else "—",
+                            "unit id" to if (session.unitId != 0L) "${session.unitId}" else "—",
+                            "services mask" to "0x%06x".format(session.supportedServicesMask),
+                            "sync attempts" to "$syncAttempts",
+                        )
+                    },
+                    onSync = { syncNow() },
+                    onScan = { startScan() },
+                    onStop = { client?.stopScan() },
+                    onDisconnect = {
+                        cancelWatchdog()
+                        client?.disconnect()
+                    },
+                    onSelectActivity = { selectActivity(it) },
+                    onClearSelection = {
+                        selectedActivity = null
+                        selectedRecords = emptyList()
+                        selectedLaps = emptyList()
+                    },
+                    onExploreData = { openDataExplorer(it) },
+                    onCloseData = { closeDataExplorer() },
+                )
             }
         }
 
@@ -263,6 +303,7 @@ class MainActivity : ComponentActivity() {
                 val watch = c.findBondedWatch()
                 if (watch != null) {
                     syncAttempts = 0
+                    settings.updateWatchName(watch.name ?: "")
                     log("auto-connecting to bonded ${watch.name}")
                     c.connect(watch)
                 } else {
@@ -282,6 +323,7 @@ class MainActivity : ComponentActivity() {
             importing = false
             state = "synced"
             result.onSuccess { entity ->
+                settings.recordSyncSuccess()
                 if (entity == null) {
                     log("FIT has no session or was already imported")
                 } else {
@@ -291,6 +333,7 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }.onFailure { e ->
+                settings.recordSyncError("FIT import failed")
                 log("FIT import failed: ${e.message}")
             }
         }
@@ -409,6 +452,7 @@ class MainActivity : ComponentActivity() {
         }
         syncAttempts = 0
         cancelWatchdog()
+        settings.updateWatchName(watch.name ?: "")
         coordinator?.reset()
         c.connect(watch)
     }
@@ -779,7 +823,7 @@ private fun DailyStepsChart(days: List<WellnessDayEntity>) {
     }
 }
 
-private fun formatWellnessDate(date: String): String = runCatching {
+internal fun formatWellnessDate(date: String): String = runCatching {
     LocalDate.parse(date).format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault()))
 }.getOrDefault(date)
 
@@ -923,7 +967,7 @@ private fun RowScope.Stat(label: String, value: String) {
 }
 
 @Composable
-private fun RouteMap(records: List<RecordEntity>, modifier: Modifier = Modifier) {
+internal fun RouteMap(records: List<RecordEntity>, modifier: Modifier = Modifier) {
     val points = remember(records) {
         records.mapNotNull { record ->
             val lat = record.latitude ?: return@mapNotNull null
@@ -980,7 +1024,7 @@ private fun RouteMap(records: List<RecordEntity>, modifier: Modifier = Modifier)
     }
 }
 @Composable
-private fun HeartRateChart(records: List<RecordEntity>) {
+internal fun HeartRateChart(records: List<RecordEntity>) {
     val points = remember(records) { records.mapNotNull { it.heartRate } }
     if (points.size < 2) {
         Text(
@@ -1012,7 +1056,7 @@ private fun HeartRateChart(records: List<RecordEntity>) {
 }
 
 @Composable
-private fun ElevationChart(records: List<RecordEntity>) {
+internal fun ElevationChart(records: List<RecordEntity>) {
     val points = remember(records) { records.mapNotNull { it.altitudeMeters } }
     if (points.size < 2) {
         Text(
@@ -1044,7 +1088,7 @@ private fun ElevationChart(records: List<RecordEntity>) {
 }
 
 @Composable
-private fun DataExplorer(
+internal fun DataExplorer(
     activity: ActivityEntity,
     messages: List<FitMessageEntity>,
     loading: Boolean,
@@ -1376,6 +1420,16 @@ private fun correlation(points: List<Pair<Double, Double>>): Double {
     }
     val denominator = sqrt(varianceX * varianceY)
     return if (denominator == 0.0) Double.NaN else covariance / denominator
+}
+
+internal fun relativeSync(timestamp: Long): String {
+    val deltaSeconds = ((System.currentTimeMillis() - timestamp) / 1000).coerceAtLeast(0)
+    return when {
+        deltaSeconds < 60 -> "just now"
+        deltaSeconds < 3600 -> "${deltaSeconds / 60} min ago"
+        deltaSeconds < 86_400 -> "${deltaSeconds / 3600} h ago"
+        else -> "${deltaSeconds / 86_400} d ago"
+    }
 }
 
 internal fun sportName(sport: Int): String = when (sport) {

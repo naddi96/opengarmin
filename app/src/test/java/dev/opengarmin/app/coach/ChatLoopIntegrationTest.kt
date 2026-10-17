@@ -1,0 +1,168 @@
+package dev.opengarmin.app.coach
+
+import dev.opengarmin.app.coach.tools.ToolRegistry
+import dev.opengarmin.app.llm.LlmMessage
+import dev.opengarmin.app.llm.ModelConfig
+import dev.opengarmin.app.llm.OpenAiClient
+import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import org.json.JSONObject
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import java.time.LocalDate
+import java.util.concurrent.TimeUnit
+
+class ChatLoopIntegrationTest {
+    private lateinit var server: MockWebServer
+    private val today = LocalDate.of(2026, 10, 17)
+
+    @Before
+    fun setUp() {
+        server = MockWebServer()
+        server.start()
+    }
+
+    @After
+    fun tearDown() {
+        server.shutdown()
+    }
+
+    private fun client(): OpenAiClient = OpenAiClient(
+        baseUrl = server.url("/v1").toString(),
+        apiKey = "test-key",
+        model = "mock-model",
+        readTimeoutSeconds = 5,
+        okHttpClient = OkHttpClient.Builder()
+            .connectTimeout(2, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(10, TimeUnit.SECONDS)
+            .build(),
+    )
+
+    @Test
+    fun `streams a tool call executes it and returns an evidence-backed answer`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"get_daily_summary\",\"arguments\":\"{\\\"from\\\":\\\"2026-10-17\\\",\\\"to\\\":\\\"2026-10-17\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"You logged 3,923 steps today.\"},\"finish_reason\":\"stop\"}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+
+        val loop = ChatLoop(
+            tools = ToolRegistry(FakeSource(today)) { today },
+            systemPrompt = "test prompt",
+            maxHeartRate = 190,
+        )
+        val result = loop.run(
+            client = client(),
+            model = ModelConfig("m", "mock-model"),
+            history = listOf(LlmMessage("user", "How was my day?")),
+            scope = ToolScope(),
+        )
+
+        assertEquals("You logged 3,923 steps today.", result.text)
+        assertEquals(listOf("Daily summary · 1 day"), result.evidence)
+
+        val first = JSONObject(server.takeRequest().body.readUtf8())
+        assertTrue(first.has("tools"))
+        assertEquals("mock-model", first.getString("model"))
+
+        val second = JSONObject(server.takeRequest().body.readUtf8())
+        val messages = second.getJSONArray("messages")
+        val toolMessage = (0 until messages.length())
+            .map { messages.getJSONObject(it) }
+            .last { it.optString("role") == "tool" }
+        assertTrue(toolMessage.getString("content").contains("<untrusted_data"))
+        assertTrue(second.has("tools"))
+    }
+
+    @Test
+    fun `falls back to a snapshot when tools are rejected`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(400).setBody("tools unsupported"))
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"I can see limited local data.\"},\"finish_reason\":\"stop\"}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+
+        val loop = ChatLoop(
+            tools = ToolRegistry(FakeSource(today)) { today },
+            systemPrompt = "test prompt",
+            maxHeartRate = null,
+        )
+        val result = loop.run(
+            client = client(),
+            model = ModelConfig("m", "mock-model"),
+            history = listOf(LlmMessage("user", "How was my week?")),
+            scope = ToolScope(),
+        )
+
+        assertEquals("I can see limited local data.", result.text)
+        assertTrue(result.evidence.any { it.contains("Daily summary") })
+        server.takeRequest() // the rejected tools request
+        val retry = JSONObject(server.takeRequest().body.readUtf8())
+        assertFalse(retry.has("tools"))
+        val system = (0 until retry.getJSONArray("messages").length())
+            .map { retry.getJSONArray("messages").getJSONObject(it) }
+            .last { it.optString("role") == "system" }
+        assertTrue(system.getString("content").contains("<untrusted_data>"))
+    }
+
+    private class FakeSource(private val today: LocalDate) : HealthDataSource {
+        override suspend fun daily(scope: ToolScope, start: LocalDate, end: LocalDate): List<DailyHealth> {
+            if (scope.profileId != LOCAL_PROFILE_ID) return emptyList()
+            if (today.isBefore(start) || today.isAfter(end)) return emptyList()
+            return listOf(
+                DailyHealth(
+                    date = today.toString(),
+                    steps = 3_923,
+                    distanceMeters = 3_100.0,
+                    activeCalories = 83,
+                    activeSeconds = 2_280,
+                    restingHeartRate = 57,
+                    avgHeartRate = 72,
+                    maxHeartRate = 120,
+                    stressAvg = 22,
+                    spo2Avg = 97,
+                    respirationAvg = 14.0,
+                ),
+            )
+        }
+
+        override suspend fun samples(
+            scope: ToolScope,
+            kind: String,
+            startEpoch: Long,
+            endEpoch: Long,
+        ): List<HealthSample> = emptyList()
+
+        override suspend fun workouts(
+            scope: ToolScope,
+            startEpoch: Long,
+            endEpoch: Long,
+            limit: Int,
+            offset: Int,
+        ): List<WorkoutSummary> = emptyList()
+
+        override suspend fun workout(scope: ToolScope, id: Long): WorkoutDetail? = null
+    }
+}

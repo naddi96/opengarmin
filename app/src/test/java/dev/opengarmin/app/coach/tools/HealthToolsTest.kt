@@ -1,0 +1,252 @@
+package dev.opengarmin.app.coach.tools
+
+import dev.opengarmin.app.coach.DailyHealth
+import dev.opengarmin.app.coach.HealthDataSource
+import dev.opengarmin.app.coach.HealthSample
+import dev.opengarmin.app.coach.LOCAL_PROFILE_ID
+import dev.opengarmin.app.coach.LapInfo
+import dev.opengarmin.app.coach.RecordPoint
+import dev.opengarmin.app.coach.ToolScope
+import dev.opengarmin.app.coach.WorkoutDetail
+import dev.opengarmin.app.coach.WorkoutSummary
+import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.time.LocalDate
+
+class HealthToolsTest {
+    private val today = LocalDate.of(2026, 10, 17)
+    private val days = listOf(
+        day("2026-10-11", steps = 12_000, resting = 58),
+        day("2026-10-12", steps = 8_000, resting = 57),
+        day("2026-10-13", steps = 10_500, resting = 56),
+    )
+    private val workouts = listOf(
+        workout(1, "2026-10-12", sport = 1, avgHr = 150),
+        workout(2, "2026-10-11", sport = 2, avgHr = 132),
+    )
+    private val source = FakeSource(days, workouts)
+    private val registry = ToolRegistry(source) { today }
+
+    @Test
+    fun `rejects a non-local profile scope`() = runBlocking {
+        val error = runCatching {
+            registry.execute("get_steps", "{}", ToolScope("someone-else"))
+        }.exceptionOrNull()
+        assertTrue(error is ToolException)
+        assertTrue(error?.message?.contains("scope") == true)
+    }
+
+    @Test
+    fun `daily summary does not zero-fill missing days`() = runBlocking {
+        val result = registry.execute(
+            "get_daily_summary",
+            """{"from":"2026-10-10","to":"2026-10-17"}""",
+            ToolScope(),
+        )
+        val json = JSONObject(result.json)
+        assertEquals(8, json.getInt("daysRequested"))
+        assertEquals(3, json.getInt("daysWithData"))
+        assertEquals(3, json.getJSONArray("days").length())
+        assertTrue(result.evidence.first().contains("3 days"))
+    }
+
+    @Test
+    fun `steps enforces the daily maximum range`() = runBlocking {
+        val error = runCatching {
+            registry.execute(
+                "get_steps",
+                """{"from":"2026-01-01","to":"2026-10-17","granularity":"day"}""",
+                ToolScope(),
+            )
+        }.exceptionOrNull()
+        assertTrue(error is ToolException)
+    }
+
+    @Test
+    fun `steps returns real day buckets and totals`() = runBlocking {
+        val result = registry.execute(
+            "get_steps",
+            """{"from":"2026-10-11","to":"2026-10-13"}""",
+            ToolScope(),
+        )
+        val json = JSONObject(result.json)
+        assertEquals(3, json.getInt("daysWithData"))
+        assertEquals(30_500, json.getInt("totalSteps"))
+        assertEquals(3, json.getJSONArray("buckets").length())
+    }
+
+    @Test
+    fun `heart rate samples are capped`() = runBlocking {
+        val base = LocalDate.parse("2026-10-11").atStartOfDay(java.time.ZoneId.systemDefault()).toEpochSecond()
+        val manySamples = (0 until 400).map {
+            HealthSample("hr", base + it * 60L, 60.0 + it % 40)
+        }
+        val manySource = FakeSource(days, workouts, samples = manySamples)
+        val manyRegistry = ToolRegistry(manySource) { today }
+        val result = manyRegistry.execute(
+            "get_heart_rate",
+            """{"from":"2026-10-11","to":"2026-10-13","include_samples":true}""",
+            ToolScope(),
+        )
+        val samples = JSONObject(result.json).getJSONArray("samples")
+        assertTrue(samples.length() <= 168)
+    }
+
+    @Test
+    fun `list activities filters and caps the page`() = runBlocking {
+        val result = registry.execute(
+            "list_activities",
+            """{"from":"2026-10-11","to":"2026-10-13","type":"Run","limit":1}""",
+            ToolScope(),
+        )
+        val json = JSONObject(result.json)
+        assertEquals(1, json.getInt("totalMatching"))
+        assertEquals(1, json.getJSONArray("activities").length())
+        assertEquals("Running", json.getJSONArray("activities").getJSONObject(0).getString("sport"))
+    }
+
+    @Test
+    fun `activity zones are only returned when max heart rate is supplied`() = runBlocking {
+        val withoutZones = registry.execute("get_activity", """{"id":1}""", ToolScope())
+        assertFalse(JSONObject(withoutZones.json).getBoolean("zonesAvailable"))
+
+        val withZones = registry.execute(
+            "get_activity",
+            """{"id":1,"max_heart_rate":190}""",
+            ToolScope(),
+        )
+        val zones = JSONObject(withZones.json)
+        assertTrue(zones.getBoolean("zonesAvailable"))
+        val percentages = zones.getJSONObject("zonePercent")
+        val sum = (1..5).sumOf { percentages.getDouble("z$it") }
+        assertTrue(sum in 99.0..101.0)
+    }
+
+    @Test
+    fun `compare periods reports averages and deltas`() = runBlocking {
+        val result = registry.execute(
+            "compare_periods",
+            """{"metric":"steps","range_a_start":"2026-10-12","range_a_end":"2026-10-12","range_b_start":"2026-10-13","range_b_end":"2026-10-13"}""",
+            ToolScope(),
+        )
+        val json = JSONObject(result.json)
+        assertFalse(json.getBoolean("insufficientData"))
+        assertEquals(2500.0, json.getDouble("delta"), 0.2)
+        assertEquals(31.25, json.getDouble("percentChange"), 0.2)
+    }
+
+    @Test
+    fun `sleep is explicitly unavailable`() = runBlocking {
+        val result = registry.execute("get_sleep", "{}", ToolScope())
+        val json = JSONObject(result.json)
+        assertFalse(json.getBoolean("available"))
+        assertTrue(result.evidence.first().contains("not synced"))
+    }
+
+    @Test
+    fun `snapshot is compact and labels unavailable metrics`() = runBlocking {
+        val snapshot = registry.snapshot(ToolScope(), days = 7)
+        assertTrue(snapshot.json.length < 6_000)
+        assertTrue(snapshot.json.contains("unavailable"))
+        assertTrue(snapshot.evidence.isNotEmpty())
+    }
+
+    @Test
+    fun `unknown tools and bad arguments fail safely`() = runBlocking {
+        assertTrue(
+            runCatching { registry.execute("drop_tables", "{}", ToolScope()) }.exceptionOrNull() is ToolException,
+        )
+        assertTrue(
+            runCatching { registry.execute("get_daily_summary", "{not json", ToolScope()) }.exceptionOrNull() is ToolException,
+        )
+    }
+
+    private fun day(date: String, steps: Int, resting: Int) = DailyHealth(
+        date = date,
+        steps = steps,
+        distanceMeters = steps * 0.75,
+        activeCalories = 300,
+        activeSeconds = 2_400,
+        restingHeartRate = resting,
+        avgHeartRate = 80,
+        maxHeartRate = 140,
+        stressAvg = 28,
+        spo2Avg = 97,
+        respirationAvg = 14.2,
+    )
+
+    private fun workout(id: Long, date: String, sport: Int, avgHr: Int) = WorkoutSummary(
+        id = id,
+        startTime = LocalDate.parse(date).atStartOfDay(java.time.ZoneId.systemDefault()).toEpochSecond(),
+        sport = sport,
+        subSport = 0,
+        distanceMeters = 5_000.0,
+        durationSeconds = 1_800.0,
+        elapsedSeconds = 1_900.0,
+        avgHeartRate = avgHr,
+        maxHeartRate = avgHr + 15,
+        calories = 400,
+        ascentMeters = 30,
+        descentMeters = 30,
+    )
+
+    private class FakeSource(
+        private val days: List<DailyHealth>,
+        private val workouts: List<WorkoutSummary>,
+        private val samples: List<HealthSample> = emptyList(),
+    ) : HealthDataSource {
+        override suspend fun daily(scope: ToolScope, start: LocalDate, end: LocalDate): List<DailyHealth> {
+            if (scope.profileId != LOCAL_PROFILE_ID) return emptyList()
+            return days.filter {
+                val date = LocalDate.parse(it.date)
+                !date.isBefore(start) && !date.isAfter(end)
+            }
+        }
+
+        override suspend fun samples(
+            scope: ToolScope,
+            kind: String,
+            startEpoch: Long,
+            endEpoch: Long,
+        ): List<HealthSample> {
+            if (scope.profileId != LOCAL_PROFILE_ID) return emptyList()
+            return samples.filter { it.kind == kind && it.timestamp in startEpoch..endEpoch }
+        }
+
+        override suspend fun workouts(
+            scope: ToolScope,
+            startEpoch: Long,
+            endEpoch: Long,
+            limit: Int,
+            offset: Int,
+        ): List<WorkoutSummary> {
+            if (scope.profileId != LOCAL_PROFILE_ID) return emptyList()
+            return workouts.filter { it.startTime in startEpoch..endEpoch }.drop(offset).take(limit)
+        }
+
+        override suspend fun workout(scope: ToolScope, id: Long): WorkoutDetail? {
+            if (scope.profileId != LOCAL_PROFILE_ID) return null
+            val summary = workouts.firstOrNull { it.id == id } ?: return null
+            val records = (0 until 100).map { index ->
+                RecordPoint(
+                    timestamp = summary.startTime + index,
+                    heartRate = 120 + index % 50,
+                    distanceMeters = index * 50.0,
+                    speedMps = 2.8,
+                    altitudeMeters = 20.0,
+                    latitude = null,
+                    longitude = null,
+                )
+            }
+            return WorkoutDetail(
+                summary = summary,
+                laps = listOf(LapInfo(0, 900.0, 2_500.0, 145, 160, 2.8, 200)),
+                records = records,
+            )
+        }
+    }
+}
