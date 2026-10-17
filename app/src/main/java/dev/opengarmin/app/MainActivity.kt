@@ -25,28 +25,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.ble.GarminBleClient
-import dev.opengarmin.protocol.Gdi
-import dev.opengarmin.protocol.GdiClient
-import dev.opengarmin.protocol.Handshake
+import dev.opengarmin.app.sync.SyncCoordinator
 import dev.opengarmin.protocol.Hex
 import dev.opengarmin.protocol.ServiceId
-import dev.opengarmin.protocol.TransportPipe
-import java.io.File
-import java.io.FileOutputStream
 
 class MainActivity : ComponentActivity() {
 
     private val main = Handler(Looper.getMainLooper())
     private var client: GarminBleClient? = null
+    private var coordinator: SyncCoordinator? = null
+    private var syncAttempts = 0
+    private var watchdog: Runnable? = null
 
     private val devices = mutableStateListOf<DeviceEntry>()
     private val logs = mutableStateListOf<String>()
     private var state by mutableStateOf("idle")
+    private var lastFile by mutableStateOf("—")
 
     data class DeviceEntry(val device: BluetoothDevice, val rssi: Int) {
         val label: String get() = "${device.name ?: "(unnamed)"}  ${device.address}  ${rssi} dBm"
@@ -71,9 +69,21 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             },
-            onStateChanged = { s -> main.post { state = s } },
+            onStateChanged = { s ->
+                main.post {
+                    state = s
+                    when (s) {
+                        "connected" -> {
+                            coordinator?.reset()
+                            armWatchdog()
+                        }
+                        "disconnected", "reconnecting" -> cancelWatchdog()
+                    }
+                }
+            },
         )
         client = c
+
         c.session.onGfdiMessage = { frame ->
             main.post {
                 val payload = Hex.encode(frame.payload)
@@ -82,174 +92,38 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val gdi = GdiClient(c.session) { log(it) }
-        var capabilitiesReceived = false
-        var listReceived = false
-        var capabilityAttempts = 0
-        var listAttempts = 0
-        var requestedPull = false
-        var pulledItemSize = 0L
-        var pipe: TransportPipe? = null
-
-        c.session.onServiceRegistered = { svc, h, _ ->
-            if (svc == 0x2018) pipe?.onRegistered(h)
-        }
-        c.session.onMlrFrame = { frame -> pipe?.onFrame(frame) }
-
-        fun handleItemList(response: ByteArray) {
-            val fields = Gdi.smartFields(response)
-            val fa = fields[Gdi.SMART_FILE_ACCESS]
-            if (fa == null) {
-                log("GDI: response fields=${fields.keys} (no FileAccess)")
-                return
-            }
-            val svc = Gdi.parseFileAccessService(fa)
-            val list = svc.itemListResponse
-            if (list == null) {
-                log("GDI: FileAccess had no item_list_response")
-                return
-            }
-            log("FILE LIST status=${list.status} session=${list.sessionId} nextTx=${list.nextTransactionId} items=${list.items.size}")
-            list.items.forEach { item ->
-                val dt = item.dataType
-                log(
-                    "  item uid=${item.uid?.hex()} fmt=${dt?.format} id=${dt?.gdxmlFileIdentifier} " +
-                        "str=${dt?.gdxmlString} size=${item.dataSize} flags=${item.requestedFlags} tx=${item.transactionId}",
-                )
-            }
-
-            if (!requestedPull && list.items.size > 1) {
-                requestedPull = true
-                val item = list.items.firstOrNull { it.dataType?.gdxmlString == "FIT_TYPE_4" }
-                    ?: list.items.firstOrNull { it.dataType?.gdxmlString?.startsWith("FIT_TYPE") == true }
-                    ?: list.items.minByOrNull { it.dataSize }
-                    ?: list.items.first()
-                pulledItemSize = item.dataSize
-                log("PULL request uid=${item.uid?.hex()} type=${item.dataType?.gdxmlString} size=${item.dataSize}")
-                gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.pullItemRequest(item))) { resp ->
-                    val fa = Gdi.smartFields(resp)[Gdi.SMART_FILE_ACCESS]
-                    val pr = if (fa != null) Gdi.parseFileAccessService(fa).pullItemResponse else null
-                    main.post {
-                        if (pr != null) {
-                            log(
-                                "PULL response result=${pr.result} transport=${pr.transport} " +
-                                    "handle=${pr.transferHandle} path=${pr.filePath} err=${pr.errorCode} window=${pr.compressionWindow}",
-                            )
-                        } else {
-                            log("PULL response had no pull_item_response, fields=${Gdi.smartFields(resp).keys}")
-                        }
-                    }
-                }
-            }
-        }
-
-        c.session.onServiceClosed = { svc ->
-            if (svc == 0x2018) pipe?.finish()
-        }
-
-        fun handlePullResponse(pr: Gdi.PullItemResponse) {
-            log(
-                "PULL response result=${pr.result} transport=${pr.transport} handle=${pr.transferHandle} " +
-                    "path=${pr.filePath} err=${pr.errorCode} window=${pr.compressionWindow}",
-            )
-            if (pr.result != 0 || pr.transferHandle == 0 || pipe != null) return
-            val file = File(filesDir, "download_${pr.transferHandle}.bin")
-            val out = FileOutputStream(file)
-            val p = TransportPipe(
-                session = c.session,
-                serviceId = 0x2018,
-                transferHandle = pr.transferHandle,
-                expectedSize = pulledItemSize,
-                onData = { data -> out.write(data) },
-                onComplete = {
-                    out.flush()
-                    out.close()
-                    val raw = file.readBytes()
-                    val decoded = inflateOrRaw(raw)
-                    val decodedFile = File(filesDir, "download_${pr.transferHandle}.dec")
-                    decodedFile.writeBytes(decoded)
-                    main.post {
-                        log(
-                            "DOWNLOAD raw=${raw.size} decoded=${decoded.size} -> ${decodedFile.absolutePath}",
-                        )
-                    }
-                },
-                onError = { msg -> main.post { log("PIPE error: $msg") } },
-                log = { msg -> log(msg) },
-            )
-            pipe = p
-            p.start()
-        }
-
-        fun requestList() {
-            if (listReceived || listAttempts >= 1) return
-            listAttempts++
-            log("GDI → ItemListRequest")
-            gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.itemListRequest(maxItemCount = 100))) { response ->
-                main.post { handleItemList(response) }
-            }
-        }
-
-        fun requestCapabilities() {
-            if (capabilitiesReceived || capabilityAttempts >= 1) return
-            capabilityAttempts++
-            log("GDI → FeatureCapabilitiesRequest")
-            gdi.sendSmart(Gdi.featureCapabilitiesRequest()) { response ->
-                val caps = Gdi.coreFeatureCapabilitiesResponse(response)
-                main.post {
-                    if (caps != null) {
-                        capabilitiesReceived = true
-                        log("GDI: capabilities response ${caps.size} bytes")
-                        requestList()
-                    }
-                }
-            }
-        }
-
-        gdi.onSmart = { smart ->
-            val fields = Gdi.smartFields(smart)
-            main.post {
-                log("GDI smart fields=${fields.keys} sizes=${fields.mapValues { it.value.size }}")
-                if (Gdi.coreFeatureCapabilitiesResponse(smart) != null) {
-                    if (!capabilitiesReceived) {
-                        capabilitiesReceived = true
-                        requestList()
-                    }
-                }
-                if (fields.containsKey(Gdi.SMART_FILE_ACCESS)) {
-                    try {
-                        val svc = Gdi.parseFileAccessService(fields.getValue(Gdi.SMART_FILE_ACCESS))
-                        val listResponse = svc.itemListResponse
-                        val pullResponse = svc.pullItemResponse
-                        if (listResponse != null) handleItemList(smart)
-                        if (pullResponse != null) handlePullResponse(pullResponse)
-                    } catch (e: Exception) {
-                        log("GDI parse error: ${e.message}")
-                    }
-                }
-            }
-        }
-
-        c.session.onReady = {
-            main.postDelayed({
-                if (!capabilitiesReceived) {
-                    log("GDI → FeatureCapabilitiesRequest")
-                    requestCapabilities()
-                }
-            }, 1500)
-        }
+        coordinator = SyncCoordinator(
+            session = c.session,
+            filesDir = filesDir,
+            handler = main,
+            log = { log(it) },
+            onFinished = { raw, decoded ->
+                cancelWatchdog()
+                state = "synced"
+                lastFile = "${decoded.name} (${decoded.length()} bytes)"
+                log("SYNC complete: raw=${raw.length()} decoded=${decoded.length()} (${decoded.name})")
+            },
+        )
 
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Screen(
                         state = state,
+                        lastFile = lastFile,
                         devices = devices,
                         logs = logs,
                         onScan = { startScan() },
+                        onSync = { syncNow() },
                         onStop = { client?.stopScan() },
-                        onConnect = { client?.connect(it) },
-                        onDisconnect = { client?.disconnect() },
+                        onConnect = {
+                            syncAttempts = 0
+                            client?.connect(it)
+                        },
+                        onDisconnect = {
+                            cancelWatchdog()
+                            client?.disconnect()
+                        },
                         deviceInfo = {
                             val s = c.session
                             listOf(
@@ -258,9 +132,7 @@ class MainActivity : ComponentActivity() {
                                 "firmware" to if (s.firmwareVersion != 0) "${s.firmwareVersion}" else "—",
                                 "unit id" to if (s.unitId != 0L) "${s.unitId}" else "—",
                                 "services mask" to "0x%06x".format(s.supportedServicesMask),
-                                "GFDI/REG/KEEP_ALIVE" to listOf(
-                                    ServiceId.GFDI, ServiceId.REGISTRATION, ServiceId.KEEP_ALIVE,
-                                ).joinToString(","),
+                                "sync attempts" to "$syncAttempts",
                             )
                         },
                     )
@@ -272,6 +144,7 @@ class MainActivity : ComponentActivity() {
             main.post {
                 val watch = c.findBondedWatch()
                 if (watch != null) {
+                    syncAttempts = 0
                     log("auto-connecting to bonded ${watch.name}")
                     c.connect(watch)
                 } else {
@@ -279,6 +152,43 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun armWatchdog() {
+        cancelWatchdog()
+        val r = Runnable {
+            val co = coordinator ?: return@Runnable
+            if (co.isDone()) return@Runnable
+            if (syncAttempts < 5) {
+                syncAttempts++
+                log("sync stalled; reconnecting ($syncAttempts/5)")
+                state = "reconnecting"
+                client?.reconnect()
+            } else {
+                log("sync failed after $syncAttempts attempts")
+                state = "failed"
+            }
+        }
+        watchdog = r
+        main.postDelayed(r, 12_000)
+    }
+
+    private fun cancelWatchdog() {
+        watchdog?.let { main.removeCallbacks(it) }
+        watchdog = null
+    }
+
+    private fun syncNow() {
+        val c = client ?: return
+        val watch = c.findBondedWatch()
+        if (watch == null) {
+            log("no bonded Garmin watch")
+            return
+        }
+        syncAttempts = 0
+        cancelWatchdog()
+        coordinator?.reset()
+        c.connect(watch)
     }
 
     private fun startScan() {
@@ -305,24 +215,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun inflateOrRaw(data: ByteArray): ByteArray {
-        if (data.isEmpty()) return data
-        try {
-            return java.util.zip.InflaterInputStream(java.io.ByteArrayInputStream(data))
-                .use { it.readBytes() }
-        } catch (_: Exception) {
-        }
-        try {
-            return java.util.zip.InflaterInputStream(
-                java.io.ByteArrayInputStream(data),
-                java.util.zip.Inflater(true),
-            ).use { it.readBytes() }
-        } catch (_: Exception) {
-        }
-        return data
-    }
-
     override fun onDestroy() {
+        cancelWatchdog()
         client?.disconnect()
         super.onDestroy()
     }
@@ -331,9 +225,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun Screen(
     state: String,
+    lastFile: String,
     devices: List<MainActivity.DeviceEntry>,
     logs: List<String>,
     onScan: () -> Unit,
+    onSync: () -> Unit,
     onStop: () -> Unit,
     onConnect: (BluetoothDevice) -> Unit,
     onDisconnect: () -> Unit,
@@ -342,9 +238,11 @@ private fun Screen(
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("OpenGarmin", style = MaterialTheme.typography.headlineSmall)
         Text("state: $state", style = MaterialTheme.typography.bodyMedium)
+        Text("last file: $lastFile", style = MaterialTheme.typography.bodySmall)
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onScan) { Text("Scan") }
+            Button(onClick = onSync) { Text("Sync") }
+            OutlinedButton(onClick = onScan) { Text("Scan") }
             OutlinedButton(onClick = onStop) { Text("Stop") }
             OutlinedButton(onClick = onDisconnect) { Text("Disconnect") }
         }

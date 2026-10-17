@@ -41,6 +41,7 @@ class GarminBleClient(
 
     private var gatt: BluetoothGatt? = null
     private var writeChar: BluetoothGattCharacteristic? = null
+    private var lastDevice: BluetoothDevice? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private val writeQueue = ArrayDeque<ByteArray>()
@@ -104,9 +105,26 @@ class GarminBleClient(
 
     fun connect(device: BluetoothDevice) {
         stopScan()
+        lastDevice = device
         onStateChanged("connecting")
         onLog("connecting to ${device.address}")
         gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+    }
+
+    fun reconnect() {
+        val device = lastDevice ?: return
+        onLog("reconnecting to ${device.address}")
+        gatt?.disconnect()
+        gatt?.close()
+        gatt = null
+        writeChar = null
+        synchronized(writeQueue) {
+            writeQueue.clear()
+            writeInFlight = false
+        }
+        session.reset()
+        onStateChanged("reconnecting")
+        handler.postDelayed({ connect(device) }, 1000)
     }
 
     fun disconnect() {
@@ -114,6 +132,11 @@ class GarminBleClient(
         gatt?.close()
         gatt = null
         writeChar = null
+        synchronized(writeQueue) {
+            writeQueue.clear()
+            writeInFlight = false
+        }
+        session.reset()
         onStateChanged("disconnected")
     }
 
@@ -176,6 +199,7 @@ class GarminBleClient(
                     g.requestMtu(247)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
+                    session.reset()
                     onStateChanged("disconnected")
                     onLog("disconnected")
                 }

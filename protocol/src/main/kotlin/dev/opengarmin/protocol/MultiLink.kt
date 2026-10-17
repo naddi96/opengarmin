@@ -2,6 +2,7 @@ package dev.opengarmin.protocol
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.ArrayDeque
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -109,15 +110,32 @@ class GarminSession(
     var onReady: (() -> Unit)? = null
 
     private val cobsBuffer = ArrayList<Byte>(1024)
+    private val pendingGfdi = ArrayDeque<ByteArray>()
     private var seqCounter = 0
     private var recovering = false
     private var registerRetries = 0
+    private var generation = 0
     private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "garmin-session").apply { isDaemon = true }
     }
 
     private fun later(ms: Long, block: () -> Unit) {
-        scheduler.schedule({ block() }, ms, TimeUnit.MILLISECONDS)
+        val g = generation
+        scheduler.schedule({ if (g == generation) block() }, ms, TimeUnit.MILLISECONDS)
+    }
+
+    /** Clears per-connection state so a fresh GATT connection starts clean. */
+    fun reset() {
+        generation++
+        cobsBuffer.clear()
+        pendingGfdi.clear()
+        seqCounter = 0
+        recovering = false
+        registerRetries = 0
+        gfdiHandle = -1
+        registrationHandle = -1
+        gfdiMlr = null
+        reliableHandles.clear()
     }
 
     /** GFDI uses plain Multi-Link; the reliable path is used for transport pipes. */
@@ -129,6 +147,7 @@ class GarminSession(
     private val reliableHandles = HashSet<Int>()
 
     fun begin() {
+        reset()
         log("ML: close-all")
         sink(MlControl.closeAllRequest(clientId))
     }
@@ -239,6 +258,7 @@ class GarminSession(
                         }
                         mlrSendSeq = 0
                         log("ML: GFDI on handle ${resp.handle} reliable=${resp.reliable}")
+                        while (pendingGfdi.isNotEmpty()) sendGfdi(pendingGfdi.removeFirst())
                         onReady?.invoke()
                     }
                     ServiceId.REGISTRATION -> {
@@ -293,7 +313,8 @@ class GarminSession(
     /** Encodes and chunks a GFDI message onto the GFDI handle. */
     fun sendGfdi(message: ByteArray) {
         if (gfdiHandle < 0) {
-            log("GFDI send dropped: not registered")
+            if (pendingGfdi.size < 8) pendingGfdi.addLast(message)
+            log("GFDI queued until registration (${pendingGfdi.size})")
             return
         }
         val encoded = Cobs.encode(message)
