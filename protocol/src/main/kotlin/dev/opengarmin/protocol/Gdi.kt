@@ -132,6 +132,57 @@ object Gdi {
         val malformedDataType: DataTypeInfo?,
     )
 
+    /**
+     * Resolves the gdxml string for items that only carry `gdxml_string_key`.
+     *
+     * The watch typically sends the full string with the first item of each
+     * data type and omits it on later items of the same type, identifying them
+     * only by key. Keeping the lookup across responses mirrors Garmin
+     * Connect's client and lets callers classify every item (for example
+     * `FIT_TYPE_4` activities).
+     */
+    class GdxmlLookup {
+        private val stringsByKey = HashMap<Int, String>()
+
+        fun clear() {
+            stringsByKey.clear()
+        }
+
+        /** Records every key/string pair carried by [items]. */
+        fun learn(items: List<ItemReference>) {
+            for (item in items) {
+                val dt = item.dataType ?: continue
+                val text = dt.gdxmlString
+                if (!text.isNullOrEmpty() && dt.gdxmlStringKey != 0) {
+                    stringsByKey[dt.gdxmlStringKey] = text
+                }
+            }
+        }
+
+        /** Returns the gdxml string, falling back to the key learned earlier. */
+        fun typeOf(item: ItemReference): String? {
+            val dt = item.dataType ?: return null
+            val text = dt.gdxmlString
+            if (!text.isNullOrEmpty()) return text
+            if (dt.gdxmlStringKey == 0) return null
+            return stringsByKey[dt.gdxmlStringKey]
+        }
+
+        /** Returns copies with the key resolved, for logs and diagnostics. */
+        fun resolve(items: List<ItemReference>): List<ItemReference> {
+            learn(items)
+            return items.map { item ->
+                val dt = item.dataType
+                if (dt == null || !dt.gdxmlString.isNullOrEmpty()) {
+                    item
+                } else {
+                    val text = typeOf(item)
+                    if (text == null) item else item.copy(dataType = dt.copy(gdxmlString = text))
+                }
+            }
+        }
+    }
+
     data class PullItemResponse(
         val result: Int,
         val transport: Int,

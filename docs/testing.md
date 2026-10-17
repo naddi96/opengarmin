@@ -21,7 +21,7 @@ ANDROID_SERIAL=<serial> ./tools/gradle-8.7/bin/gradle --no-daemon :app:connected
 
 Current coverage:
 
-- `:protocol:test` — 34 tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT.
+- `:protocol:test` — 35 tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT.
 - `:app:testDebugUnitTest` — 25 JVM tests:
   - `HealthToolsTest`: scope rejection, missing-day handling, date-range caps,
     sample caps, activity filters/pages, zone calculation, comparisons,
@@ -68,6 +68,9 @@ Manual matrix used for the UI/coach pass:
 - Sync regression: activity must download and import even when a wellness
   transfer is active (watch returns `NO_AVAILABLE_RESOURCES` if overlapped);
   a second sync must skip the known activity and finish wellness.
+- Multi-activity sync: the pill shows `Syncing N/M`, Today shows the current
+  download (index, total, file size) and last imported activity, and Settings
+  shows the same progress.
 - Activity detail: map/HR/elevation/laps/`All data`.
 - Settings: step goal, max HR, sync state, provider summary, device log.
 - Provider: presets (including DeepSeek), model add/edit/delete/default,

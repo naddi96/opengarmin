@@ -103,8 +103,10 @@ tested migration.
 1. `GarminBleClient` connects over BLE (GFDI v2 / Multi-Link), negotiates MTU,
    subscribes to GFDI notifications, and serializes writes.
 2. `SyncCoordinator` performs capabilities/handshake, sends
-   `CutWellnessFilesRequest`, obtains the FileAccess item list, and pulls new
-   `FIT_TYPE_4` activity files (skipping known `itemUid`s).
+   `CutWellnessFilesRequest`, obtains the FileAccess item list, resolves
+   key-only data types (`Gdi.GdxmlLookup`; the watch sends `gdxml_string` only
+   once per type), and pulls new `FIT_TYPE_4` activity files (skipping known
+   `itemUid`s).
 3. Each file arrives over the MLR transport pipe as a zlib stream.
 4. `ActivityRepository.importFit` parses with the pure-JVM `Fit.parse`, inserts
    the activity + records + laps + all messages, and dedupes by a

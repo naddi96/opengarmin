@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,6 +31,7 @@ import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.formatWellnessDate
 import dev.opengarmin.app.settings.PulseSettings
+import dev.opengarmin.app.sync.ActivitySyncProgress
 import dev.opengarmin.app.ui.components.CoachInsightCard
 import dev.opengarmin.app.ui.components.LineChart
 import dev.opengarmin.app.ui.components.ProgressRing
@@ -53,6 +55,8 @@ fun TodayScreen(
     settings: PulseSettings,
     syncLabel: String,
     syncColor: Color,
+    activitySyncProgress: ActivitySyncProgress?,
+    lastImportedLabel: String?,
     onSync: () -> Unit,
     onOpenSettings: () -> Unit,
     onAskCoach: () -> Unit,
@@ -103,6 +107,10 @@ fun TodayScreen(
                     onClick = onOpenSettings,
                 )
             }
+        }
+
+        activitySyncProgress?.let { progress ->
+            ActivitySyncCard(progress = progress, lastImported = lastImportedLabel)
         }
 
         if (day == null) {
@@ -279,6 +287,66 @@ fun TodayScreen(
         )
         Spacer(Modifier.height(PulseSpacing.lg))
     }
+}
+
+@Composable
+private fun ActivitySyncCard(progress: ActivitySyncProgress, lastImported: String?) {
+    val current = (progress.done + 1).coerceAtMost(progress.total)
+    val fraction = if (progress.total == 0) 0f else progress.done.toFloat() / progress.total
+    PulseCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(horizontal = PulseSpacing.xlPlus, vertical = PulseSpacing.xl),
+            verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Syncing activities",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = PulseColors.Text,
+                )
+                Text(
+                    "$current / ${progress.total}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = PulseColors.Accent,
+                )
+            }
+            LinearProgressIndicator(
+                progress = fraction,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp),
+                color = PulseColors.Accent,
+                trackColor = PulseColors.Border,
+            )
+            Text(
+                if (progress.currentSize != null) {
+                    "Downloading activity $current of ${progress.total} · " +
+                        formatFileSize(progress.currentSize)
+                } else {
+                    "Finishing activity imports…"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = PulseColors.TextMuted,
+            )
+            lastImported?.let {
+                Text(
+                    "Last imported: $it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                )
+            }
+        }
+    }
+}
+
+internal fun formatFileSize(bytes: Long): String = when {
+    bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
+    bytes >= 1_000 -> "%.0f KB".format(bytes / 1_000.0)
+    else -> "$bytes B"
 }
 
 private fun chartTimeLabels(samples: List<WellnessSampleEntity>, isToday: Boolean): List<String> {

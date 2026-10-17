@@ -37,6 +37,7 @@ import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.llm.ProviderConfig
 import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
+import dev.opengarmin.app.sync.ActivitySyncProgress
 import dev.opengarmin.app.ui.components.EmptyState
 import dev.opengarmin.app.ui.components.IconButtonRound
 import dev.opengarmin.app.ui.components.PulseTab
@@ -73,6 +74,8 @@ fun PulseApp(
     coachController: CoachController,
     syncLabel: String,
     syncColor: Color,
+    activitySyncProgress: ActivitySyncProgress?,
+    lastImportedLabel: String?,
     logs: List<String>,
     deviceInfo: () -> List<Pair<String, String>>,
     onSync: () -> Unit,
@@ -136,6 +139,8 @@ fun PulseApp(
                                 settings = settings,
                                 syncLabel = syncLabel,
                                 syncColor = syncColor,
+                                activitySyncProgress = activitySyncProgress,
+                                lastImportedLabel = lastImportedLabel,
                                 onSync = onSync,
                                 onOpenSettings = { openSettings() },
                                 onAskCoach = { tabName = PulseTab.Coach.name },
@@ -206,6 +211,8 @@ fun PulseApp(
                 settings = settings,
                 provider = provider,
                 syncLabel = syncLabel,
+                activitySyncProgress = activitySyncProgress,
+                lastImportedLabel = lastImportedLabel,
                 onBack = { routeName = AppRoute.Tabs.name },
                 onManageProvider = { openProvider(AppRoute.Settings) },
                 onSync = onSync,

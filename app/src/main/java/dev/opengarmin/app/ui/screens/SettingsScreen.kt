@@ -27,6 +27,7 @@ import dev.opengarmin.app.BuildConfig
 import dev.opengarmin.app.llm.ProviderConfig
 import dev.opengarmin.app.llm.ProviderPresets
 import dev.opengarmin.app.settings.PulseSettings
+import dev.opengarmin.app.sync.ActivitySyncProgress
 import dev.opengarmin.app.ui.components.IconButtonRound
 import dev.opengarmin.app.ui.components.PrimaryButton
 import dev.opengarmin.app.ui.components.PulseCard
@@ -42,6 +43,8 @@ fun SettingsScreen(
     settings: PulseSettings,
     provider: ProviderConfig,
     syncLabel: String,
+    activitySyncProgress: ActivitySyncProgress?,
+    lastImportedLabel: String?,
     onBack: () -> Unit,
     onManageProvider: () -> Unit,
     onSync: () -> Unit,
@@ -173,6 +176,24 @@ fun SettingsScreen(
                     color = PulseColors.Text,
                 )
                 Text(syncLabel, style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
+                activitySyncProgress?.let { progress ->
+                    val current = (progress.done + 1).coerceAtMost(progress.total)
+                    Text(
+                        buildString {
+                            append("Downloading activity $current of ${progress.total}")
+                            progress.currentSize?.let { append(" · ${formatFileSize(it)}") }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.Accent,
+                    )
+                }
+                lastImportedLabel?.let {
+                    Text(
+                        "Last imported: $it",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
                 settings.lastSyncAt?.let {
                     Text(
                         "Last success: ${SimpleDateFormat("EEE d MMM, HH:mm", Locale.getDefault()).format(Date(it))}",

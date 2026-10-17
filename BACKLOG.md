@@ -55,7 +55,7 @@ Shipped in this pass (see commits/working tree):
 - **E:** persistent local chat, streaming updates, cancel, tool loop, evidence
   chips from actual calls, provider-gated onboarding, suggestions, errors,
   safety copy.
-- **F:** 25 app JVM tests (tools, FIT insights, mock OpenAI + chat loop), existing 34 protocol
+- **F:** 25 app JVM tests (tools, FIT insights, mock OpenAI + chat loop), existing 35 protocol
   tests, CI workflow, provider/tools/testing/privacy docs.
 
 Known deviations / still open:
@@ -81,6 +81,13 @@ defers the activity pull, preserves the wellness type, retries
 `NO_AVAILABLE_RESOURCES`/timeouts, prioritizes the activity once the GDI session
 is ready, pulls all new `FIT_TYPE_4` activities sequentially, and no longer
 falls back to arbitrary FIT types. Verified end-to-end on the Forerunner 255.
+
+Second device-pass bug: the watch includes `gdxml_string` only on the first item
+of each data type; later items carry just `gdxml_string_key`. The activity
+filter matched only the single typed item, so a watch with many activities
+downloaded one and reported the rest as up to date. `Gdi.GdxmlLookup` now learns
+key/string pairs from every list or notification and resolves key-only items
+before classification.
 
 ## Delivery milestones
 

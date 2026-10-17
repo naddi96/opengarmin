@@ -289,6 +289,19 @@ Verified on the FR255: 198,627-byte FIT downloaded and imported (`5.50 km
 Running`), then a second sync reported activities up to date while wellness
 finished.
 
+A later pass found why a watch with many activities only imported one: the item
+list sends `gdxml_string` on the first item of each type and only a numeric
+`gdxml_string_key` on later items. Filtering on `gdxmlString == "FIT_TYPE_4"`
+therefore matched just the typed item. `Gdi.GdxmlLookup` now learns the
+key/string pairs (matching Garmin Connect's own client) and resolves every item
+before classification.
+
+Multi-activity syncs now expose live progress. `SyncCoordinator` reports
+`ActivitySyncProgress` (done, total, current file size); Today shows the current
+download and last imported activity, the status pill reads `Syncing N/M`, and
+Settings repeats the same details. This also keeps the badge from saying
+"Synced just now" between the 30-second per-file transfers.
+
 ### Coach workout details (2026-10-17)
 
 `get_activity` now exposes the GPS and running-dynamics fields that were already

@@ -3,6 +3,7 @@ package dev.opengarmin.protocol
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GdiTest {
@@ -105,6 +106,43 @@ class GdiTest {
         assertEquals(1234L, first.dataSize)
         assertEquals(0x10, first.requestedFlags)
         assertEquals(7, first.transactionId)
+    }
+
+    @Test
+    fun `resolves item types that only carry the gdxml key`() {
+        val activityWithString = Gdi.ItemReference(
+            uid = Gdi.Uuid(1L, 2L),
+            dataType = Gdi.DataTypeInfo(0, "FIT_TYPE_4", 1, null, null, 0, null),
+            dataSize = 100,
+            requestedFlags = 0,
+            transactionId = 1,
+            urgency = 1,
+        )
+        val activityKeyOnly = activityWithString.copy(
+            uid = Gdi.Uuid(3L, 4L),
+            dataType = Gdi.DataTypeInfo(0, null, 1, null, null, 0, null),
+        )
+        val unmappedKeyOnly = activityKeyOnly.copy(
+            uid = Gdi.Uuid(5L, 6L),
+            dataType = Gdi.DataTypeInfo(0, null, 99, null, null, 0, null),
+        )
+
+        val lookup = Gdi.GdxmlLookup()
+        // Put the key-only item first to prove resolution does not depend on
+        // the order the watch happens to use.
+        val resolved = lookup.resolve(listOf(activityKeyOnly, activityWithString, unmappedKeyOnly))
+        assertEquals("FIT_TYPE_4", resolved[0].dataType?.gdxmlString)
+        assertEquals("FIT_TYPE_4", resolved[1].dataType?.gdxmlString)
+        assertNull(resolved[2].dataType?.gdxmlString)
+        // Items used for a pull keep their original wire representation.
+        assertNull(activityKeyOnly.dataType?.gdxmlString)
+
+        // The mapping survives into the next response.
+        assertEquals("FIT_TYPE_4", lookup.typeOf(activityKeyOnly))
+        assertEquals("FIT_TYPE_4", lookup.resolve(listOf(activityKeyOnly))[0].dataType?.gdxmlString)
+        lookup.clear()
+        assertNull(lookup.typeOf(activityKeyOnly))
+        assertNull(lookup.resolve(listOf(activityKeyOnly))[0].dataType?.gdxmlString)
     }
 
     @Test

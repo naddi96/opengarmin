@@ -73,6 +73,7 @@ import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
+import dev.opengarmin.app.sync.ActivitySyncProgress
 import dev.opengarmin.app.sync.SyncCoordinator
 import dev.opengarmin.app.ui.PulseApp
 import dev.opengarmin.app.ui.theme.PulseColors
@@ -128,6 +129,8 @@ class MainActivity : ComponentActivity() {
     private var state by mutableStateOf("idle")
     private var lastFile by mutableStateOf("—")
     private var importing by mutableStateOf(false)
+    private var activityProgress by mutableStateOf<ActivitySyncProgress?>(null)
+    private var lastImportedLabel by mutableStateOf<String?>(null)
 
     data class DeviceEntry(val device: BluetoothDevice, val rssi: Int) {
         val label: String get() = "${device.name ?: "(unnamed)"}  ${device.address}  ${rssi} dBm"
@@ -198,6 +201,8 @@ class MainActivity : ComponentActivity() {
                     when (s) {
                         "connected" -> {
                             coordinator?.reset()
+                            activityProgress = null
+                            lastImportedLabel = null
                             settings.recordSyncStarted()
                             client?.findBondedWatch()?.name?.let { settings.updateWatchName(it) }
                             armWatchdog()
@@ -239,21 +244,30 @@ class MainActivity : ComponentActivity() {
             },
             onUpToDate = {
                 cancelWatchdog()
+                activityProgress = null
                 state = "up to date"
                 settings.recordSyncSuccess()
                 log("SYNC up to date: all activity files already imported")
+            },
+            onActivityProgress = { progress ->
+                activityProgress = progress.takeIf { it.total > 0 && it.done < it.total }
+                if (progress.total > 0 && progress.done < progress.total) state = "syncing"
             },
         )
 
         setContent {
             PulseTheme {
+                val progress = activityProgress
+                val progressNumber = progress?.let { (it.done + 1).coerceAtMost(it.total) }
                 val syncLabel = when {
+                    progress != null && progressNumber != null -> "Syncing $progressNumber/${progress.total}"
                     state == "importing" || state == "syncing" || settings.lastSyncStatus == "syncing" -> "Syncing…"
                     state == "failed" || settings.lastSyncStatus == "failed" -> "Sync failed"
                     settings.lastSyncAt != null -> "Synced ${relativeSync(settings.lastSyncAt!!)}"
                     else -> "Not synced"
                 }
                 val syncColor = when {
+                    progress != null -> PulseColors.Orange
                     state == "failed" || settings.lastSyncStatus == "failed" -> PulseColors.Coral
                     state == "importing" || state == "syncing" || settings.lastSyncStatus == "syncing" -> PulseColors.Orange
                     settings.lastSyncStatus == "synced" -> PulseColors.Teal
@@ -276,6 +290,8 @@ class MainActivity : ComponentActivity() {
                     coachController = coachController,
                     syncLabel = syncLabel,
                     syncColor = syncColor,
+                    activitySyncProgress = progress,
+                    lastImportedLabel = lastImportedLabel,
                     logs = logs,
                     deviceInfo = {
                         val session = c.session
@@ -332,12 +348,21 @@ class MainActivity : ComponentActivity() {
                 runCatching { repository.importFit(file.name, file.readBytes(), itemUid) }
             }
             importing = false
-            state = "synced"
+            state = if (activityProgress != null) "syncing" else "synced"
             result.onSuccess { entity ->
                 settings.recordSyncSuccess()
                 if (entity == null) {
                     log("FIT has no session or was already imported")
                 } else {
+                    lastImportedLabel = buildString {
+                        append(formatDate(entity.startTime))
+                        append(" · ")
+                        append(sportName(entity.sport))
+                        if (entity.distanceMeters > 0) {
+                            append(" · ")
+                            append("%.2f km".format(entity.distanceMeters / 1000.0))
+                        }
+                    }
                     log(
                         "IMPORTED ${formatDate(entity.startTime)} ${sportName(entity.sport)} " +
                             "%.2f km".format(entity.distanceMeters / 1000.0),
@@ -471,6 +496,8 @@ class MainActivity : ComponentActivity() {
         }
         syncAttempts = 0
         cancelWatchdog()
+        activityProgress = null
+        lastImportedLabel = null
         settings.updateWatchName(watch.name ?: "")
         coordinator?.reset()
         c.connect(watch)

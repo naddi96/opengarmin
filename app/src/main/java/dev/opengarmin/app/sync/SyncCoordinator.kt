@@ -31,8 +31,10 @@ class SyncCoordinator(
     private val onFinished: (raw: File, decoded: File, itemUid: String) -> Unit,
     private val onWellnessFile: (decoded: File, type: String) -> Unit,
     private val onUpToDate: () -> Unit,
+    private val onActivityProgress: (ActivitySyncProgress) -> Unit = {},
 ) {
     private val gdi = GdiClient(session) { log(it) }
+    private val gdxmlLookup = Gdi.GdxmlLookup()
     private val wellnessQueue = ArrayDeque<Gdi.ItemReference>()
     private var wellnessTransfer = false
     private var pulledWellnessType = ""
@@ -44,6 +46,8 @@ class SyncCoordinator(
     private var wellnessPullAttempts = 0
     private var activityPullNotBefore = 0L
     private var activitiesUpToDate = false
+    private var activityDone = 0
+    private var activityTotal = 0
 
     private var capabilitiesRequested = false
     private var capabilitiesReceived = false
@@ -123,6 +127,7 @@ class SyncCoordinator(
         started = false
         pulledItemUid = ""
         cutResponseReceived = false
+        gdxmlLookup.clear()
         wellnessQueue.clear()
         wellnessTransfer = false
         pulledWellnessType = ""
@@ -134,7 +139,10 @@ class SyncCoordinator(
         wellnessPullAttempts = 0
         activityPullNotBefore = 0L
         activitiesUpToDate = false
+        activityDone = 0
+        activityTotal = 0
         done = false
+        reportActivityProgress()
     }
 
     fun isDone(): Boolean = done
@@ -144,6 +152,16 @@ class SyncCoordinator(
 
     /** True while a file is being pulled through the transport pipe. */
     fun isTransferring(): Boolean = pipe != null || wellnessTransfer
+
+    private fun reportActivityProgress() {
+        onActivityProgress(
+            ActivitySyncProgress(
+                done = activityDone,
+                total = activityTotal,
+                currentSize = pendingActivityItem?.dataSize,
+            ),
+        )
+    }
 
     private fun closeOutput() {
         try {
@@ -234,9 +252,10 @@ class SyncCoordinator(
 
     private fun handleItemAdded(notification: Gdi.ItemAddedNotification) {
         if (notification.items.isEmpty()) return
+        gdxmlLookup.learn(notification.items)
         log(
             "GDI: items added " + notification.items.joinToString {
-                "${it.dataType?.gdxmlString ?: "unknown"}(${it.dataSize})"
+                "${gdxmlLookup.typeOf(it) ?: "unknown"}(${it.dataSize})"
             },
         )
         wellnessQueue.addAll(notification.items)
@@ -267,7 +286,7 @@ class SyncCoordinator(
             return
         }
         wellnessTransfer = true
-        pulledWellnessType = item.dataType?.gdxmlString ?: "unknown"
+        pulledWellnessType = gdxmlLookup.typeOf(item) ?: "unknown"
         inFlightWellness = item
         log("WELLNESS PULL request type=$pulledWellnessType size=${item.dataSize} left=${wellnessQueue.size}")
         gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.pullItemRequest(item))) { response ->
@@ -335,6 +354,9 @@ class SyncCoordinator(
 
     private fun handleItemList(list: Gdi.ItemListResponse) {
         listReceived = true
+        // The watch omits the gdxml string on repeat items of the same type and
+        // sends only its numeric key, so learn the pairs before classifying.
+        gdxmlLookup.learn(list.items)
         log(
             "FILE LIST status=${list.status} session=${list.sessionId} " +
                 "nextTx=${list.nextTransactionId} items=${list.items.size}",
@@ -343,7 +365,8 @@ class SyncCoordinator(
             list.items.forEach { item ->
                 val dt = item.dataType
                 log(
-                    "  item uid=${item.uid?.hex()} fmt=${dt?.format} str=${dt?.gdxmlString} " +
+                    "  item uid=${item.uid?.hex()} fmt=${dt?.format} key=${dt?.gdxmlStringKey} " +
+                        "str=${dt?.gdxmlString} resolved=${gdxmlLookup.typeOf(item)} " +
                         "size=${item.dataSize} tx=${item.transactionId}",
                 )
             }
@@ -354,7 +377,7 @@ class SyncCoordinator(
             return
         }
 
-        val activityItems = list.items.filter { it.dataType?.gdxmlString == "FIT_TYPE_4" }
+        val activityItems = list.items.filter { gdxmlLookup.typeOf(it) == "FIT_TYPE_4" }
         val newActivityItems = activityItems.filter { item ->
             val uid = item.uid?.hex() ?: return@filter true
             uid !in completedActivityUids && !isItemKnown(uid)
@@ -363,6 +386,8 @@ class SyncCoordinator(
             activitiesUpToDate = true
             activityQueue.clear()
             pendingActivityItem = null
+            activityTotal = activityDone
+            reportActivityProgress()
             if (wellnessQueue.isNotEmpty() || wellnessTransfer) {
                 log("SYNC: activities up to date; finishing wellness transfers")
                 pullNextWellness()
@@ -396,8 +421,10 @@ class SyncCoordinator(
         }
         val item = pendingActivityItem ?: return
         pulledItemUid = item.uid?.hex().orEmpty()
+        activityTotal = activityDone + activityQueue.size + 1
+        reportActivityProgress()
         log(
-            "PULL queued uid=${item.uid?.hex()} type=${item.dataType?.gdxmlString} " +
+            "PULL queued uid=${item.uid?.hex()} type=${gdxmlLookup.typeOf(item)} " +
                 "size=${item.dataSize} new=${newActivityItems.size}/${activityItems.size} " +
                 "queued=${activityQueue.size}",
         )
@@ -424,9 +451,10 @@ class SyncCoordinator(
         }
         requestedPull = true
         pulledWellnessType = ""
+        reportActivityProgress()
         val sentGeneration = generation
         log(
-            "PULL request uid=${item.uid?.hex()} type=${item.dataType?.gdxmlString} " +
+            "PULL request uid=${item.uid?.hex()} type=${gdxmlLookup.typeOf(item)} " +
                 "size=${item.dataSize} attempt=${activityPullAttempts + 1}",
         )
         gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.pullItemRequest(item))) { response ->
@@ -508,6 +536,7 @@ class SyncCoordinator(
                     } else {
                         pendingActivityItem = null
                         if (pulledItemUid.isNotEmpty()) completedActivityUids += pulledItemUid
+                        activityDone++
                         onFinished(raw, decFile, pulledItemUid)
                         val next = activityQueue.removeFirstOrNull()
                         if (next != null) {
@@ -516,13 +545,17 @@ class SyncCoordinator(
                             requestedPull = false
                             activitiesUpToDate = false
                             done = false
+                            activityTotal = activityDone + activityQueue.size + 1
                             activityPullNotBefore = SystemClock.uptimeMillis() + ACTIVITY_GRACE_MS
                             log(
                                 "SYNC: next activity queued uid=${next.uid?.hex()} " +
-                                    "type=${next.dataType?.gdxmlString} remaining=${activityQueue.size}",
+                                    "type=${gdxmlLookup.typeOf(next)} remaining=${activityQueue.size}",
                             )
+                            reportActivityProgress()
                             tryStartActivityPull()
                         } else {
+                            activityTotal = activityDone
+                            reportActivityProgress()
                             done = true
                             if (wellnessQueue.isNotEmpty()) pullNextWellness()
                         }

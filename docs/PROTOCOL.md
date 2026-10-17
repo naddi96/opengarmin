@@ -455,6 +455,12 @@ then restart the GDI session every five seconds.
   [`docs/samples/fr255_file_list.txt`](samples/fr255_file_list.txt). Items carry a
   `gdxml_string` such as `FIT_TYPE_2`, `FIT_TYPE_3`, `FIT_TYPE_29`, …
   `FIT_TYPE_4` is activity.
+- The watch usually sends `gdxml_string` only on the first item of each data
+  type. Later items of the same type set `gdxml_string_key` instead (for
+  example key `1` resolved to `FIT_TYPE_4` on the FR255) and leave the string
+  empty. Build a
+  key-to-string lookup from the typed items before classifying the rest;
+  matching only on `gdxml_string` drops every activity after the first one.
 
 ### 10.5 Pulling a file — VERIFIED
 
