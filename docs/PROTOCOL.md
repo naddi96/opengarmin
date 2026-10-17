@@ -292,7 +292,7 @@ the watch treat it as a valid companion:
 | `AUTH_NEGOTIATION (5101)` | `RESPONSE ACK` with `0,0` (no PIN auth on these models) |
 | `CURRENT_TIME_REQUEST (5052)` | `RESPONSE` with `ref_id`, Garmin-epoch time, local offset |
 | `NOTIFICATION_SUBSCRIPTION (5036)` | `RESPONSE` echoing enable flag |
-| `PROTOBUF_REQUEST (5043)` | `RESPONSE UNSUPPORTED` until services implemented |
+| `PROTOBUF_REQUEST (5043)` | GDI layer: decode + answer with `PROTOBUF_RESPONSE (5044)` when a response is required |
 
 The phone also sends `DEVICE_SETTINGS (5026)` to enable auto-upload/weather, and a
 `SYSTEM_EVENT (5030)` `SYNC_READY` to nudge a sync.
@@ -369,9 +369,24 @@ The relevant ones:
 
 ### 10.2 Transport
 
-GDI messages travel in **GFDI message type 5044** (in *both* directions).
-Type **5043** is only a cancellation/"unsupported" notice
-(`[id: u16] ...`) and needs no reply.
+GDI messages have a direction-dependent GFDI type (verified against the FR255
+and Garmin Connect's `qX.d`):
+
+| Direction | GFDI type | Meaning |
+|---|---|---|
+| phone → watch | **5043** (`0x13b3`) | phone-initiated request |
+| watch → phone | **5043** (`0x13b3`) | device-initiated request / notification |
+| watch → phone | 5044 (`0x13b4`) | reply to a phone request |
+| phone → watch | 5044 (`0x13b4`) | response to a device-initiated request |
+| watch → phone | 5045 / 5057 | protobuf notification variants |
+
+> The watch sends `ConnectionReadyNotification` and other device-initiated GDI
+> messages as 5043. The client must parse 5043 (it used to discard it as a
+> cancellation notice) or it never learns that a GDI session is ready.
+> The watch also sends several requests in that burst (SMS canned list, audio
+> language, Core location settings/get-location). They must be answered over
+> 5044, otherwise the watch retransmits the whole burst every few seconds and
+> will not serve the file list.
 
 Each GDI message = 14-byte header + a protobuf chunk (little-endian):
 
@@ -383,17 +398,43 @@ Each GDI message = 14-byte header + a protobuf chunk (little-endian):
 - Large messages are split; reassemble by `id` + `offset` until `offset+len == totalLength`.
 - Payload is `GDI.Proto.Smart.Smart` with extension fields selecting a service.
 
+**Every GDI frame is ACKed at the GFDI layer, per chunk.** The ACK is a normal
+`RESPONSE (5000)` with `original_type = 5043/5044`, status `ACK`, the request's
+sequence number echoed, and this 8-byte payload (verified in Garmin Connect
+`qX.d.onMessageReceived`):
+
+```
+[id: u16 LE][offset: u32 LE][ok: u8][code: u8]
+ok = 0 valid, 1 invalid
+code: 0 NO_ERROR, 100 UNKNOWN_REQUEST_ID, 101 DUPLICATE_PACKET,
+      102 MISSING_PACKET, 103 EXCEEDED_PROTOBUF_LENGTH, 200 PARSE_ERROR,
+      201 UNKNOWN_PROTOBUF_MESSAGE
+```
+
+The ACK must be sent for **every chunk**, not only the last one. ACKing only the
+completed message makes the watch emit the first 487 bytes of a response and
+then restart the GDI session every five seconds.
+
 ### 10.3 Session startup (observed against FR255)
 
 1. GFDI register + `DEVICE_INFORMATION` / `CONFIGURATION` handshake (section 6).
-2. Send `FeatureCapabilitiesRequest` (`Smart.core_service = 13` →
+2. The watch opens a GDI session with a burst of device-initiated messages over
+   GFDI 5043: LiveTrack status, SMS canned-list request, `ConnectionReadyNotification`,
+   DeviceMessages subscribe, AudioPrompts set-language request, RealtimeSettings,
+   Core location-settings / get-location requests.
+3. **Answer every request in that burst over GFDI 5044**, echoing the GDI id:
+   `SmsCannedListResponse`, `SetLanguageResponse`, `LocationUpdatedSetEnabledResponse`,
+   `GetLocationResponse`, `CIQMessageResponse`, and `ConnectIQHTTPResponse`
+   (offline: `NETWORK_REQUEST_TIMED_OUT`). Ignoring them makes the watch retry
+   the whole burst and withhold the file list.
+4. Send `FeatureCapabilitiesRequest` (`Smart.core_service = 13` →
    `CoreService.feature_capabilities_request = 8`) with the FileAccess capability
    extension (`request_file_access_capabilities = 16`).
-3. Watch replies `FeatureCapabilitiesResponse` (`CoreService.feature_capabilities_response = 9`).
-4. Send `ItemListRequest` (`Smart.file_access_service = 43` →
+5. Watch replies `FeatureCapabilitiesResponse` (`CoreService.feature_capabilities_response = 9`).
+6. Send `ItemListRequest` (`Smart.file_access_service = 43` →
    `FileAccess.Service.item_list_request = 9`).
-5. Watch replies `ItemListResponse` (`Service.item_list_response = 10`) with
-   `items: repeated ItemReference`.
+7. Watch replies `ItemListResponse` (`Service.item_list_response = 10`) with
+   `items: repeated ItemReference`, split into 487-byte chunks. ACK each chunk.
 
 `ItemListRequest` fields: `session_id=1`, `transaction_id=2`, `max_item_count=3`,
 `exclude_all_flags=4`, `get_flags=5`, `included_data_types=6`.

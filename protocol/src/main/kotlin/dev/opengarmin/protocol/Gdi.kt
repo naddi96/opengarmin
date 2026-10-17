@@ -59,6 +59,27 @@ object Gdi {
     const val SMART_FILE_ACCESS = 43
     const val SMART_DATA_TRANSFER = 7
     const val SMART_CORE = 13
+    const val SMART_CONNECT_IQ_HTTP = 2
+    const val SMART_AUDIO_PROMPTS = 10
+    const val SMART_SMS_NOTIFICATION = 16
+    const val SMART_DEVICE_MESSAGES = 24
+
+    /** Returns the raw value of a top-level protobuf field, or null. */
+    fun field(data: ByteArray, wanted: Int): ByteArray? {
+        val r = ProtoReader(data)
+        while (r.hasMore()) {
+            val tag = r.readVarint().toInt()
+            val field = tag ushr 3
+            val wire = tag and 7
+            if (wire == 2) {
+                val value = r.readBytes()
+                if (field == wanted) return value
+            } else {
+                r.skip(wire)
+            }
+        }
+        return null
+    }
 
     /** Wraps a service payload into a Smart message extension field. */
     fun wrapSmart(serviceField: Int, servicePayload: ByteArray): ByteArray =
@@ -378,6 +399,101 @@ object Gdi {
         }
         return PullItemResponse(result, transport, handle, path, errorCode, window)
     }
+
+    // ---- Responses to device-initiated requests ---------------------------
+
+    /** Core.LocationUpdatedSetEnabledResponse { status = OK, per-request OK }. */
+    fun locationUpdatedSetEnabledResponse(request: ByteArray): ByteArray {
+        val types = ArrayList<Int>()
+        val r = ProtoReader(request)
+        while (r.hasMore()) {
+            val tag = r.readVarint().toInt()
+            val field = tag ushr 3
+            val wire = tag and 7
+            if (field == 2 && wire == 2) {
+                val req = ProtoReader(r.readBytes())
+                while (req.hasMore()) {
+                    val t = req.readVarint().toInt()
+                    val f = t ushr 3
+                    val w = t and 7
+                    if (f == 1 && w == 0) types.add(req.readVarint().toInt()) else req.skip(w)
+                }
+            } else {
+                r.skip(wire)
+            }
+        }
+        if (types.isEmpty()) types.add(0)
+        val resp = ProtoWriter().uint32(1, 1) // status = OK
+        for (type in types.distinct()) {
+            val status = ProtoWriter().enumAlways(1, type).uint32(2, 1).toByteArray()
+            resp.bytes(2, status)
+        }
+        return wrapSmart(SMART_CORE, ProtoWriter().bytes(6, resp.toByteArray()).toByteArray())
+    }
+
+    /** SmsNotification.SmsCannedListResponse: SUCCESS with empty lists. */
+    fun smsCannedListResponse(request: ByteArray): ByteArray {
+        val types = ArrayList<Int>()
+        val r = ProtoReader(request)
+        while (r.hasMore()) {
+            val tag = r.readVarint().toInt()
+            val field = tag ushr 3
+            val wire = tag and 7
+            if (field == 1) {
+                when (wire) {
+                    0 -> types.add(r.readVarint().toInt())
+                    2 -> {
+                        val packed = ProtoReader(r.readBytes())
+                        while (packed.hasMore()) types.add(packed.readVarint().toInt())
+                    }
+                    else -> r.skip(wire)
+                }
+            } else {
+                r.skip(wire)
+            }
+        }
+        val resp = ProtoWriter()
+        for (type in types.distinct()) {
+            resp.bytes(2, ProtoWriter().enumAlways(1, type).toByteArray())
+        }
+        return wrapSmart(
+            SMART_SMS_NOTIFICATION,
+            ProtoWriter().bytes(5, resp.toByteArray()).toByteArray(),
+        )
+    }
+
+    /** DeviceMessages.CIQMessageResponse: echo event id, status = FAILURE. */
+    fun ciqMessageResponse(request: ByteArray): ByteArray {
+        val eventId = field(request, 1)?.toString(Charsets.UTF_8).orEmpty()
+        val resp = ProtoWriter().string(1, eventId).uint32(2, 1)
+        return wrapSmart(
+            SMART_DEVICE_MESSAGES,
+            ProtoWriter().bytes(4, resp.toByteArray()).toByteArray(),
+        )
+    }
+
+    /** Core.GetLocationResponse { status = NO_VALID_LOCATION }. */
+    fun getLocationResponse(): ByteArray =
+        wrapSmart(
+            SMART_CORE,
+            ProtoWriter().bytes(4, ProtoWriter().uint32(1, 2).toByteArray()).toByteArray(),
+        )
+
+    /** ConnectIQHTTP.ConnectIQHTTPResponse: offline / timed out. */
+    fun connectIqHttpResponse(): ByteArray =
+        wrapSmart(
+            SMART_CONNECT_IQ_HTTP,
+            ProtoWriter()
+                .bytes(2, ProtoWriter().uint32(1, 300).toByteArray()) // NETWORK_REQUEST_TIMED_OUT
+                .toByteArray(),
+        )
+
+    /** AudioPrompts.SetLanguageResponse { success = true }. */
+    fun audioSetLanguageResponse(): ByteArray =
+        wrapSmart(
+            SMART_AUDIO_PROMPTS,
+            ProtoWriter().bytes(13, ProtoWriter().uint32(1, 1).toByteArray()).toByteArray(),
+        )
 }
 
 /** Sends GDI requests over a [GarminSession] and reassembles responses. */
@@ -389,6 +505,8 @@ class GdiClient(
     private val pending = HashMap<Int, (ByteArray) -> Unit>()
     private val reassembly = HashMap<Int, Reassembly>()
     var onSmart: ((ByteArray) -> Unit)? = null
+    /** Device-initiated GDI request: (GDI id, Smart payload). */
+    var onRequest: ((Int, ByteArray) -> Unit)? = null
 
     private class Reassembly(val total: Int) {
         val buf = ByteArray(total)
@@ -418,6 +536,15 @@ class GdiClient(
         return id
     }
 
+    /** Replies to a device-initiated request, echoing its GDI id. */
+    fun sendResponse(id: Int, smart: ByteArray) {
+        val chunks = GdiFrame.chunks(id, smart)
+        log("GDI TX response id=0x%04x %d chunk(s), %d bytes".format(id, chunks.size, smart.size))
+        for (chunk in chunks) {
+            session.sendProtobuf(chunk)
+        }
+    }
+
     private fun onProtobuf(frame: Gfdi.Frame) {
         if (frame.type == Gfdi.MessageType.PROTOBUF_NOTIFICATION.id) {
             // Type 5057 carries a 2-byte id/flags prefix followed by a Smart message.
@@ -437,10 +564,41 @@ class GdiClient(
                 ),
             )
             val done = state.add(gdi.offset, gdi.payload)
+            if (frame.type == Gfdi.MessageType.PROTOBUF_REQUEST.id ||
+                frame.type == Gfdi.MessageType.PROTOBUF_RESPONSE.id
+            ) {
+                // Mirror the watch / Garmin Connect: GFDI-ACK *every* chunk
+                // with [gdi id: u16][offset: u32][ok: u8][code: u8].
+                // ACKing only the final chunk stalls a multi-chunk response
+                // after the first 487 bytes.
+                val ack = ByteArray(8)
+                ack[0] = (gdi.id and 0xFF).toByte()
+                ack[1] = ((gdi.id ushr 8) and 0xFF).toByte()
+                ack[2] = (gdi.offset and 0xFF).toByte()
+                ack[3] = ((gdi.offset ushr 8) and 0xFF).toByte()
+                ack[4] = ((gdi.offset ushr 16) and 0xFF).toByte()
+                ack[5] = ((gdi.offset ushr 24) and 0xFF).toByte()
+                session.sendGfdi(
+                    Gfdi.buildResponse(
+                        frame.type,
+                        Gfdi.Status.ACK.code,
+                        ack,
+                        frame.seq,
+                    ),
+                )
+            }
             if (!done) return
             reassembly.remove(gdi.id)
-            onSmart?.invoke(state.buf)
-            pending.remove(gdi.id)?.invoke(state.buf)
+            if (frame.type == Gfdi.MessageType.PROTOBUF_REQUEST.id) {
+                onRequest?.invoke(gdi.id, state.buf)
+                onSmart?.invoke(state.buf)
+            } else {
+                // A response normally matches the pending request that
+                // produced it. The watch sometimes answers with its own id
+                // sequence instead, so fall back to content handling.
+                val callback = pending.remove(gdi.id)
+                if (callback != null) callback(state.buf) else onSmart?.invoke(state.buf)
+            }
             return
         }
 

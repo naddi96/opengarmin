@@ -154,11 +154,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun armWatchdog() {
+    private fun armWatchdog(timeoutMs: Long = 15_000) {
         cancelWatchdog()
         val r = Runnable {
             val co = coordinator ?: return@Runnable
             if (co.isDone()) return@Runnable
+            if (!co.hasStarted() && syncAttempts == 0) {
+                log("awaiting watch-side sync (link stays open)")
+                state = "awaiting watch sync"
+                armWatchdog(60_000)
+                return@Runnable
+            }
             if (syncAttempts < 5) {
                 syncAttempts++
                 log("sync stalled; reconnecting ($syncAttempts/5)")
@@ -170,7 +176,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         watchdog = r
-        main.postDelayed(r, 90_000)
+        main.postDelayed(r, timeoutMs)
     }
 
     private fun cancelWatchdog() {

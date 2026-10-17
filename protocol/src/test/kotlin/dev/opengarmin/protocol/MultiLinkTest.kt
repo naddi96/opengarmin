@@ -97,8 +97,20 @@ class MultiLinkTest {
     }
 
     @Test
-    fun `chunks large GFDI messages across writes`() {
+    fun `phone GDI requests use PROTOBUF_REQUEST`() {
         val writes = mutableListOf<ByteArray>()
+        val session = GarminSession(clientId, sink = { writes.add(it) })
+        session.onNotification(Hex.decode("00" + "01" + "0100000000000000" + "0100" + "00" + "2e"))
+
+        session.sendProtobuf(byteArrayOf(1, 2, 3))
+        val packet = writes.last()
+        val decoded = Cobs.decode(packet.copyOfRange(1, packet.size))
+        val frame = assertNotNull(Gfdi.parse(decoded))
+        assertEquals(Gfdi.MessageType.PROTOBUF_REQUEST.id, frame.type)
+    }
+
+    @Test
+    fun `chunks large GFDI messages across writes`() {        val writes = mutableListOf<ByteArray>()
         val session = GarminSession(clientId, sink = { writes.add(it) })
         session.maxWriteSize = 20
         session.onNotification(Hex.decode("00" + "01" + "0100000000000000" + "0100" + "00" + "2e"))

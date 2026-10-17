@@ -29,10 +29,12 @@ class SyncCoordinator(
 ) {
     private val gdi = GdiClient(session) { log(it) }
 
+    private var capabilitiesRequested = false
     private var capabilitiesReceived = false
     private var listRequested = false
     private var listReceived = false
     private var requestedPull = false
+    private var started = false
     private var pipe: TransportPipe? = null
     private var output: FileOutputStream? = null
     private var generation = 0
@@ -40,6 +42,7 @@ class SyncCoordinator(
 
     init {
         gdi.onSmart = { smart -> handler.post { handleSmart(smart) } }
+        gdi.onRequest = { id, smart -> handler.post { handleDeviceRequest(id, smart) } }
         session.onServiceRegistered = { svc, h, _ ->
             if (svc == PIPE_SERVICE) pipe?.onRegistered(h)
         }
@@ -66,14 +69,19 @@ class SyncCoordinator(
         generation++
         closeOutput()
         pipe = null
+        capabilitiesRequested = false
         capabilitiesReceived = false
         listRequested = false
         listReceived = false
         requestedPull = false
+        started = false
         done = false
     }
 
     fun isDone(): Boolean = done
+
+    /** True once the watch has sent any GDI message (i.e. a sync is underway). */
+    fun hasStarted(): Boolean = started
 
     private fun closeOutput() {
         try {
@@ -92,14 +100,59 @@ class SyncCoordinator(
         }
     }
 
+    /**
+     * Answers the service requests the watch pushes when it opens a GDI
+     * session. Ignoring them makes the watch retransmit its whole burst every
+     * five seconds and refuse to stream the file list.
+     */
+    private fun handleDeviceRequest(id: Int, smart: ByteArray) {
+        val fields = Gdi.smartFields(smart)
+        val core = fields[Gdi.SMART_CORE]
+        val sms = fields[Gdi.SMART_SMS_NOTIFICATION]
+        val deviceMessages = fields[Gdi.SMART_DEVICE_MESSAGES]
+        val audio = fields[Gdi.SMART_AUDIO_PROMPTS]
+        val http = fields[Gdi.SMART_CONNECT_IQ_HTTP]
+
+        val response = when {
+            http != null && Gdi.field(http, 1) != null ->
+                Gdi.connectIqHttpResponse()
+            core != null && Gdi.field(core, 3) != null ->
+                Gdi.getLocationResponse()
+            core != null && Gdi.field(core, 5) != null ->
+                Gdi.locationUpdatedSetEnabledResponse(Gdi.field(core, 5)!!)
+            sms != null && Gdi.field(sms, 4) != null ->
+                Gdi.smsCannedListResponse(Gdi.field(sms, 4)!!)
+            deviceMessages != null && Gdi.field(deviceMessages, 3) != null ->
+                Gdi.ciqMessageResponse(Gdi.field(deviceMessages, 3)!!)
+            audio != null && Gdi.field(audio, 12) != null ->
+                Gdi.audioSetLanguageResponse()
+            else -> {
+                log("GDI: unanswered device request id=0x%04x fields=${fields.keys}".format(id))
+                null
+            }
+        }
+        if (response != null) {
+            log("GDI → device response id=0x%04x fields=${fields.keys}".format(id))
+            gdi.sendResponse(id, response)
+        }
+    }
+
     private fun handleSmartInner(smart: ByteArray) {
+        started = true
         val fields = Gdi.smartFields(smart)
         log("GDI smart fields=${fields.keys} sizes=${fields.mapValues { it.value.size }}")
 
         if (Gdi.coreFeatureCapabilitiesResponse(smart) != null) onCapabilities()
-        if (Gdi.isConnectionReady(smart) && !listRequested && !done) {
+        if (Gdi.isConnectionReady(smart) && !capabilitiesReceived && !done) {
+            // The watch opens a GDI session and waits for the capability
+            // exchange before it will stream a full ItemListResponse. If it
+            // never answers, fall back to asking for the list directly.
             log("GDI: connection ready")
-            requestList()
+            sendCapabilities()
+            val g = generation
+            handler.postDelayed({
+                if (g == generation && !listRequested && !listReceived) requestList()
+            }, 2500)
         }
 
         val fa = fields[Gdi.SMART_FILE_ACCESS] ?: return
@@ -111,7 +164,8 @@ class SyncCoordinator(
     }
 
     private fun sendCapabilities() {
-        if (capabilitiesReceived || done) return
+        if (capabilitiesRequested || capabilitiesReceived || listReceived || done) return
+        capabilitiesRequested = true
         log("GDI → FeatureCapabilitiesRequest")
         gdi.sendSmart(Gdi.featureCapabilitiesRequest()) { response ->
             if (Gdi.coreFeatureCapabilitiesResponse(response) != null) {

@@ -42,6 +42,40 @@ class GdiTest {
     }
 
     @Test
+    fun `builds responses for device-initiated requests`() {
+        // Core.LocationUpdatedSetEnabledRequest { enabled=true, requests=[{requested=0}] }
+        assertEquals(
+            "6a0a32080801120408001001",
+            Hex.encode(Gdi.locationUpdatedSetEnabledResponse(Hex.decode("080112020800"))),
+        )
+        // SmsCannedListRequest { requested_types=[4,1] }
+        assertEquals(
+            "82010a2a081202080412020801",
+            Hex.encode(Gdi.smsCannedListResponse(Hex.decode("0a020401"))),
+        )
+        // DeviceMessages.CIQMessageRequest { event_id="abc" }
+        assertEquals(
+            "c2010922070a036162631001",
+            Hex.encode(Gdi.ciqMessageResponse(Hex.decode("0a03616263"))),
+        )
+        // AudioPrompts.SetLanguageRequest -> success
+        assertEquals(
+            "52046a020801",
+            Hex.encode(Gdi.audioSetLanguageResponse()),
+        )
+        // ConnectIQHTTPRequest -> offline response
+        assertEquals(
+            "1205120308ac02",
+            Hex.encode(Gdi.connectIqHttpResponse()),
+        )
+        // Core.GetLocationRequest -> NO_VALID_LOCATION
+        assertEquals(
+            "6a0422020802",
+            Hex.encode(Gdi.getLocationResponse()),
+        )
+    }
+
+    @Test
     fun `parses an item list response`() {
         val uid = Gdi.Uuid(1L, 2L)
         val dt = Gdi.DataTypeInfo(2, null, 0, null, null, 0, null)

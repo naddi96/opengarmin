@@ -56,8 +56,8 @@ The tree is clean. `captures/`, `apk/`, `tools/` binary downloads are gitignored
 |---|---|
 | M1 BLE connect + GFDI register | ✅ |
 | M2 handshake (device info / config / time) | ✅ |
-| M3 file directory | ✅ 78 items listed |
-| M4 file download + decode | ✅ **3966 compressed bytes → 40292 bytes** (zlib) |
+| M3 file directory | ✅ 100 items listed (3697-byte response, 8 chunks) |
+| M4 file download + decode | ✅ **99,357 compressed bytes → 198,627 bytes** (zlib, valid FIT: `.FIT`, profile 21184) |
 | M5–M6 FIT parsing → Room → dashboard | not started |
 
 The M4 download was proven end-to-end earlier: `PullItemDataRequest` →
@@ -109,48 +109,38 @@ tools/                     parse_btsnoop.py, extract_protos.py, setup scripts
 Tests: **34 protocol tests pass** (`:protocol:test`). Build:
 `:app:assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk`.
 
-## The current blocker / latest discovery
+## The current blocker / latest discovery (RESOLVED)
 
 After the watch reboot, **phone-initiated** syncs stopped producing any GDI
-messages: the watch completes GFDI handshake, then stays silent. The official
-app (signed in) still syncs, so the watch is fine.
+messages. The root cause was three protocol details:
 
-Key discovery from a **watch-initiated** sync (watch → Phone → Sync): the watch
-sends its GDI data over **GFDI type 5043**, not 5044. Previously our client
-treated 5043 as only a cancellation notice and dropped the data.
+1. The watch sends its device-initiated GDI messages (including
+   `ConnectionReadyNotification`) over **GFDI 5043**, not 5044. We used to
+   discard 5043 as a cancellation notice.
+2. The watch's startup burst contains **requests**, not just notifications:
+   SMS canned list, AudioPrompts set-language, Core location settings, Core
+   get-location, plus ConnectIQ HTTP weather requests. They must be answered
+   over 5044 (echoing the GDI id). Otherwise the watch retransmits the burst
+   every 5 s and never serves the file list.
+3. **Every GDI frame must be GFDI-ACKed per chunk**, not only when the whole
+   `Smart` message is reassembled. The ACK payload is
+   `[id:u16][offset:u32][ok:u8][code:u8]`. ACKing only the final chunk made
+   the watch send 487 bytes of the item list and restart every 5 s.
 
-The 5043 stream contains the periodic Smart notifications, including
-**`ConnectionReadyNotification`** (`6a 02 72 00`). The app now:
-
-- parses 5043 as a full GDI frame (same decoder as 5044),
-- parses 5057 as a 2-byte-prefixed Smart,
-- calls `requestList()` when `ConnectionReadyNotification` arrives,
-- defensively parses malformed/truncated protobuf (a `6a 02 80 01` core
-  message previously crashed `coreFeatureCapabilitiesResponse`).
-
-The very last test run crashed on that malformed core message before the fix.
-The parser is now fixed, the app was rebuilt/installed/started, and it is
-**waiting for the user to trigger a watch-side sync again**. That is exactly
-where the next session should resume.
-
-The watchdog is temporarily **90 s** (`MainActivity.armWatchdog`) so the user has
-time to press Sync on the watch. Restore to ~12–15 s once testing is done.
+With those fixed, a full sync completed on 2026-10-17 18:20:
+`capabilities → ItemListResponse (100 items, 3697 B, 8 chunks) → PullItemData
+→ transport pipe → 99,357 compressed B → 198,627 B FIT`.
 
 ## Immediate next steps
 
-1. With the app connected, have the user press **up button → Phone → Sync** on
-   the watch.
-2. Capture: `$ADB logcat -d -s OpenGarmin:D > captures/next.log`
-   Look for `GDI: connection ready` → `GDI → ItemListRequest` →
-   `FILE LIST status=... items=...` → `PULL request` → `PULL response` →
-   `PIPE: complete` → `DOWNLOAD raw=... decoded=...`.
-3. If the list arrives and pull works, verify the `.dec` file with
-   `run-as dev.opengarmin.app cat files/download_<handle>.dec`.
-4. If a new Smart/core message fails to parse, the error log now includes the
-   raw hex prefix — add its field to the corresponding `Gdi` parser.
-5. Once reliable: restore the watchdog, and make the app "await watch sync"
-   explicitly (keep the link open, show a prompt) instead of reconnecting.
-6. Then M5–M6: FIT parser → Room DB → Compose dashboard.
+1. Parse the FIT file (M5): definition messages + data messages, map activity,
+   session, lap, record, event to a model.
+2. Persist to Room, then build the Compose dashboard (M6).
+3. Wire the `Sync` button and dashboard to the stored activities.
+4. Consider fetching the remaining 99-item page (`next_transaction_id`), and
+   pulling more than one activity.
+5. Decide whether to answer ConnectIQ HTTP requests with real network data
+   (weather) or keep the offline timeout response.
 
 ## Useful commands
 
@@ -179,7 +169,10 @@ pairing port (pairing needs the 6-digit code).
 - The watch closes the GFDI handle around the handshake; the session cycles
   close-all/re-register. Recovery is delayed to avoid `ALREADY_IN_USE`.
 - BLE writes must be serialized (GATT returns 201/busy otherwise).
-- The watch only starts GDI reliably for a **watch-initiated** sync so far.
+- The watch starts a GDI session itself shortly after the GFDI handshake and
+  broadcasts `ConnectionReadyNotification`; the phone can then pull without a
+  watch-side button press.
+- GDI frames are ACKed per chunk (`[id][offset][ok][code]`), not per message.
 - `ItemReference.data_size` is **not** the compressed stream length; read until
   the pipe service closes, then zlib-decompress.
 - Full HCI capture is unavailable (no root; bugreport `btsnooz` truncates to

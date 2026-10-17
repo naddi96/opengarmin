@@ -344,8 +344,19 @@ class GarminSession(
         sink(MlControl.registerRequest(clientId, service, reliable))
     }
 
-    /** Sends a GDI protobuf payload. The GDI data channel is GFDI message type 5044. */
+    /**
+     * Sends a phone-initiated GDI request.
+     *
+     * Verified against Garmin Connect's `qX.d`: requests use PROTOBUF_REQUEST
+     * (5043) and the watch answers with PROTOBUF_RESPONSE (5044). The watch
+     * also uses 5043 for its own device-initiated requests.
+     */
     fun sendProtobuf(payload: ByteArray, seq: Int? = nextSeq()) {
+        sendGfdi(Gfdi.build(Gfdi.MessageType.PROTOBUF_REQUEST.id, payload, seq))
+    }
+
+    /** Sends a GDI response to a device-initiated request (GFDI 5044). */
+    fun sendProtobufResponse(payload: ByteArray, seq: Int? = nextSeq()) {
         sendGfdi(Gfdi.build(Gfdi.MessageType.PROTOBUF_RESPONSE.id, payload, seq))
     }
 
