@@ -170,7 +170,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         watchdog = r
-        main.postDelayed(r, 12_000)
+        main.postDelayed(r, 90_000)
     }
 
     private fun cancelWatchdog() {

@@ -70,42 +70,57 @@ class ProtoReader(val data: ByteArray, var pos: Int = 0) {
     fun readVarint(): Long {
         var result = 0L
         var shift = 0
-        while (true) {
+        while (pos < data.size) {
             val b = data[pos++].toInt() and 0xFF
             result = result or ((b and 0x7F).toLong() shl shift)
             if (b and 0x80 == 0) return result
             shift += 7
-            if (shift > 63) error("varint too long")
+            if (shift > 63) return result
         }
+        return result
     }
 
     fun readBytes(): ByteArray {
-        val len = readVarint().toInt()
-        val out = data.copyOfRange(pos, pos + len)
-        pos += len
+        val len = readVarint().toInt().coerceAtLeast(0)
+        val end = minOf(pos + len, data.size)
+        val out = data.copyOfRange(pos, end)
+        pos = end
         return out
     }
 
     fun readFixed64(): Long {
         var v = 0L
-        for (i in 0 until 8) v = v or ((data[pos + i].toLong() and 0xFF) shl (8 * i))
-        pos += 8
+        val end = minOf(pos + 8, data.size)
+        var i = 0
+        while (pos + i < end) {
+            v = v or ((data[pos + i].toLong() and 0xFF) shl (8 * i))
+            i++
+        }
+        pos = end
         return v
     }
 
     fun readFixed32(): Int {
         var v = 0
-        for (i in 0 until 4) v = v or ((data[pos + i].toInt() and 0xFF) shl (8 * i))
-        pos += 4
+        val end = minOf(pos + 4, data.size)
+        var i = 0
+        while (pos + i < end) {
+            v = v or ((data[pos + i].toInt() and 0xFF) shl (8 * i))
+            i++
+        }
+        pos = end
         return v
     }
 
     fun skip(wire: Int) {
         when (wire) {
             0 -> readVarint()
-            1 -> pos += 8
-            2 -> pos += readVarint().toInt()
-            5 -> pos += 4
+            1 -> pos = minOf(pos + 8, data.size)
+            2 -> {
+                val len = readVarint().toInt().coerceAtLeast(0)
+                pos = minOf(pos + len, data.size)
+            }
+            5 -> pos = minOf(pos + 4, data.size)
             3 -> { // start group: skip until matching end group
                 while (pos < data.size) {
                     val tag = readVarint().toInt()
@@ -115,7 +130,7 @@ class ProtoReader(val data: ByteArray, var pos: Int = 0) {
                 }
             }
             4 -> Unit // end group
-            else -> error("unsupported wire type $wire")
+            else -> Unit
         }
     }
 }

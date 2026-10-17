@@ -5,6 +5,7 @@ import dev.opengarmin.protocol.GarminSession
 import dev.opengarmin.protocol.Gdi
 import dev.opengarmin.protocol.GdiClient
 import dev.opengarmin.protocol.Handshake
+import dev.opengarmin.protocol.Hex
 import dev.opengarmin.protocol.TransportPipe
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -84,6 +85,14 @@ class SyncCoordinator(
     }
 
     private fun handleSmart(smart: ByteArray) {
+        try {
+            handleSmartInner(smart)
+        } catch (e: Exception) {
+            log("GDI parse error: ${e.message} (${Hex.encode(smart.take(32).toByteArray())})")
+        }
+    }
+
+    private fun handleSmartInner(smart: ByteArray) {
         val fields = Gdi.smartFields(smart)
         log("GDI smart fields=${fields.keys} sizes=${fields.mapValues { it.value.size }}")
 
@@ -94,15 +103,11 @@ class SyncCoordinator(
         }
 
         val fa = fields[Gdi.SMART_FILE_ACCESS] ?: return
-        try {
-            val svc = Gdi.parseFileAccessService(fa)
-            val list = svc.itemListResponse
-            val pull = svc.pullItemResponse
-            if (list != null) handleItemList(list)
-            if (pull != null) handlePullResponse(pull)
-        } catch (e: Exception) {
-            log("GDI parse error: ${e.message}")
-        }
+        val svc = Gdi.parseFileAccessService(fa)
+        val list = svc.itemListResponse
+        val pull = svc.pullItemResponse
+        if (list != null) handleItemList(list)
+        if (pull != null) handlePullResponse(pull)
     }
 
     private fun sendCapabilities() {

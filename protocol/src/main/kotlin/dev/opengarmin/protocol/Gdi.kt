@@ -426,26 +426,28 @@ class GdiClient(
             }
             return
         }
-        if (frame.type == Gfdi.MessageType.PROTOBUF_REQUEST.id) {
-            // Cancellation / unsupported notice: [id: u16] ...
-            if (frame.payload.size >= 2) {
-                val id = (frame.payload[0].toInt() and 0xFF) or ((frame.payload[1].toInt() and 0xFF) shl 8)
-                if (pending.remove(id) != null) log("GDI: device cancelled id=0x%04x".format(id))
-            }
+
+        // Both 5043 (device-initiated) and 5044 (responses) carry GDI frames.
+        val gdi = GdiFrame.parse(frame.payload)
+        if (gdi != null) {
+            val state = reassembly.getOrPut(gdi.id) { Reassembly(gdi.totalLength) }
+            log(
+                "GDI RX(id=0x%04x) type=%d offset=%d total=%d chunk=%d".format(
+                    gdi.id, frame.type, gdi.offset, gdi.totalLength, gdi.payload.size,
+                ),
+            )
+            val done = state.add(gdi.offset, gdi.payload)
+            if (!done) return
+            reassembly.remove(gdi.id)
+            onSmart?.invoke(state.buf)
+            pending.remove(gdi.id)?.invoke(state.buf)
             return
         }
-        if (frame.type != Gfdi.MessageType.PROTOBUF_RESPONSE.id) return
-        val parsed = GdiFrame.parse(frame.payload) ?: run {
-            log("GDI: malformed frame")
-            return
+
+        // Otherwise 5043 can be a cancellation/unsupported notice: [id: u16] ...
+        if (frame.type == Gfdi.MessageType.PROTOBUF_REQUEST.id && frame.payload.size >= 2) {
+            val id = (frame.payload[0].toInt() and 0xFF) or ((frame.payload[1].toInt() and 0xFF) shl 8)
+            if (pending.remove(id) != null) log("GDI: device cancelled id=0x%04x".format(id))
         }
-        val state = reassembly.getOrPut(parsed.id) { Reassembly(parsed.totalLength) }
-        log("GDI RX id=0x%04x offset=%d total=%d chunk=%d".format(parsed.id, parsed.offset, parsed.totalLength, parsed.payload.size))
-        val done = state.add(parsed.offset, parsed.payload)
-        if (!done) return
-        reassembly.remove(parsed.id)
-        onSmart?.invoke(state.buf)
-        val callback = pending.remove(parsed.id) ?: return
-        callback(state.buf)
     }
 }
