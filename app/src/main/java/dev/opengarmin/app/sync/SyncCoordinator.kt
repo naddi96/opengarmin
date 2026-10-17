@@ -37,6 +37,8 @@ class SyncCoordinator(
     private var wellnessTransfer = false
     private var pulledWellnessType = ""
     private var inFlightWellness: Gdi.ItemReference? = null
+    private val activityQueue = ArrayDeque<Gdi.ItemReference>()
+    private val completedActivityUids = mutableSetOf<String>()
     private var pendingActivityItem: Gdi.ItemReference? = null
     private var activityPullAttempts = 0
     private var wellnessPullAttempts = 0
@@ -125,6 +127,8 @@ class SyncCoordinator(
         wellnessTransfer = false
         pulledWellnessType = ""
         inFlightWellness = null
+        activityQueue.clear()
+        completedActivityUids.clear()
         pendingActivityItem = null
         activityPullAttempts = 0
         wellnessPullAttempts = 0
@@ -344,38 +348,58 @@ class SyncCoordinator(
                 )
             }
         }
-        if (requestedPull || list.items.size <= 1) return
+        if (list.items.size <= 1) return
+        if (requestedPull || (pipe != null && !wellnessTransfer)) {
+            log("SYNC: activity transfer already active; keeping the queued activity")
+            return
+        }
 
         val activityItems = list.items.filter { it.dataType?.gdxmlString == "FIT_TYPE_4" }
         val newActivityItems = activityItems.filter { item ->
             val uid = item.uid?.hex() ?: return@filter true
-            !isItemKnown(uid)
+            uid !in completedActivityUids && !isItemKnown(uid)
         }
-        if (activityItems.isNotEmpty() && newActivityItems.isEmpty()) {
+        if (activityItems.isEmpty() || newActivityItems.isEmpty()) {
             activitiesUpToDate = true
+            activityQueue.clear()
+            pendingActivityItem = null
             if (wellnessQueue.isNotEmpty() || wellnessTransfer) {
                 log("SYNC: activities up to date; finishing wellness transfers")
                 pullNextWellness()
                 return
             }
             done = true
-            log("SYNC up to date: ${activityItems.size} activity item(s) already imported")
+            log(
+                if (activityItems.isEmpty()) {
+                    "SYNC up to date: no activity files on the watch"
+                } else {
+                    "SYNC up to date: ${activityItems.size} activity item(s) already imported"
+                },
+            )
             onUpToDate()
             return
         }
 
         activitiesUpToDate = false
-        val item = newActivityItems.firstOrNull()
-            ?: list.items.firstOrNull { it.dataType?.gdxmlString == "FIT_TYPE_4" }
-            ?: list.items.firstOrNull { it.dataType?.gdxmlString?.startsWith("FIT_TYPE") == true }
-            ?: list.items.minByOrNull { it.dataSize }
-            ?: list.items.first()
-
-        pendingActivityItem = item
+        // Keep any activity that is already queued/pending; add unseen items
+        // from this list. This prevents re-downloading the activity currently
+        // being imported when the list is refreshed.
+        val inFlightUid = pendingActivityItem?.uid?.hex()
+        newActivityItems.forEach { candidate ->
+            val uid = candidate.uid?.hex() ?: return@forEach
+            if (uid != inFlightUid && activityQueue.none { it.uid?.hex() == uid }) {
+                activityQueue.add(candidate)
+            }
+        }
+        if (pendingActivityItem == null) {
+            pendingActivityItem = activityQueue.removeFirstOrNull()
+        }
+        val item = pendingActivityItem ?: return
         pulledItemUid = item.uid?.hex().orEmpty()
         log(
             "PULL queued uid=${item.uid?.hex()} type=${item.dataType?.gdxmlString} " +
-                "size=${item.dataSize} new=${newActivityItems.size}/${activityItems.size}",
+                "size=${item.dataSize} new=${newActivityItems.size}/${activityItems.size} " +
+                "queued=${activityQueue.size}",
         )
         if (wellnessTransfer || pipe != null) {
             log("SYNC: activity pull deferred until the wellness transfer finishes")
@@ -482,10 +506,26 @@ class SyncCoordinator(
                         }
                         pullNextWellness()
                     } else {
-                        done = true
                         pendingActivityItem = null
+                        if (pulledItemUid.isNotEmpty()) completedActivityUids += pulledItemUid
                         onFinished(raw, decFile, pulledItemUid)
-                        if (wellnessQueue.isNotEmpty()) pullNextWellness()
+                        val next = activityQueue.removeFirstOrNull()
+                        if (next != null) {
+                            pendingActivityItem = next
+                            pulledItemUid = next.uid?.hex().orEmpty()
+                            requestedPull = false
+                            activitiesUpToDate = false
+                            done = false
+                            activityPullNotBefore = SystemClock.uptimeMillis() + ACTIVITY_GRACE_MS
+                            log(
+                                "SYNC: next activity queued uid=${next.uid?.hex()} " +
+                                    "type=${next.dataType?.gdxmlString} remaining=${activityQueue.size}",
+                            )
+                            tryStartActivityPull()
+                        } else {
+                            done = true
+                            if (wellnessQueue.isNotEmpty()) pullNextWellness()
+                        }
                     }
                 }
             },

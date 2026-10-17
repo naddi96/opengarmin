@@ -78,8 +78,9 @@ Known deviations / still open:
 Bugfix after the first device pass: the activity pull could be dropped when a
 wellness transfer held the watch's single transfer slot. `SyncCoordinator` now
 defers the activity pull, preserves the wellness type, retries
-`NO_AVAILABLE_RESOURCES`/timeouts, and prioritizes the activity once the GDI
-session is ready. Verified end-to-end on the Forerunner 255.
+`NO_AVAILABLE_RESOURCES`/timeouts, prioritizes the activity once the GDI session
+is ready, pulls all new `FIT_TYPE_4` activities sequentially, and no longer
+falls back to arbitrary FIT types. Verified end-to-end on the Forerunner 255.
 
 ## Delivery milestones
 

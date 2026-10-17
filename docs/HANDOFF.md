@@ -276,12 +276,14 @@ file was sometimes imported as an activity and the real activity was dropped.
 
 Fixed in `SyncCoordinator`:
 
-- queue the activity pull and defer it while a wellness transfer/pipe is active;
+- queue activity pulls and defer them while a wellness transfer/pipe is active;
 - preserve the in-flight wellness type until its pipe completes;
 - retry `NO_AVAILABLE_RESOURCES` with backoff, and retry an unanswered pull
   after 8 s;
-- prefer the queued activity once the GDI session is ready after a pipe closes;
-- process wellness afterwards.
+- prefer queued activities once the GDI session is ready after a pipe closes;
+- pull all new `FIT_TYPE_4` activities sequentially, then process wellness;
+- never fall back to an arbitrary `FIT_TYPE_*` as an "activity" (that could
+  import a wellness file under the wrong path).
 
 Verified on the FR255: 198,627-byte FIT downloaded and imported (`5.50 km
 Running`), then a second sync reported activities up to date while wellness
