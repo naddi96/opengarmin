@@ -91,6 +91,8 @@ class GarminSession(
     var autoHandshake: Boolean = true
     var onGfdiMessage: ((Gfdi.Frame) -> Unit)? = null
     var onProtobuf: ((Gfdi.Frame) -> Unit)? = null
+    var onMlrFrame: ((ByteArray) -> Unit)? = null
+    var onServiceRegistered: ((service: Int, handle: Int) -> Unit)? = null
     var onReady: (() -> Unit)? = null
 
     private val cobsBuffer = ArrayList<Byte>(1024)
@@ -110,6 +112,10 @@ class GarminSession(
 
     fun onNotification(frame: ByteArray) {
         if (frame.isEmpty()) return
+        if (Mlr.isMlr(frame[0].toInt() and 0xFF)) {
+            onMlrFrame?.invoke(frame)
+            return
+        }
         val handle = frame[0].toInt() and 0xFF
         val payload = frame.copyOfRange(1, frame.size)
         if (handle == MlControl.CONTROL_HANDLE) {
@@ -165,6 +171,7 @@ class GarminSession(
                     return
                 }
                 if (resp.service == ServiceId.GFDI) recovering = false
+                onServiceRegistered?.invoke(resp.service, resp.handle)
                 when (resp.service) {
                     ServiceId.GFDI -> {
                         gfdiHandle = resp.handle
@@ -228,6 +235,12 @@ class GarminSession(
             sink(packet)
             pos = end
         }
+    }
+
+    /** Registers an arbitrary Multi-Link service with the given reliability. */
+    fun registerService(service: Int, reliable: Boolean) {
+        log("ML: registering service=0x%04x reliable=%s".format(service, reliable))
+        sink(MlControl.registerRequest(clientId, service, reliable))
     }
 
     /** Sends a GDI protobuf payload. The GDI data channel is GFDI message type 5044. */
