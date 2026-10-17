@@ -25,7 +25,10 @@ class SyncCoordinator(
     private val filesDir: File,
     private val handler: Handler,
     private val log: (String) -> Unit,
-    private val onFinished: (raw: File, decoded: File) -> Unit,
+    /** True when the given GDI item UID has already been imported. */
+    private val isItemKnown: (String) -> Boolean,
+    private val onFinished: (raw: File, decoded: File, itemUid: String) -> Unit,
+    private val onUpToDate: () -> Unit,
 ) {
     private val gdi = GdiClient(session) { log(it) }
 
@@ -35,6 +38,7 @@ class SyncCoordinator(
     private var listReceived = false
     private var requestedPull = false
     private var started = false
+    private var pulledItemUid = ""
     private var pipe: TransportPipe? = null
     private var output: FileOutputStream? = null
     private var generation = 0
@@ -75,6 +79,7 @@ class SyncCoordinator(
         listReceived = false
         requestedPull = false
         started = false
+        pulledItemUid = ""
         done = false
     }
 
@@ -206,14 +211,31 @@ class SyncCoordinator(
             }
         }
         if (requestedPull || list.items.size <= 1) return
-        requestedPull = true
 
-        val item = list.items.firstOrNull { it.dataType?.gdxmlString == "FIT_TYPE_4" }
+        val activityItems = list.items.filter { it.dataType?.gdxmlString == "FIT_TYPE_4" }
+        val newActivityItems = activityItems.filter { item ->
+            val uid = item.uid?.hex() ?: return@filter true
+            !isItemKnown(uid)
+        }
+        if (activityItems.isNotEmpty() && newActivityItems.isEmpty()) {
+            done = true
+            log("SYNC up to date: ${activityItems.size} activity item(s) already imported")
+            onUpToDate()
+            return
+        }
+
+        requestedPull = true
+        val item = newActivityItems.firstOrNull()
+            ?: list.items.firstOrNull { it.dataType?.gdxmlString == "FIT_TYPE_4" }
             ?: list.items.firstOrNull { it.dataType?.gdxmlString?.startsWith("FIT_TYPE") == true }
             ?: list.items.minByOrNull { it.dataSize }
             ?: list.items.first()
 
-        log("PULL request uid=${item.uid?.hex()} type=${item.dataType?.gdxmlString} size=${item.dataSize}")
+        pulledItemUid = item.uid?.hex().orEmpty()
+        log(
+            "PULL request uid=${item.uid?.hex()} type=${item.dataType?.gdxmlString} " +
+                "size=${item.dataSize} new=${newActivityItems.size}/${activityItems.size}",
+        )
         gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.pullItemRequest(item))) { response ->
             handler.post { handleSmart(response) }
         }
@@ -245,7 +267,7 @@ class SyncCoordinator(
                 done = true
                 handler.post {
                     log("DOWNLOAD raw=${compressed.size} decoded=${decoded.size} -> ${decFile.absolutePath}")
-                    onFinished(raw, decFile)
+                    onFinished(raw, decFile, pulledItemUid)
                 }
             },
             onError = { msg -> handler.post { log("PIPE error: $msg") } },

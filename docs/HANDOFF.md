@@ -59,7 +59,7 @@ The tree is clean. `captures/`, `apk/`, `tools/` binary downloads are gitignored
 | M3 file directory | ✅ 100 items listed (3697-byte response, 8 chunks) |
 | M4 file download + decode | ✅ **99,357 compressed bytes → 198,627 bytes** (zlib, valid FIT: `.FIT`, profile 21184) |
 | M5 FIT parser | ✅ pure-JVM parser: 7,931 messages, 2,488 records, 6 laps |
-| M6 Room → dashboard | ✅ activity + record samples stored; list/detail UI with HR chart |
+| M6 Room → dashboard | ✅ activities + record samples + laps; list/detail UI with HR chart and lap table |
 
 The M4 download was proven end-to-end earlier: `PullItemDataRequest` →
 `transfer_handle` → MLR transport pipe on service `0x2018` → zlib stream →
@@ -100,10 +100,11 @@ app/src/main/java/dev/opengarmin/app/
                            dedicated GFDI subscribe, serialized write queue
   sync/SyncCoordinator.kt  capabilities → connection-ready → device requests →
                            list → pull → pipe → zlib → file
-  data/AppDatabase.kt      Room entities/DAO/database + ActivityRepository
-                           (FIT import, dedupe, epoch conversion)
-  MainActivity.kt          Compose dashboard (activity list + detail + HR chart),
-                           watchdog/reconnect, Sync button
+  data/AppDatabase.kt      Room entities/DAO/database (v3: activities, records,
+                           laps) + ActivityRepository (FIT import, UID dedupe,
+                           epoch conversion, lap backfill)
+  MainActivity.kt          Compose dashboard (activity list + detail + HR chart
+                           + lap table), watchdog/reconnect, Sync button
 
 docs/                      PROTOCOL, PLAN, LICENSING, samples, protos
 tools/                     parse_btsnoop.py, extract_protos.py, setup scripts
@@ -136,18 +137,14 @@ With those fixed, a full sync completed on 2026-10-17 18:20:
 
 ## Immediate next steps
 
-1. Avoid re-downloading an activity that is already stored: remember the
-   `ItemReference.uid` (or match the FIT `file_id`/start time) and skip the
-   `PullItemDataRequest` when Room already has it. Today the same newest
-   activity is downloaded again on every connect (import dedupe works).
-2. Import more than the newest activity: page through `ItemListResponse`
-   (`next_transaction_id`) and pull every `FIT_TYPE_4`.
-3. Add laps and more fields to the detail screen (the parser already returns
-   `laps`; persist them in a `laps` table if needed).
-4. Decide whether to answer ConnectIQ HTTP requests with real network data
-   (weather) or keep the offline timeout response.
-5. Background/periodic sync and a proper connected-device state.
-6. Unit tests for the Room importer (dedupe, epoch conversion).
+1. Import more activities if the watch exposes them: the current 100-item list
+   contains only one `FIT_TYPE_4`. If more appear, the existing loop already
+   picks the first item whose UID is not in Room.
+2. Background/periodic sync and a proper connected-device state.
+3. Consider answering ConnectIQ HTTP requests with real network data (weather)
+   instead of the offline timeout response.
+4. Unit tests for the Room importer/migrations (dedupe, epoch conversion,
+   laps backfill).
 
 ## Useful commands
 
@@ -180,6 +177,10 @@ pairing port (pairing needs the 6-digit code).
   broadcasts `ConnectionReadyNotification`; the phone can then pull without a
   watch-side button press.
 - GDI frames are ACKed per chunk (`[id][offset][ok][code]`), not per message.
+- Store `ItemReference.uid` with the activity and skip the PULL when it is
+  already in Room; otherwise every connect re-downloads the same FIT.
+- Room DB is version 3: `itemUid` (1→2) and `laps` (2→3) migrations live in
+  `AppDatabase`.
 - `ItemReference.data_size` is **not** the compressed stream length; read until
   the pipe service closes, then zlib-decompress.
 - Full HCI capture is unavailable (no root; bugreport `btsnooz` truncates to

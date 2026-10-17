@@ -46,6 +46,7 @@ import dev.opengarmin.app.ble.GarminBleClient
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.ActivityRepository
 import dev.opengarmin.app.data.AppDatabase
+import dev.opengarmin.app.data.LapEntity
 import dev.opengarmin.app.data.RecordEntity
 import dev.opengarmin.app.sync.SyncCoordinator
 import dev.opengarmin.protocol.Hex
@@ -71,6 +72,7 @@ class MainActivity : ComponentActivity() {
     private val activities = mutableStateListOf<ActivityEntity>()
     private var selectedActivity by mutableStateOf<ActivityEntity?>(null)
     private var selectedRecords by mutableStateOf<List<RecordEntity>>(emptyList())
+    private var selectedLaps by mutableStateOf<List<LapEntity>>(emptyList())
     private var state by mutableStateOf("idle")
     private var lastFile by mutableStateOf("—")
     private var importing by mutableStateOf(false)
@@ -94,6 +96,9 @@ class MainActivity : ComponentActivity() {
                 activities.clear()
                 activities.addAll(list)
             }
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { repository.backfillLaps(filesDir) }
         }
 
         val c = GarminBleClient(
@@ -134,11 +139,17 @@ class MainActivity : ComponentActivity() {
             filesDir = filesDir,
             handler = main,
             log = { log(it) },
-            onFinished = { raw, decoded ->
+            isItemKnown = { uid -> uid.isNotEmpty() && activities.any { it.itemUid == uid } },
+            onFinished = { raw, decoded, itemUid ->
                 cancelWatchdog()
                 lastFile = "${decoded.name} (${decoded.length()} bytes)"
                 log("SYNC complete: raw=${raw.length()} decoded=${decoded.length()} (${decoded.name})")
-                importFit(decoded)
+                importFit(decoded, itemUid)
+            },
+            onUpToDate = {
+                cancelWatchdog()
+                state = "up to date"
+                log("SYNC up to date: all activity files already imported")
             },
         )
 
@@ -152,6 +163,7 @@ class MainActivity : ComponentActivity() {
                         activities = activities,
                         selectedActivity = selectedActivity,
                         selectedRecords = selectedRecords,
+                        selectedLaps = selectedLaps,
                         devices = devices,
                         logs = logs,
                         onScan = { startScan() },
@@ -169,6 +181,7 @@ class MainActivity : ComponentActivity() {
                         onClearSelection = {
                             selectedActivity = null
                             selectedRecords = emptyList()
+                            selectedLaps = emptyList()
                         },
                         deviceInfo = {
                             val s = c.session
@@ -200,12 +213,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun importFit(file: File) {
+    private fun importFit(file: File, itemUid: String) {
         importing = true
         state = "importing"
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
-                runCatching { repository.importFit(file.name, file.readBytes()) }
+                runCatching { repository.importFit(file.name, file.readBytes(), itemUid) }
             }
             importing = false
             state = "synced"
@@ -227,9 +240,15 @@ class MainActivity : ComponentActivity() {
     private fun selectActivity(activity: ActivityEntity) {
         selectedActivity = activity
         selectedRecords = emptyList()
+        selectedLaps = emptyList()
         lifecycleScope.launch {
-            val records = withContext(Dispatchers.IO) { repository.records(activity.id) }
-            if (selectedActivity?.id == activity.id) selectedRecords = records
+            val (records, laps) = withContext(Dispatchers.IO) {
+                repository.records(activity.id) to repository.laps(activity.id)
+            }
+            if (selectedActivity?.id == activity.id) {
+                selectedRecords = records
+                selectedLaps = laps
+            }
         }
     }
 
@@ -315,6 +334,7 @@ private fun Screen(
     activities: List<ActivityEntity>,
     selectedActivity: ActivityEntity?,
     selectedRecords: List<RecordEntity>,
+    selectedLaps: List<LapEntity>,
     devices: List<MainActivity.DeviceEntry>,
     logs: List<String>,
     onScan: () -> Unit,
@@ -358,6 +378,7 @@ private fun Screen(
             ActivityDetail(
                 activity = selectedActivity,
                 records = selectedRecords,
+                laps = selectedLaps,
                 onBack = onClearSelection,
                 modifier = Modifier.weight(1f),
             )
@@ -452,6 +473,7 @@ private fun ActivityCard(activity: ActivityEntity, onClick: () -> Unit) {
 private fun ActivityDetail(
     activity: ActivityEntity,
     records: List<RecordEntity>,
+    laps: List<LapEntity>,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -496,6 +518,34 @@ private fun ActivityDetail(
 
         Text("Heart rate", style = MaterialTheme.typography.titleMedium)
         HeartRateChart(records)
+
+        if (laps.isNotEmpty()) {
+            Text("Laps", style = MaterialTheme.typography.titleMedium)
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row {
+                        Text("#", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(0.4f))
+                        Text("Distance", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                        Text("Time", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                        Text("Pace", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                        Text("HR", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(0.8f))
+                    }
+                    laps.forEach { lap ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${lap.lapIndex + 1}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.4f))
+                            Text(formatDistance(lap.distanceMeters), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            Text(formatDuration(lap.durationSeconds), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            Text(formatPace(lap.durationSeconds, lap.distanceMeters), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            Text(
+                                lap.avgHeartRate?.let { "$it" } ?: "—",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(0.8f),
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
