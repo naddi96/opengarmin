@@ -47,6 +47,11 @@ Tool execution logs only names/timing at most.
 
 The device log screen is read-only and shows the same redacted protocol log.
 
+The sync progress notification is a low-importance, private-visibility
+notification. It shows the current activity index/file size and the last
+imported activity's date, sport, and distance; its content is hidden on the lock
+screen unless the user changes the system notification privacy setting.
+
 ## Data deletion
 
 - **New conversation** clears the current local chat.

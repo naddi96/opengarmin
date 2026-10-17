@@ -302,6 +302,14 @@ download and last imported activity, the status pill reads `Syncing N/M`, and
 Settings repeats the same details. This also keeps the badge from saying
 "Synced just now" between the 30-second per-file transfers.
 
+A `connectedDevice` foreground service (`SyncForegroundService`) hosts one
+ongoing low-importance notification: activity N/M, file size, progress bar, and
+the last imported activity. Completion/failure replaces it with a separate
+dismissible summary notification (id 1002) so stopping the foreground service
+does not remove the final status. `POST_NOTIFICATIONS` is requested on Android
+13+, and the notification uses private visibility so activity details stay off
+the lock screen by default.
+
 ### Coach workout details (2026-10-17)
 
 `get_activity` now exposes the GPS and running-dynamics fields that were already

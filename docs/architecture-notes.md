@@ -113,6 +113,8 @@ tested migration.
    `start-unix-distance-sport` key.
 5. `backfillDerived` re-parses files still on disk to fill laps/coordinates/
    messages for old rows.
+6. `SyncForegroundService` (type `connectedDevice`) keeps the process alive and
+   hosts the live sync notification while the app is backgrounded.
 
 ### Wellness ingestion
 

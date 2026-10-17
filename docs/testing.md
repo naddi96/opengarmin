@@ -71,6 +71,10 @@ Manual matrix used for the UI/coach pass:
 - Multi-activity sync: the pill shows `Syncing N/M`, Today shows the current
   download (index, total, file size) and last imported activity, and Settings
   shows the same progress.
+- Sync notification: grant notifications on Android 13+, start a sync, and check
+  the ongoing notification shows `Activity N of M`, file size, progress, and
+  last imported activity. Disconnect or complete the sync and confirm a separate
+  dismissible `Sync stopped`/`Sync complete` notification remains.
 - Activity detail: map/HR/elevation/laps/`All data`.
 - Settings: step goal, max HR, sync state, provider summary, device log.
 - Provider: presets (including DeepSeek), model add/edit/delete/default,

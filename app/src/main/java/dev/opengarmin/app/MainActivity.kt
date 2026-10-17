@@ -1,6 +1,9 @@
 package dev.opengarmin.app
 
+import android.Manifest
 import android.bluetooth.BluetoothDevice
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -75,7 +78,9 @@ import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivitySyncProgress
 import dev.opengarmin.app.sync.SyncCoordinator
+import dev.opengarmin.app.sync.SyncNotifications
 import dev.opengarmin.app.ui.PulseApp
+import dev.opengarmin.app.ui.screens.formatFileSize
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseTheme
 import dev.opengarmin.protocol.Hex
@@ -131,6 +136,8 @@ class MainActivity : ComponentActivity() {
     private var importing by mutableStateOf(false)
     private var activityProgress by mutableStateOf<ActivitySyncProgress?>(null)
     private var lastImportedLabel by mutableStateOf<String?>(null)
+    private var importedThisSync = 0
+    private var syncNotificationActive = false
 
     data class DeviceEntry(val device: BluetoothDevice, val rssi: Int) {
         val label: String get() = "${device.name ?: "(unnamed)"}  ${device.address}  ${rssi} dBm"
@@ -140,6 +147,12 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grants ->
         if (grants.values.all { it }) client?.startScan() else log("permissions denied")
+    }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!granted) log("notification permission denied")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -202,7 +215,13 @@ class MainActivity : ComponentActivity() {
                         "connected" -> {
                             coordinator?.reset()
                             activityProgress = null
-                            lastImportedLabel = null
+                            ensureNotificationPermission()
+                            syncNotificationActive = true
+                            SyncNotifications.start(this)
+                            updateSyncNotification(
+                                status = "Connected · reading activity list…",
+                                progress = null,
+                            )
                             settings.recordSyncStarted()
                             client?.findBondedWatch()?.name?.let { settings.updateWatchName(it) }
                             armWatchdog()
@@ -210,8 +229,24 @@ class MainActivity : ComponentActivity() {
                         "failed" -> {
                             settings.recordSyncError("Sync failed")
                             cancelWatchdog()
+                            finishSyncNotification("Sync failed", "Could not finish syncing")
                         }
-                        "disconnected", "reconnecting" -> cancelWatchdog()
+                        "reconnecting" -> {
+                            cancelWatchdog()
+                            if (activityProgress != null) {
+                                updateSyncNotification(
+                                    status = "Reconnecting to watch…",
+                                    progress = null,
+                                )
+                            }
+                        }
+                        "disconnected" -> {
+                            cancelWatchdog()
+                            if (syncNotificationActive) {
+                                finishSyncNotification("Sync stopped", "Watch disconnected")
+                                activityProgress = null
+                            }
+                        }
                     }
                 }
             },
@@ -247,11 +282,15 @@ class MainActivity : ComponentActivity() {
                 activityProgress = null
                 state = "up to date"
                 settings.recordSyncSuccess()
+                finishSyncNotification("Sync complete", importedSummary())
                 log("SYNC up to date: all activity files already imported")
             },
             onActivityProgress = { progress ->
                 activityProgress = progress.takeIf { it.total > 0 && it.done < it.total }
-                if (progress.total > 0 && progress.done < progress.total) state = "syncing"
+                if (progress.total > 0 && progress.done < progress.total) {
+                    state = "syncing"
+                    updateSyncNotification(progress = activityProgress)
+                }
             },
         )
 
@@ -330,6 +369,8 @@ class MainActivity : ComponentActivity() {
                 val watch = c.findBondedWatch()
                 if (watch != null) {
                     syncAttempts = 0
+                    importedThisSync = 0
+                    ensureNotificationPermission()
                     settings.updateWatchName(watch.name ?: "")
                     log("auto-connecting to bonded ${watch.name}")
                     c.connect(watch)
@@ -354,6 +395,7 @@ class MainActivity : ComponentActivity() {
                 if (entity == null) {
                     log("FIT has no session or was already imported")
                 } else {
+                    importedThisSync++
                     lastImportedLabel = buildString {
                         append(formatDate(entity.startTime))
                         append(" · ")
@@ -371,6 +413,13 @@ class MainActivity : ComponentActivity() {
             }.onFailure { e ->
                 settings.recordSyncError("FIT import failed")
                 log("FIT import failed: ${e.message}")
+            }
+            if (activityProgress != null) {
+                updateSyncNotification(progress = activityProgress)
+            } else if (result.isSuccess) {
+                finishSyncNotification("Sync complete", importedSummary())
+            } else {
+                finishSyncNotification("Sync failed", "Could not import an activity")
             }
         }
     }
@@ -472,10 +521,12 @@ class MainActivity : ComponentActivity() {
                 syncAttempts++
                 log("sync stalled; reconnecting ($syncAttempts/5)")
                 state = "reconnecting"
+                updateSyncNotification(status = "Reconnecting to watch…", progress = null)
                 client?.reconnect()
             } else {
                 log("sync failed after $syncAttempts attempts")
                 state = "failed"
+                finishSyncNotification("Sync failed", "Could not finish syncing")
             }
         }
         watchdog = r
@@ -485,6 +536,56 @@ class MainActivity : ComponentActivity() {
     private fun cancelWatchdog() {
         watchdog?.let { main.removeCallbacks(it) }
         watchdog = null
+    }
+
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun importedSummary(): String =
+        if (importedThisSync > 0) {
+            "Imported $importedThisSync " +
+                (if (importedThisSync == 1) "activity" else "activities")
+        } else {
+            "Everything up to date"
+        }
+
+    private fun syncProgressText(progress: ActivitySyncProgress): String {
+        val current = (progress.done + 1).coerceAtMost(progress.total)
+        return progress.currentSize?.let {
+            "Activity $current of ${progress.total} · ${formatFileSize(it)}"
+        } ?: "${progress.done} of ${progress.total} imported"
+    }
+
+    private fun updateSyncNotification(
+        status: String? = null,
+        progress: ActivitySyncProgress? = activityProgress,
+    ) {
+        SyncNotifications.show(
+            context = this,
+            title = "Syncing watch",
+            status = status ?: progress?.let { syncProgressText(it) } ?: "Waiting for the watch…",
+            detail = lastImportedLabel?.let { "Last imported: $it" },
+            progress = progress,
+            ongoing = true,
+        )
+    }
+
+    private fun finishSyncNotification(title: String, status: String) {
+        log("SYNC notification: $title — $status")
+        SyncNotifications.finish(
+            context = this,
+            title = title,
+            status = status,
+            detail = lastImportedLabel?.let { "Last imported: $it" },
+        )
+        importedThisSync = 0
+        syncNotificationActive = false
     }
 
     private fun syncNow() {
@@ -498,6 +599,11 @@ class MainActivity : ComponentActivity() {
         cancelWatchdog()
         activityProgress = null
         lastImportedLabel = null
+        importedThisSync = 0
+        ensureNotificationPermission()
+        syncNotificationActive = true
+        SyncNotifications.start(this)
+        updateSyncNotification(status = "Connecting to ${watch.name}…", progress = null)
         settings.updateWatchName(watch.name ?: "")
         coordinator?.reset()
         c.connect(watch)
@@ -530,6 +636,8 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         cancelWatchdog()
         client?.disconnect()
+        syncNotificationActive = false
+        SyncNotifications.cancel(this)
         super.onDestroy()
     }
 }
