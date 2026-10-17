@@ -257,7 +257,7 @@ Added after the M7 handoff above:
   streaming with cancel/timeouts/retries.
 - Typed read-only coach tools with local-profile scope, caps, evidence labels,
   snapshot fallback, and medical-safety prompt. Chat is persisted locally.
-- 20 app JVM tests (tools, OpenAI client, chat loop) on top of the 34 protocol
+- 25 app JVM tests (tools, FIT insights, OpenAI client, chat loop) on top of the 34 protocol
   tests; CI workflow added. See `docs/testing.md`, `docs/providers.md`,
   `docs/tools.md`, `docs/privacy.md`, and `BACKLOG.md`.
 
@@ -288,3 +288,25 @@ Fixed in `SyncCoordinator`:
 Verified on the FR255: 198,627-byte FIT downloaded and imported (`5.50 km
 Running`), then a second sync reported activities up to date while wellness
 finished.
+
+### Coach workout details (2026-10-17)
+
+`get_activity` now exposes the GPS and running-dynamics fields that were already
+present in `fit_messages`:
+
+- GPS: point count, start/end, bounds, and an optional 60-point sampled route.
+- Running dynamics: cadence (steps/min + raw), ground contact/stance time,
+  vertical oscillation/ratio, stride length, power, training effect, anaerobic
+  TE, load peak, moving/standing time, average/max speed, respiration, stress,
+  SpO2; session values with record-average fallback.
+- Laps include cadence/ground-contact/vertical-oscillation/stride when present.
+
+The Activity detail screen also shows a running-dynamics card and GPS summary.
+Verified on the imported FR255 run: 2,488 GPS points, 135 spm cadence, 314 ms
+ground contact, 94.1 mm vertical oscillation, 9.6% vertical ratio, 0.98 m
+stride, 240 W, training effect 2.5.
+
+Also fixed in the tool loop: the model was receiving `ToolResult(json=…,
+evidence=[…]).toString()` instead of the JSON payload. It now receives the pure
+compact JSON inside `<untrusted_data>`, with evidence kept separately. This was
+the main reason a capable model could still behave as if the data were absent.

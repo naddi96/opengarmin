@@ -1,11 +1,16 @@
 package dev.opengarmin.app.coach.tools
 
 import dev.opengarmin.app.coach.DailyHealth
+import dev.opengarmin.app.coach.GeoBounds
+import dev.opengarmin.app.coach.GeoPoint
+import dev.opengarmin.app.coach.GpsSummary
 import dev.opengarmin.app.coach.HealthDataSource
 import dev.opengarmin.app.coach.HealthSample
 import dev.opengarmin.app.coach.LOCAL_PROFILE_ID
+import dev.opengarmin.app.coach.LapDynamics
 import dev.opengarmin.app.coach.LapInfo
 import dev.opengarmin.app.coach.RecordPoint
+import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.coach.ToolScope
 import dev.opengarmin.app.coach.WorkoutDetail
 import dev.opengarmin.app.coach.WorkoutSummary
@@ -124,6 +129,30 @@ class HealthToolsTest {
         val percentages = zones.getJSONObject("zonePercent")
         val sum = (1..5).sumOf { percentages.getDouble("z$it") }
         assertTrue(sum in 99.0..101.0)
+    }
+
+    @Test
+    fun `activity exposes gps and running dynamics`() = runBlocking {
+        val result = registry.execute(
+            "get_activity",
+            """{"id":1,"include_route":true,"max_heart_rate":190}""",
+            ToolScope(),
+        )
+        val json = JSONObject(result.json)
+        val gps = json.getJSONObject("gps")
+        assertTrue(gps.getBoolean("available"))
+        assertEquals(3, gps.getInt("pointCount"))
+        assertEquals(2, gps.getJSONArray("route").length())
+        assertEquals(43.712586, gps.getDouble("startLat"), 0.000001)
+
+        val dynamics = json.getJSONObject("runningDynamics")
+        assertTrue(dynamics.getBoolean("available"))
+        assertEquals(134.9, dynamics.getDouble("cadenceSpm"), 0.1)
+        assertEquals(313.6, dynamics.getDouble("groundContactTimeMs"), 0.1)
+        assertEquals(94.1, dynamics.getDouble("verticalOscillationMm"), 0.1)
+        assertEquals(979.3, dynamics.getDouble("strideLengthMm"), 0.1)
+        assertEquals(2.5, dynamics.getDouble("trainingEffect"), 0.1)
+        assertEquals("Run", json.getString("category"))
     }
 
     @Test
@@ -246,6 +275,39 @@ class HealthToolsTest {
                 summary = summary,
                 laps = listOf(LapInfo(0, 900.0, 2_500.0, 145, 160, 2.8, 200)),
                 records = records,
+                gps = GpsSummary(
+                    available = true,
+                    pointCount = 3,
+                    start = GeoPoint(43.712586, 10.407903),
+                    end = GeoPoint(43.712814, 10.407887),
+                    bounds = GeoBounds(43.7129, 43.7125, 10.4080, 10.4078),
+                    route = listOf(
+                        GeoPoint(43.712586, 10.407903),
+                        GeoPoint(43.712814, 10.407887),
+                    ),
+                ),
+                dynamics = RunningDynamicsSummary(
+                    available = true,
+                    cadenceRaw = 67.4296875,
+                    cadenceSpm = 134.859375,
+                    maxCadenceSpm = 169.0,
+                    groundContactTimeMs = 313.6,
+                    verticalOscillationMm = 94.1,
+                    verticalRatioPct = 9.64,
+                    strideLengthMm = 979.3,
+                    trainingEffect = 2.5,
+                    anaerobicTrainingEffect = 0.1,
+                    trainingLoadPeak = 47.07,
+                ),
+                lapDynamics = listOf(
+                    LapDynamics(
+                        index = 0,
+                        cadenceSpm = 132.0,
+                        groundContactTimeMs = 318.0,
+                        verticalOscillationMm = 92.0,
+                        strideLengthMm = 970.0,
+                    ),
+                ),
             )
         }
     }

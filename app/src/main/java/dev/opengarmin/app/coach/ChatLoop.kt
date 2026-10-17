@@ -124,10 +124,11 @@ class ChatLoop(
                         tools.execute(call.name, call.arguments, scope)
                     }
                 }
-                val payload = result.getOrElse { error ->
-                    JSONObject().put("error", error.message ?: "Tool failed").toString()
-                }
-                result.getOrNull()?.let {
+                val toolResult = result.getOrNull()
+                val payload = toolResult?.json ?: JSONObject()
+                    .put("error", result.exceptionOrNull()?.message ?: "Tool failed")
+                    .toString()
+                toolResult?.let {
                     evidence += it.evidence
                     onEvidence(evidence.toList())
                 }

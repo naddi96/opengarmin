@@ -88,7 +88,12 @@ class ChatLoopIntegrationTest {
         val toolMessage = (0 until messages.length())
             .map { messages.getJSONObject(it) }
             .last { it.optString("role") == "tool" }
-        assertTrue(toolMessage.getString("content").contains("<untrusted_data"))
+        val toolContent = toolMessage.getString("content")
+        assertTrue(toolContent.contains("<untrusted_data"))
+        assertFalse(toolContent.contains("ToolResult("))
+        val jsonPayload = toolContent.substringAfter(">").substringBeforeLast("</untrusted_data>").trim()
+        assertTrue(jsonPayload.startsWith("{"))
+        assertEquals(3923, JSONObject(jsonPayload).getJSONArray("days").getJSONObject(0).getInt("steps"))
         assertTrue(second.has("tools"))
     }
 

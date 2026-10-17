@@ -46,10 +46,24 @@ Compact workout rows: id, date, sport/category, distance, duration, HR,
 calories. `type` = Run/Ride/Strength/Walk. Max 50 rows. The sport mapping is
 documented in `coach/SportCategory.kt`; unsupported sports stay under All.
 
-### `get_activity(id, max_heart_rate?)`
-One workout's stats, laps, and (only when `max_heart_rate` is 100–250) time in
-five zones. It does not return raw GPS points. If no max HR is supplied, it
-returns `zonesAvailable: false`; no max HR is invented.
+### `get_activity(id, max_heart_rate?, include_route?)`
+One workout's stats, laps, **GPS summary**, **running dynamics**, training
+effect, and (only when `max_heart_rate` is 100–250) time in five zones.
+
+- **GPS:** `available`, point count, start/end coordinates, and bounding box.
+  Set `include_route=true` to add up to 60 sampled route points when the user
+  asks about the route or location. If no GPS was recorded, `available` is
+  `false`; no coordinates are invented.
+- **Running dynamics:** cadence in steps/min (raw cycles/min also included),
+  ground contact / stance time in ms, ground contact percent/balance, vertical
+  oscillation in mm/cm, vertical ratio %, stride length in mm/m, power,
+  training effect, anaerobic training effect, load peak, moving/standing time,
+  average/max speed, respiration, stress, and SpO2 when the FIT fields exist.
+  Session values are used first, with record averages as fallback. Missing
+  fields are omitted; unavailable dynamics return `available: false`.
+- **Laps:** distance/duration/HR plus cadence, ground contact, vertical
+  oscillation, and stride length when present.
+- If no max HR is supplied, `zonesAvailable: false`; no max HR is invented.
 
 ### `compare_periods(metric, range_a_*, range_b_*)`
 Metrics: steps, resting_hr, active_minutes, calories, sleep, hrv. Uses daily

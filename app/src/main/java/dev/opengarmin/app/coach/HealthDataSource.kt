@@ -68,6 +68,9 @@ data class WorkoutDetail(
     val summary: WorkoutSummary,
     val laps: List<LapInfo>,
     val records: List<RecordPoint>,
+    val gps: GpsSummary? = null,
+    val dynamics: RunningDynamicsSummary? = null,
+    val lapDynamics: List<LapDynamics> = emptyList(),
 )
 
 /**
@@ -163,7 +166,26 @@ class RepositoryHealthDataSource(
                 calories = it.calories,
             )
         }
-        return WorkoutDetail(activity.toSummary(), laps, records)
+        val isRunning = categoryForSport(activity.sport) == SportCategory.Run
+        val sessionJson = repository.messagesByName(id, "session").lastOrNull()?.fieldsJson
+        val recordJson = repository.messagesByName(id, "record").map { it.fieldsJson }
+        val lapJson = repository.messagesByName(id, "lap").map { it.fieldsJson }
+        val gps = FitInsights.gps(
+            points = records.mapNotNull { point ->
+                val lat = point.latitude ?: return@mapNotNull null
+                val lon = point.longitude ?: return@mapNotNull null
+                GeoPoint(lat, lon)
+            },
+            sessionJson = sessionJson,
+        )
+        return WorkoutDetail(
+            summary = activity.toSummary(),
+            laps = laps,
+            records = records,
+            gps = gps,
+            dynamics = FitInsights.dynamics(recordJson, sessionJson, isRunning),
+            lapDynamics = FitInsights.lapDynamics(lapJson, isRunning),
+        )
     }
 
     private fun scopeAllowed(scope: ToolScope): Boolean = scope.profileId == LOCAL_PROFILE_ID

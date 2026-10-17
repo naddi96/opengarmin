@@ -22,10 +22,13 @@ ANDROID_SERIAL=<serial> ./tools/gradle-8.7/bin/gradle --no-daemon :app:connected
 Current coverage:
 
 - `:protocol:test` — 34 tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT.
-- `:app:testDebugUnitTest` — 20 JVM tests:
+- `:app:testDebugUnitTest` — 25 JVM tests:
   - `HealthToolsTest`: scope rejection, missing-day handling, date-range caps,
     sample caps, activity filters/pages, zone calculation, comparisons,
     unavailable sleep, snapshot budget, unknown tool/bad JSON.
+  - `FitInsightsTest`: GPS summary/route sampling, running-dynamics parsing
+    (cadence, ground contact, vertical oscillation/ratio, stride length,
+    training effect), record-average fallback, and lap dynamics.
   - `OpenAiClientTest`: streaming deltas, tool-call fragments, non-streaming
     completion, 401, 5xx, read timeout, models list, request shape/auth header.
   - `ChatLoopIntegrationTest`: streaming tool call → execution → evidence →

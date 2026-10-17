@@ -26,6 +26,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.DataExplorer
 import dev.opengarmin.app.coach.CoachController
+import dev.opengarmin.app.coach.GpsSummary
+import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.FitMessageEntity
 import dev.opengarmin.app.data.LapEntity
@@ -61,6 +63,8 @@ fun PulseApp(
     selectedActivity: ActivityEntity?,
     selectedRecords: List<RecordEntity>,
     selectedLaps: List<LapEntity>,
+    selectedDynamics: RunningDynamicsSummary?,
+    selectedGps: GpsSummary?,
     dataActivity: ActivityEntity?,
     dataMessages: List<FitMessageEntity>,
     dataLoading: Boolean,
@@ -174,6 +178,8 @@ fun PulseApp(
                         activity = detailActivity,
                         records = selectedRecords,
                         laps = selectedLaps,
+                        dynamics = selectedDynamics,
+                        gps = selectedGps,
                         maxHeartRate = settings.maxHeartRate,
                         onBack = {
                             onClearSelection()

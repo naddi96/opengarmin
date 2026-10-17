@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.HeartRateChart
 import dev.opengarmin.app.RouteMap
 import dev.opengarmin.app.ElevationChart
+import dev.opengarmin.app.coach.GpsSummary
+import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.coach.categoryForSport
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.LapEntity
@@ -43,6 +45,8 @@ fun ActivityDetailScreen(
     activity: ActivityEntity,
     records: List<RecordEntity>,
     laps: List<LapEntity>,
+    dynamics: RunningDynamicsSummary?,
+    gps: GpsSummary?,
     maxHeartRate: Int?,
     onBack: () -> Unit,
     onExploreData: () -> Unit,
@@ -50,7 +54,6 @@ fun ActivityDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val zones = zoneSummary(records, maxHeartRate)
-    val color = PulseColors.sportColor(activity.sport)
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -122,6 +125,52 @@ fun ActivityDetailScreen(
             ) {
                 Text("Elevation", style = MaterialTheme.typography.titleSmall, color = PulseColors.Text)
                 ElevationChart(records)
+            }
+        }
+
+        PulseCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(PulseSpacing.xl),
+                verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+            ) {
+                Text("Running dynamics", style = MaterialTheme.typography.titleSmall, color = PulseColors.Text)
+                if (dynamics?.available == true) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+                        TinyStat("Cadence", dynamics.cadenceSpm?.let { "%.0f spm".format(it) } ?: "—", Modifier.weight(1f))
+                        TinyStat("Ground contact", dynamics.groundContactTimeMs?.let { "%.0f ms".format(it) } ?: "—", Modifier.weight(1f))
+                        TinyStat("Vertical osc.", dynamics.verticalOscillationMm?.let { "%.1f mm".format(it) } ?: "—", Modifier.weight(1f))
+                        TinyStat("Vertical ratio", dynamics.verticalRatioPct?.let { "%.1f%%".format(it) } ?: "—", Modifier.weight(1f))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+                        TinyStat("Stride length", dynamics.strideLengthMm?.let { "%.2f m".format(it / 1000.0) } ?: "—", Modifier.weight(1f))
+                        TinyStat("Power", dynamics.powerW?.let { "$it W" } ?: "—", Modifier.weight(1f))
+                        TinyStat("Training effect", dynamics.trainingEffect?.let { "%.1f".format(it) } ?: "—", Modifier.weight(1f))
+                        TinyStat("Anaerobic TE", dynamics.anaerobicTrainingEffect?.let { "%.1f".format(it) } ?: "—", Modifier.weight(1f))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+                        TinyStat("Avg km/h", dynamics.avgSpeedKmh?.let { "%.1f".format(it) } ?: "—", Modifier.weight(1f))
+                        TinyStat("Max km/h", dynamics.maxSpeedKmh?.let { "%.1f".format(it) } ?: "—", Modifier.weight(1f))
+                        TinyStat("Moving time", dynamics.movingTimeSeconds?.let { formatDuration(it) } ?: "—", Modifier.weight(1f))
+                        TinyStat("Load peak", dynamics.trainingLoadPeak?.let { "%.0f".format(it) } ?: "—", Modifier.weight(1f))
+                    }
+                } else {
+                    Text(
+                        "No running-dynamics fields were recorded for this activity.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+                if (gps?.available == true) {
+                    Text(
+                        "GPS: ${gps.pointCount} points · start ${"%.5f".format(gps.start?.latitude ?: 0.0)}, " +
+                            "${"%.5f".format(gps.start?.longitude ?: 0.0)} → end " +
+                            "${"%.5f".format(gps.end?.latitude ?: 0.0)}, ${"%.5f".format(gps.end?.longitude ?: 0.0)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PulseColors.TextMuted,
+                    )
+                } else {
+                    Text("No GPS points in this activity.", style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted)
+                }
             }
         }
 

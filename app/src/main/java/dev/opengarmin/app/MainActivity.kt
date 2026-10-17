@@ -58,7 +58,10 @@ import androidx.lifecycle.lifecycleScope
 import dev.opengarmin.app.ble.GarminBleClient
 import dev.opengarmin.app.coach.ChatStore
 import dev.opengarmin.app.coach.CoachController
+import dev.opengarmin.app.coach.GpsSummary
 import dev.opengarmin.app.coach.RepositoryHealthDataSource
+import dev.opengarmin.app.coach.RunningDynamicsSummary
+import dev.opengarmin.app.coach.ToolScope
 import dev.opengarmin.app.coach.tools.ToolRegistry
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.ActivityRepository
@@ -105,6 +108,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var settings: PulseSettings
     private lateinit var providerStore: ProviderStore
     private lateinit var coachController: CoachController
+    private lateinit var healthDataSource: RepositoryHealthDataSource
 
     private val devices = mutableStateListOf<DeviceEntry>()
     private val logs = mutableStateListOf<String>()
@@ -113,6 +117,8 @@ class MainActivity : ComponentActivity() {
     private var selectedActivity by mutableStateOf<ActivityEntity?>(null)
     private var selectedRecords by mutableStateOf<List<RecordEntity>>(emptyList())
     private var selectedLaps by mutableStateOf<List<LapEntity>>(emptyList())
+    private var selectedDynamics by mutableStateOf<RunningDynamicsSummary?>(null)
+    private var selectedGps by mutableStateOf<GpsSummary?>(null)
     private var selectedWellnessDay by mutableStateOf<WellnessDayEntity?>(null)
     private var wellnessSamples by mutableStateOf<List<WellnessSampleEntity>>(emptyList())
     private var latestHrSamples by mutableStateOf<List<WellnessSampleEntity>>(emptyList())
@@ -145,10 +151,11 @@ class MainActivity : ComponentActivity() {
         repository = ActivityRepository(AppDatabase.get(this).activityDao())
         settings = PulseSettings(this)
         providerStore = ProviderStore(this)
+        healthDataSource = RepositoryHealthDataSource(repository)
         coachController = CoachController(
             scope = lifecycleScope,
             providerStore = providerStore,
-            tools = ToolRegistry(RepositoryHealthDataSource(repository)),
+            tools = ToolRegistry(healthDataSource),
             chatStore = ChatStore(this),
             settings = settings,
         )
@@ -259,6 +266,8 @@ class MainActivity : ComponentActivity() {
                     selectedActivity = selectedActivity,
                     selectedRecords = selectedRecords,
                     selectedLaps = selectedLaps,
+                    selectedDynamics = selectedDynamics,
+                    selectedGps = selectedGps,
                     dataActivity = dataActivity,
                     dataMessages = dataMessages,
                     dataLoading = dataLoading,
@@ -291,6 +300,8 @@ class MainActivity : ComponentActivity() {
                         selectedActivity = null
                         selectedRecords = emptyList()
                         selectedLaps = emptyList()
+                        selectedDynamics = null
+                        selectedGps = null
                     },
                     onExploreData = { openDataExplorer(it) },
                     onCloseData = { closeDataExplorer() },
@@ -379,13 +390,21 @@ class MainActivity : ComponentActivity() {
         selectedActivity = activity
         selectedRecords = emptyList()
         selectedLaps = emptyList()
+        selectedDynamics = null
+        selectedGps = null
         lifecycleScope.launch {
-            val (records, laps) = withContext(Dispatchers.IO) {
-                repository.records(activity.id) to repository.laps(activity.id)
+            val (records, laps, detail) = withContext(Dispatchers.IO) {
+                Triple(
+                    repository.records(activity.id),
+                    repository.laps(activity.id),
+                    healthDataSource.workout(ToolScope(), activity.id),
+                )
             }
             if (selectedActivity?.id == activity.id) {
                 selectedRecords = records
                 selectedLaps = laps
+                selectedDynamics = detail?.dynamics
+                selectedGps = detail?.gps
             }
         }
     }

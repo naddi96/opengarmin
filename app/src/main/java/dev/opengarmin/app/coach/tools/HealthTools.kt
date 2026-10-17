@@ -89,6 +89,11 @@ class ToolRegistry(
                     }
                 },
             )
+            workouts.firstOrNull()?.let { latest ->
+                dataSource.workout(scope, latest.id)?.let { detail ->
+                    put("latestWorkout", workoutDetailJson(detail, includeRoute = false))
+                }
+            }
             put(
                 "unavailable",
                 JSONArray().apply {
@@ -433,7 +438,7 @@ private class ActivityTool(
 ) : HealthTool {
     override val definition = LlmToolDefinition(
         name = "get_activity",
-        description = "One workout's stats, laps and (when max_heart_rate is supplied) time in heart-rate zones. Does not return raw GPS points.",
+        description = "One workout's stats, laps, GPS summary (start/end, bounds, point count; set include_route=true for a sampled route), running dynamics (cadence in steps/min, ground contact/stance time, vertical oscillation, vertical ratio, stride length), training effect, and heart-rate zones when max_heart_rate is supplied.",
         parameters = schema(
             required = listOf("id"),
             props = mapOf(
@@ -444,6 +449,10 @@ private class ActivityTool(
                 "max_heart_rate" to JSONObject().apply {
                     put("type", "integer")
                     put("description", "Optional user max HR for zone calculations (100-250)")
+                },
+                "include_route" to JSONObject().apply {
+                    put("type", "boolean")
+                    put("description", "Include up to 60 sampled GPS points when the user asks about the route or location")
                 },
             ),
         ),
@@ -456,40 +465,16 @@ private class ActivityTool(
         val summary = detail.summary
         val zones = args.optInt("max_heart_rate", 0).takeIf { it in 100..250 }
             ?.let { maxHr -> zonePercentages(detail.records.mapNotNull { it.heartRate }, maxHr) }
-        val json = JSONObject().apply {
-            put("id", summary.id)
-            put("date", unixToLocalDate(summary.startTime).toString())
-            put("sport", sportLabel(summary.sport))
-            put("category", categoryForSport(summary.sport).label)
-            put("distanceKm", round1(summary.distanceMeters / 1000.0))
-            put("durationMin", (summary.durationSeconds / 60.0).roundToInt())
-            put("elapsedMin", (summary.elapsedSeconds / 60.0).roundToInt())
-            put("avgHr", summary.avgHeartRate ?: JSONObject.NULL)
-            put("maxHr", summary.maxHeartRate ?: JSONObject.NULL)
-            put("calories", summary.calories ?: JSONObject.NULL)
-            put("ascentM", summary.ascentMeters ?: JSONObject.NULL)
-            put("descentM", summary.descentMeters ?: JSONObject.NULL)
-            put(
-                "laps",
-                JSONArray().apply {
-                    detail.laps.forEach { lap ->
-                        put(
-                            JSONObject().apply {
-                                put("index", lap.index + 1)
-                                put("distanceKm", round1(lap.distanceMeters / 1000.0))
-                                put("durationMin", (lap.durationSeconds / 60.0).roundToInt())
-                                put("avgHr", lap.avgHeartRate ?: JSONObject.NULL)
-                            },
-                        )
-                    }
-                },
-            )
+        val json = workoutDetailJson(
+            detail = detail,
+            includeRoute = args.optBoolean("include_route", false),
+        ).apply {
             if (zones == null) {
                 put("zonesAvailable", false)
                 put("zonesReason", "No max heart rate supplied")
             } else {
                 put("zonesAvailable", true)
-                put("zoneBasis", "max_heart_rate=$zones.maxHr")
+                put("zoneBasis", "max_heart_rate=${zones.maxHr}")
                 put(
                     "zonePercent",
                     JSONObject().apply {
@@ -611,6 +596,132 @@ private fun zonePercentages(heartRates: List<Int>, maxHr: Int): ZoneResult {
     val total = counts.sum().coerceAtLeast(1)
     return ZoneResult(maxHr, counts.map { it.toFloat() / total * 100f })
 }
+
+private fun workoutDetailJson(
+    detail: dev.opengarmin.app.coach.WorkoutDetail,
+    includeRoute: Boolean,
+): JSONObject {
+    val summary = detail.summary
+    return JSONObject().apply {
+        put("id", summary.id)
+        put("date", unixToLocalDate(summary.startTime).toString())
+        put("startTime", summary.startTime)
+        put("sport", sportLabel(summary.sport))
+        put("category", categoryForSport(summary.sport).label)
+        put("distanceKm", round1(summary.distanceMeters / 1000.0))
+        put("durationMin", (summary.durationSeconds / 60.0).roundToInt())
+        put("elapsedMin", (summary.elapsedSeconds / 60.0).roundToInt())
+        putNumber("avgHr", summary.avgHeartRate)
+        putNumber("maxHr", summary.maxHeartRate)
+        putNumber("calories", summary.calories)
+        putNumber("ascentM", summary.ascentMeters)
+        putNumber("descentM", summary.descentMeters)
+
+        val gps = detail.gps
+        put(
+            "gps",
+            JSONObject().apply {
+                put("available", gps?.available == true)
+                put("pointCount", gps?.pointCount ?: 0)
+                gps?.start?.let {
+                    put("startLat", round6(it.latitude))
+                    put("startLon", round6(it.longitude))
+                }
+                gps?.end?.let {
+                    put("endLat", round6(it.latitude))
+                    put("endLon", round6(it.longitude))
+                }
+                gps?.bounds?.let {
+                    put(
+                        "bounds",
+                        JSONObject().apply {
+                            put("north", round6(it.north))
+                            put("south", round6(it.south))
+                            put("east", round6(it.east))
+                            put("west", round6(it.west))
+                        },
+                    )
+                }
+                if (includeRoute && gps != null && gps.route.isNotEmpty()) {
+                    put(
+                        "route",
+                        JSONArray().apply {
+                            gps.route.forEach { point ->
+                                put(
+                                    JSONObject().apply {
+                                        put("lat", round6(point.latitude))
+                                        put("lon", round6(point.longitude))
+                                    },
+                                )
+                            }
+                        },
+                    )
+                }
+            },
+        )
+
+        val dynamics = detail.dynamics
+        put(
+            "runningDynamics",
+            JSONObject().apply {
+                put("available", dynamics?.available == true)
+                if (dynamics == null) {
+                    put("reason", "No running-dynamics fields in this activity")
+                } else {
+                    putNumber("cadenceSpm", dynamics.cadenceSpm?.let(::round1))
+                    putNumber("cadenceRaw", dynamics.cadenceRaw?.let(::round1))
+                    putNumber("maxCadenceSpm", dynamics.maxCadenceSpm?.let(::round1))
+                    putNumber("groundContactTimeMs", dynamics.groundContactTimeMs?.let(::round1))
+                    putNumber("groundContactPercent", dynamics.groundContactPercent?.let(::round1))
+                    putNumber("groundContactBalanceLeftPct", dynamics.groundContactBalanceLeftPct?.let(::round1))
+                    putNumber("verticalOscillationMm", dynamics.verticalOscillationMm?.let(::round1))
+                    putNumber("verticalOscillationCm", dynamics.verticalOscillationMm?.let { round1(it / 10.0) })
+                    putNumber("verticalRatioPct", dynamics.verticalRatioPct?.let(::round1))
+                    putNumber("strideLengthMm", dynamics.strideLengthMm?.let(::round1))
+                    putNumber("strideLengthM", dynamics.strideLengthMm?.let { round1(it / 1000.0) })
+                    putNumber("powerW", dynamics.powerW)
+                    putNumber("trainingEffect", dynamics.trainingEffect)
+                    putNumber("anaerobicTrainingEffect", dynamics.anaerobicTrainingEffect)
+                    putNumber("trainingLoadPeak", dynamics.trainingLoadPeak)
+                    putNumber("movingTimeSeconds", dynamics.movingTimeSeconds)
+                    putNumber("standingTimeSeconds", dynamics.standingTimeSeconds)
+                    putNumber("avgSpeedKmh", dynamics.avgSpeedKmh?.let(::round1))
+                    putNumber("maxSpeedKmh", dynamics.maxSpeedKmh?.let(::round1))
+                    putNumber("avgRespiration", dynamics.avgRespiration)
+                    putNumber("avgStress", dynamics.avgStress)
+                    putNumber("avgSpo2", dynamics.avgSpo2)
+                }
+            },
+        )
+
+        put(
+            "laps",
+            JSONArray().apply {
+                detail.laps.forEach { lap ->
+                    val lapDynamics = detail.lapDynamics.firstOrNull { it.index == lap.index }
+                    put(
+                        JSONObject().apply {
+                            put("index", lap.index + 1)
+                            put("distanceKm", round1(lap.distanceMeters / 1000.0))
+                            put("durationMin", (lap.durationSeconds / 60.0).roundToInt())
+                            putNumber("avgHr", lap.avgHeartRate)
+                            putNumber("cadenceSpm", lapDynamics?.cadenceSpm?.let(::round1))
+                            putNumber("groundContactTimeMs", lapDynamics?.groundContactTimeMs?.let(::round1))
+                            putNumber("verticalOscillationMm", lapDynamics?.verticalOscillationMm?.let(::round1))
+                            putNumber("strideLengthMm", lapDynamics?.strideLengthMm?.let(::round1))
+                        },
+                    )
+                }
+            },
+        )
+    }
+}
+
+private fun JSONObject.putNumber(key: String, value: Number?) {
+    if (value != null) put(key, value)
+}
+
+private fun round6(value: Double): Double = (value * 1_000_000.0).roundToInt() / 1_000_000.0
 
 private fun DailyHealth.toJson(): JSONObject = JSONObject().apply {
     put("date", date)

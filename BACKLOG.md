@@ -55,7 +55,7 @@ Shipped in this pass (see commits/working tree):
 - **E:** persistent local chat, streaming updates, cancel, tool loop, evidence
   chips from actual calls, provider-gated onboarding, suggestions, errors,
   safety copy.
-- **F:** 20 app JVM tests (tools + mock OpenAI + chat loop), existing 34 protocol
+- **F:** 25 app JVM tests (tools, FIT insights, mock OpenAI + chat loop), existing 34 protocol
   tests, CI workflow, provider/tools/testing/privacy docs.
 
 Known deviations / still open:

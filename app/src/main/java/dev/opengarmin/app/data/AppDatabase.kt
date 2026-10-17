@@ -201,6 +201,9 @@ interface ActivityDao {
     @Query("SELECT * FROM fit_messages WHERE activityId = :activityId ORDER BY orderIndex")
     suspend fun allMessages(activityId: Long): List<FitMessageEntity>
 
+    @Query("SELECT * FROM fit_messages WHERE activityId = :activityId AND messageName = :messageName ORDER BY orderIndex")
+    suspend fun messagesByName(activityId: Long, messageName: String): List<FitMessageEntity>
+
     @Query("SELECT COUNT(*) FROM fit_messages WHERE activityId = :activityId")
     suspend fun messageCount(activityId: Long): Int
 
@@ -411,6 +414,9 @@ class ActivityRepository(private val dao: ActivityDao) {
     suspend fun messageCounts(activityId: Long): List<MessageCount> = dao.messageCounts(activityId)
 
     suspend fun allMessages(activityId: Long): List<FitMessageEntity> = dao.allMessages(activityId)
+
+    suspend fun messagesByName(activityId: Long, messageName: String): List<FitMessageEntity> =
+        dao.messagesByName(activityId, messageName)
 
     suspend fun wellnessSamples(dayId: Long): List<WellnessSampleEntity> = dao.wellnessSamples(dayId)
 

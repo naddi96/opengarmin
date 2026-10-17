@@ -10,8 +10,11 @@ Only when the coach is used:
 
 - The chat message you type.
 - The system prompt and recent chat history.
-- The results of the tools the model calls (compact JSON aggregates, never raw
-  GPS traces) or, for models without tool calling, a compact 14-day snapshot.
+- The results of the tools the model calls. This is compact JSON: wellness
+  aggregates, workout summaries, running dynamics, and—only when the user asks
+  about a route and the model requests it—up to 60 sampled GPS points. It never
+  sends the full raw record stream. For models without tool calling, a compact
+  14-day snapshot is sent instead.
 - The configured model name and parameters.
 
 These are sent to the **OpenAI-compatible endpoint you configure**. Nothing is
