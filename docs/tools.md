@@ -16,7 +16,8 @@ against the app's Room data and returns compact JSON.
   366 days, 90 days for daily-grained queries. `compare_periods` allows 90 days
   per side.
 - **Rows/points:** `list_activities` returns at most 50; heart-rate samples at
-  most 168; daily summary at most 366 rows.
+  most 168; daily summary at most 366 rows; chart series at most 5 activities ×
+  120 points. Charts per answer: at most 3.
 - **Chat turn:** the loop allows at most 4 rounds and 8 tool calls.
 - **Time:** tool execution is local and fast; the HTTP call has its own
   timeouts. A tool failure is returned to the model as an error object.
@@ -69,6 +70,29 @@ effect, and (only when `max_heart_rate` is 100–250) time in five zones.
 Metrics: steps, resting_hr, active_minutes, calories, sleep, hrv. Uses daily
 averages, reports sample counts, absolute delta, and percent change. Sleep/HRV
 return insufficient data until those files are ingested.
+
+### `render_chart(source, metric, ...)`
+Builds a chart from stored data and attaches it to the answer. The model never
+supplies raw points, so a chart cannot contain values the tools did not read.
+
+- `source=daily`: one metric over `from`/`to` (`steps`, `distance`,
+  `active_minutes`, `calories`, `resting_hr`, `avg_hr`, `max_hr`, `stress`,
+  `spo2`, `respiration`). Bars default for counts, lines for rates. Missing
+  days are skipped rather than zero-filled; a bar request over 31 days is
+  rendered as a line so the chart stays readable.
+- `source=activities`: overlays up to five workouts (`activity_ids` from
+  `list_activities`) for `heart_rate`, `speed`, `pace`, `cadence`, `altitude`,
+  or `body_battery`. `x_axis=elapsed` uses minutes; `x_axis=distance` uses km.
+  Series are evenly downsampled to `max_points` (8–120, default 60).
+- The UI renders the chart inside the answer, and the answer text is expected
+  to reference it ("the chart below"). Charts are persisted with the message.
+- Errors (unknown ids, sparsely recorded metrics, unreadable ranges) are
+  returned to the model as tool errors; no empty or fabricated chart is drawn.
+
+Charts have a maximum of three per turn and each carries code-generated
+evidence such as `Chart · Heart rate · 3 activities`. A fenced code block
+tagged `chart` is also understood by the chat renderer as a fallback, but the
+tool path is preferred because the chart data stays in code.
 
 ## Evidence ("Data used")
 

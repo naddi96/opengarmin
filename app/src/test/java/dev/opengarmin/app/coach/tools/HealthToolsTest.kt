@@ -1,6 +1,7 @@
 package dev.opengarmin.app.coach.tools
 
 import dev.opengarmin.app.coach.DailyHealth
+import dev.opengarmin.app.coach.ChartType
 import dev.opengarmin.app.coach.GeoBounds
 import dev.opengarmin.app.coach.GeoPoint
 import dev.opengarmin.app.coach.GpsSummary
@@ -192,6 +193,95 @@ class HealthToolsTest {
         assertTrue(
             runCatching { registry.execute("get_daily_summary", "{not json", ToolScope()) }.exceptionOrNull() is ToolException,
         )
+    }
+
+    @Test
+    fun `daily chart is built from stored days and carries evidence`() = runBlocking {
+        val result = registry.execute(
+            "render_chart",
+            """{"source":"daily","metric":"steps","from":"2026-10-11","to":"2026-10-13","chart_type":"bar"}""",
+            ToolScope(),
+        )
+
+        val chart = result.charts.single()
+        assertEquals(ChartType.Bar, chart.type)
+        assertEquals("steps", chart.unit)
+        assertEquals(3, chart.series.single().points.size)
+        assertEquals(12_000f, chart.series.single().points.first().y, 0.01f)
+        assertEquals(listOf("Oct 11", "Oct 12", "Oct 13"), chart.categories)
+        assertTrue(result.evidence.single().contains("Chart"))
+        assertEquals(3, JSONObject(result.json).getInt("points"))
+    }
+
+    @Test
+    fun `activity chart overlays multiple series and caps points`() = runBlocking {
+        val result = registry.execute(
+            "render_chart",
+            """{"source":"activities","activity_ids":[1,2],"metric":"heart_rate","max_points":12}""",
+            ToolScope(),
+        )
+
+        val chart = result.charts.single()
+        assertEquals(ChartType.Line, chart.type)
+        assertEquals(2, chart.series.size)
+        assertTrue(chart.series.all { it.points.size in 2..12 })
+        assertEquals("bpm", chart.unit)
+        assertEquals("Elapsed (min)", chart.xLabel)
+        assertEquals(2, JSONObject(result.json).getJSONArray("series").length())
+    }
+
+    @Test
+    fun `activity chart converts speed and pace honestly`() = runBlocking {
+        val speed = registry.execute(
+            "render_chart",
+            """{"source":"activities","activity_ids":[1],"metric":"speed","x_axis":"distance"}""",
+            ToolScope(),
+        ).charts.single()
+        assertEquals("km/h", speed.unit)
+        assertEquals("Distance (km)", speed.xLabel)
+        assertEquals(10.08f, speed.series.single().points.first().y, 0.01f)
+
+        val pace = registry.execute(
+            "render_chart",
+            """{"source":"activities","activity_ids":[1],"metric":"pace"}""",
+            ToolScope(),
+        ).charts.single()
+        assertEquals("min/km", pace.unit)
+        assertTrue(pace.series.single().points.first().y > 0f)
+    }
+
+    @Test
+    fun `activity chart fails cleanly for unknown or sparse data`() = runBlocking {
+        val missing = runCatching {
+            registry.execute(
+                "render_chart",
+                """{"source":"activities","activity_ids":[99],"metric":"heart_rate"}""",
+                ToolScope(),
+            )
+        }.exceptionOrNull()
+        assertTrue(missing is ToolException)
+
+        val sparse = runCatching {
+            registry.execute(
+                "render_chart",
+                """{"source":"activities","activity_ids":[1],"metric":"cadence"}""",
+                ToolScope(),
+            )
+        }.exceptionOrNull()
+        assertTrue(sparse is ToolException)
+        assertTrue(sparse?.message?.contains("Not enough") == true)
+    }
+
+    @Test
+    fun `chart tool rejects out of range bar windows`() = runBlocking {
+        val error = runCatching {
+            registry.execute(
+                "render_chart",
+                """{"source":"daily","metric":"steps","from":"2026-01-01","to":"2026-10-17","chart_type":"bar"}""",
+                ToolScope(),
+            )
+        }.exceptionOrNull()
+        assertTrue(error is ToolException)
     }
 
     private fun day(date: String, steps: Int, resting: Int) = DailyHealth(

@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.opengarmin.app.coach.ChartSpec
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseShapes
 import dev.opengarmin.app.ui.theme.PulseSpacing
@@ -78,6 +79,7 @@ fun ChatBubble(
     text: String,
     modifier: Modifier = Modifier,
     streaming: Boolean = false,
+    charts: List<ChartSpec> = emptyList(),
 ) {
     val isUser = role == ChatRole.User
     if (isUser) {
@@ -117,11 +119,18 @@ fun ChatBubble(
                 )
                 .padding(horizontal = 14.dp, vertical = 12.dp),
         ) {
-            Text(
-                text = if (text.isEmpty() && streaming) "…" else text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = PulseColors.Text,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (text.isNotBlank()) {
+                    AssistantMarkdown(text = text, streaming = streaming)
+                } else if (streaming && charts.isEmpty()) {
+                    Text(
+                        text = "…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = PulseColors.Text,
+                    )
+                }
+                charts.forEach { chart -> ChatChart(chart) }
+            }
         }
     }
 }

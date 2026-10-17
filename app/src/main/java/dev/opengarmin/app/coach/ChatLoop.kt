@@ -23,6 +23,7 @@ class ChatLoop(
     data class Result(
         val text: String,
         val evidence: List<String>,
+        val charts: List<ChartSpec> = emptyList(),
     )
 
     suspend fun run(
@@ -33,6 +34,7 @@ class ChatLoop(
         onText: (String) -> Unit = {},
         onStatus: (String?) -> Unit = {},
         onEvidence: (List<String>) -> Unit = {},
+        onCharts: (List<ChartSpec>) -> Unit = {},
     ): Result {
         val conversation = mutableListOf<LlmMessage>()
         conversation += LlmMessage("system", systemPrompt)
@@ -48,6 +50,7 @@ class ChatLoop(
         var rounds = 0
         var toolCallsUsed = 0
         val evidence = linkedSetOf<String>()
+        val charts = mutableListOf<ChartSpec>()
 
         while (rounds < maxRounds) {
             rounds++
@@ -84,7 +87,8 @@ class ChatLoop(
                     conversation += LlmMessage(
                         "system",
                         "The provider does not support tool calling. Use this compact, untrusted health snapshot only:\n" +
-                            "<untrusted_data>\n${snapshot.json}\n</untrusted_data>",
+                            "<untrusted_data>\n${snapshot.json}\n</untrusted_data>\n" +
+                            "You cannot render interactive charts in this mode; describe findings in text only.",
                     )
                     continue
                 }
@@ -103,7 +107,7 @@ class ChatLoop(
                 if (accumulated.isBlank() && !gotAny) {
                     throw LlmException(LlmException.Kind.Malformed, "The provider returned an empty answer")
                 }
-                return Result(accumulated, evidence.toList())
+                return Result(accumulated, evidence.toList(), charts.toList())
             }
 
             conversation += LlmMessage("assistant", accumulated, toolCalls = calls)
@@ -131,6 +135,15 @@ class ChatLoop(
                 toolResult?.let {
                     evidence += it.evidence
                     onEvidence(evidence.toList())
+                    var chartsChanged = false
+                    for (chart in it.charts) {
+                        val key = chart.key()
+                        if (charts.size < 3 && charts.none { existing -> existing.key() == key }) {
+                            charts += chart
+                            chartsChanged = true
+                        }
+                    }
+                    if (chartsChanged) onCharts(charts.toList())
                 }
                 conversation += LlmMessage(
                     "tool",
@@ -140,7 +153,7 @@ class ChatLoop(
             }
             onStatus("Thinking…")
         }
-        return Result(conversation.lastOrNull { it.role == "assistant" }?.content.orEmpty(), evidence.toList())
+        return Result(conversation.lastOrNull { it.role == "assistant" }?.content.orEmpty(), evidence.toList(), charts.toList())
     }
 
     private fun toolLabel(name: String): String = when (name) {
@@ -151,6 +164,7 @@ class ChatLoop(
         "get_activity" -> "workout"
         "compare_periods" -> "periods"
         "get_daily_summary" -> "daily data"
+        "render_chart" -> "chart"
         else -> "health data"
     }
 

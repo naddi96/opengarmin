@@ -103,7 +103,7 @@ fun CoachScreen(
                     ChatBubble(role = ChatRole.User, text = message.text)
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
-                        if (message.status == MessageStatus.Streaming && message.text.isBlank()) {
+                        if (message.status == MessageStatus.Streaming && message.text.isBlank() && message.charts.isEmpty()) {
                             TypingIndicator()
                             controller.statusText?.let {
                                 Text(
@@ -118,6 +118,7 @@ fun CoachScreen(
                                 role = ChatRole.Assistant,
                                 text = message.text,
                                 streaming = message.status == MessageStatus.Streaming,
+                                charts = message.charts,
                             )
                             if (message.evidence.isNotEmpty()) {
                                 Column(

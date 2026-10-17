@@ -1,8 +1,13 @@
 package dev.opengarmin.app.coach.tools
 
 import dev.opengarmin.app.coach.DailyHealth
+import dev.opengarmin.app.coach.ChartPoint
+import dev.opengarmin.app.coach.ChartSeries
+import dev.opengarmin.app.coach.ChartSpec
+import dev.opengarmin.app.coach.ChartType
 import dev.opengarmin.app.coach.HealthDataSource
 import dev.opengarmin.app.coach.LOCAL_PROFILE_ID
+import dev.opengarmin.app.coach.RecordPoint
 import dev.opengarmin.app.coach.SportCategory
 import dev.opengarmin.app.coach.ToolScope
 import dev.opengarmin.app.coach.categoryForSport
@@ -15,6 +20,7 @@ import org.json.JSONObject
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -23,6 +29,7 @@ class ToolException(message: String) : Exception(message)
 data class ToolResult(
     val json: String,
     val evidence: List<String>,
+    val charts: List<ChartSpec> = emptyList(),
 )
 
 interface HealthTool {
@@ -42,6 +49,7 @@ class ToolRegistry(
         ListActivitiesTool(dataSource, today),
         ActivityTool(dataSource),
         ComparePeriodsTool(dataSource, today),
+        RenderChartTool(dataSource, today),
     )
 
     val definitions: List<LlmToolDefinition> = tools.map { it.definition }
@@ -576,6 +584,414 @@ private class ComparePeriodsTool(
         "calories" -> "Calories"
         else -> metric.replaceFirstChar { it.uppercase() }
     }
+}
+
+private class RenderChartTool(
+    dataSource: HealthDataSource,
+    today: () -> LocalDate,
+) : BaseTool(dataSource, today) {
+    private val dailyMetrics = listOf(
+        DailyChartMetric("steps", "Steps", "steps", ChartType.Bar) { it.steps.toDouble() },
+        DailyChartMetric("distance", "Distance", "km", ChartType.Bar) { it.distanceMeters / 1000.0 },
+        DailyChartMetric("active_minutes", "Active minutes", "min", ChartType.Bar) {
+            it.activeSeconds / 60.0
+        },
+        DailyChartMetric("calories", "Calories", "kcal", ChartType.Bar) { it.activeCalories.toDouble() },
+        DailyChartMetric("resting_hr", "Resting HR", "bpm", ChartType.Line) {
+            it.restingHeartRate?.toDouble()
+        },
+        DailyChartMetric("avg_hr", "Average HR", "bpm", ChartType.Line) { it.avgHeartRate?.toDouble() },
+        DailyChartMetric("max_hr", "Max HR", "bpm", ChartType.Line) { it.maxHeartRate?.toDouble() },
+        DailyChartMetric("stress", "Stress", "", ChartType.Line) { it.stressAvg?.toDouble() },
+        DailyChartMetric("spo2", "SpO2", "%", ChartType.Line) { it.spo2Avg?.toDouble() },
+        DailyChartMetric("respiration", "Respiration", "brpm", ChartType.Line) { it.respirationAvg },
+    )
+
+    private val activityMetrics = listOf(
+        "heart_rate",
+        "speed",
+        "pace",
+        "cadence",
+        "altitude",
+        "body_battery",
+    )
+
+    override val definition = LlmToolDefinition(
+        name = "render_chart",
+        description = "Draw a chart in the chat from data already stored on the device. " +
+            "Use source=daily for a metric trend over a date range, or source=activities to chart " +
+            "the time series of one or more workouts (up to five) and compare them. The app builds the chart from Room, " +
+            "so never pass raw points. Reference the chart in your answer. Only chart real data returned " +
+            "by tools; if it fails or has too few points, say a chart is unavailable.",
+        parameters = schema(
+            required = listOf("source", "metric"),
+            props = mapOf(
+                "source" to enumProp(
+                    "Where the chart data comes from",
+                    listOf("daily", "activities"),
+                    null,
+                ),
+                "metric" to enumProp(
+                    "Daily: steps, distance, active_minutes, calories, resting_hr, avg_hr, max_hr, " +
+                        "stress, spo2, respiration. Activities: heart_rate, speed, pace, cadence, " +
+                        "altitude, body_battery.",
+                    dailyMetrics.map { it.key } + activityMetrics,
+                    null,
+                ),
+                "from" to dateProp("Daily chart first day, default 14 days ago"),
+                "to" to dateProp("Daily chart last day, default today"),
+                "activity_ids" to JSONObject().apply {
+                    put("type", "array")
+                    put("description", "Workout ids from list_activities (1-5 ids)")
+                    put(
+                        "items",
+                        JSONObject().apply {
+                            put("type", "integer")
+                        },
+                    )
+                },
+                "x_axis" to enumProp(
+                    "Activity x axis: elapsed minutes or distance in km",
+                    listOf("elapsed", "distance"),
+                    "elapsed",
+                ),
+                "chart_type" to enumProp(
+                    "Daily chart style; defaults to bar for counts and line for rates",
+                    listOf("line", "bar"),
+                    null,
+                ),
+                "max_points" to JSONObject().apply {
+                    put("type", "integer")
+                    put("description", "Maximum points per activity series, 8-120 (default 60)")
+                },
+                "goal" to JSONObject().apply {
+                    put("type", "number")
+                    put("description", "Optional goal line for a daily chart (same unit as the metric)")
+                },
+                "title" to JSONObject().apply {
+                    put("type", "string")
+                    put("description", "Optional short chart title")
+                },
+            ),
+        ),
+    )
+
+    override suspend fun execute(scope: ToolScope, args: JSONObject): ToolResult {
+        return when (args.optString("source").lowercase()) {
+            "daily" -> dailyChart(scope, args)
+            "activities", "activity" -> activityChart(scope, args)
+            else -> throw ToolException("source must be 'daily' or 'activities'")
+        }
+    }
+
+    private suspend fun dailyChart(scope: ToolScope, args: JSONObject): ToolResult {
+        val key = when (val raw = args.optString("metric").lowercase()) {
+            "heart_rate", "hr" -> "resting_hr"
+            "distance_km" -> "distance"
+            "active" -> "active_minutes"
+            else -> raw
+        }
+        val metric = dailyMetrics.firstOrNull { it.key == key }
+            ?: throw ToolException("Unknown daily metric: $key")
+        val (from, to) = range(args, defaultDays = 14, maxDays = 90)
+        val entries = daily(scope, from, to).mapNotNull { day ->
+            val value = metric.value(day)?.takeIf { it.isFinite() } ?: return@mapNotNull null
+            LocalDate.parse(day.date) to value
+        }
+        if (entries.isEmpty()) {
+            throw ToolException("No ${metric.label.lowercase()} data was stored for that range")
+        }
+        val requestedType = args.optString("chart_type").lowercase()
+        val requestedChartType = when (requestedType) {
+            "bar" -> ChartType.Bar
+            "line" -> ChartType.Line
+            else -> metric.defaultType
+        }
+        // A 90-bar chart is unreadable. Keep the data truthful and switch the
+        // long daily series to a line instead of failing the whole answer.
+        val switchedToLine = requestedChartType == ChartType.Bar && entries.size > 31
+        val type = if (switchedToLine) ChartType.Line else requestedChartType
+        if (type == ChartType.Line && entries.size < 2) {
+            throw ToolException("At least two days with ${metric.label.lowercase()} data are needed for a chart")
+        }
+        val goal = args.optDouble("goal", Double.NaN).takeIf { it.isFinite() && it > 0 }?.toFloat()
+        val fallbackTitle = "${metric.label} · ${dateLabel(from)} – ${dateLabel(to)}"
+        val title = prefixedTitle(metric.label, args.optString("title"), fallbackTitle)
+        val points = entries.map { entry ->
+            ChartPoint(
+                x = ChronoUnit.DAYS.between(from, entry.first).toFloat(),
+                y = entry.second.toFloat(),
+            )
+        }
+        val chart = ChartSpec(
+            type = type,
+            title = title,
+            yLabel = metric.label,
+            unit = metric.unit,
+            xStartLabel = dateLabel(from),
+            xEndLabel = dateLabel(to),
+            categories = if (type == ChartType.Bar) {
+                generateSequence(from) { it.plusDays(1) }
+                    .takeWhile { !it.isAfter(to) }
+                    .map { dateLabel(it) }
+                    .toList()
+            } else {
+                emptyList()
+            },
+            series = listOf(ChartSeries(metric.label, points, color = "accent")),
+            goal = goal,
+        )
+        val values = points.map { it.y.toDouble() }
+        val json = JSONObject().apply {
+            put("chart", metric.label)
+            put("source", "daily")
+            put("from", from.toString())
+            put("to", to.toString())
+            put("points", points.size)
+            put("unit", metric.unit)
+            put("chartType", if (type == ChartType.Line) "line" else "bar")
+            if (switchedToLine) {
+                put(
+                    "switchedToLine",
+                    "The range is too long for readable bars; the app drew a line chart instead.",
+                )
+            }
+            put("min", round1(values.min()))
+            put("max", round1(values.max()))
+            put("average", round1(values.average()))
+            put("note", "The chart is displayed with the answer. Cite these values, not a verbal guess.")
+        }
+        return ToolResult(
+            json = json.toString(),
+            evidence = listOf("Chart · ${metric.label} · ${points.size} ${dayWord(points.size)}"),
+            charts = listOf(chart),
+        )
+    }
+
+    private suspend fun activityChart(scope: ToolScope, args: JSONObject): ToolResult {
+        val idsArray = args.optJSONArray("activity_ids") ?: args.optJSONArray("ids")
+            ?: throw ToolException("activity_ids is required for source=activities")
+        val ids = buildList {
+            for (index in 0 until idsArray.length()) {
+                val id = idsArray.optLong(index, -1)
+                if (id > 0 && id !in this) add(id)
+            }
+        }.take(5)
+        if (ids.isEmpty()) throw ToolException("activity_ids must contain at least one workout id")
+
+        val metricKey = normalizeActivityMetric(args.optString("metric"))
+        val xAxis = if (args.optString("x_axis").lowercase() in setOf("distance", "km", "distance_km")) {
+            "distance"
+        } else {
+            "elapsed"
+        }
+        val maxPoints = args.optInt("max_points", 60).coerceIn(8, 120)
+
+        val details = mutableListOf<dev.opengarmin.app.coach.WorkoutDetail>()
+        val unavailable = mutableListOf<Long>()
+        for (id in ids) {
+            val detail = dataSource.workout(scope, id)
+            if (detail == null) {
+                unavailable += id
+            } else {
+                details += detail
+            }
+        }
+        if (details.isEmpty()) throw ToolException("No matching activities were found for those ids")
+
+        val allRunning = details.all {
+            categoryForSport(it.summary.sport, it.summary.subSport) == SportCategory.Run
+        }
+        val anyRunning = details.any {
+            categoryForSport(it.summary.sport, it.summary.subSport) == SportCategory.Run
+        }
+        if (metricKey == "cadence" && anyRunning && !allRunning) {
+            throw ToolException("Cadence charts need activities from the same sport category")
+        }
+        val cadenceScale = if (allRunning) 2 else 1
+        val cadenceUnit = if (allRunning) "spm" else "rpm"
+
+        val metricLabel = when (metricKey) {
+            "heart_rate" -> "Heart rate"
+            "speed" -> "Speed"
+            "pace" -> "Pace"
+            "cadence" -> "Cadence"
+            "altitude" -> "Altitude"
+            else -> "Body Battery"
+        }
+        val unit = when (metricKey) {
+            "heart_rate" -> "bpm"
+            "speed" -> "km/h"
+            "pace" -> "min/km"
+            "cadence" -> cadenceUnit
+            "altitude" -> "m"
+            else -> "%"
+        }
+        val yLabel = when (metricKey) {
+            "pace" -> "Pace (lower is faster)"
+            "body_battery" -> "Body Battery"
+            else -> metricLabel
+        }
+
+        val series = mutableListOf<ChartSeries>()
+        val summaries = JSONArray()
+        val skipped = mutableListOf<Long>()
+        val usedLabels = mutableSetOf<String>()
+        val colors = listOf("accent", "teal", "coral", "blue", "orange", "yellow")
+
+        for (detail in details) {
+            val summary = detail.summary
+            val records = detail.records.sortedBy { it.timestamp }
+            if (records.isEmpty()) {
+                skipped += summary.id
+                continue
+            }
+            val origin = records.first().timestamp
+            val speeds = derivedSpeeds(records)
+            val points = mutableListOf<ChartPoint>()
+            records.forEachIndexed { index, record ->
+                val x = when (xAxis) {
+                    "distance" -> record.distanceMeters?.div(1000.0)
+                    else -> (record.timestamp - origin) / 60.0
+                } ?: return@forEachIndexed
+                if (!x.isFinite() || x < 0) return@forEachIndexed
+                val y = when (metricKey) {
+                    "heart_rate" -> record.heartRate?.toDouble()?.takeIf { it in 20.0..250.0 }
+                    "speed" -> speeds[index]?.times(3.6)?.takeIf { it in 0.0..100.0 }
+                    "pace" -> speeds[index]?.times(3.6)?.takeIf { it >= 1.0 }?.let { 60.0 / it }
+                    "cadence" -> record.cadence?.toDouble()?.times(cadenceScale)?.takeIf { it in 0.0..300.0 }
+                    "altitude" -> record.altitudeMeters?.takeIf { it in -500.0..9000.0 }
+                    else -> record.bodyBattery?.toDouble()?.takeIf { it in 0.0..100.0 }
+                } ?: return@forEachIndexed
+                if (!y.isFinite()) return@forEachIndexed
+                points += ChartPoint(x.toFloat(), y.toFloat())
+            }
+            val sampled = downsample(points, maxPoints)
+            if (sampled.size < 2) {
+                skipped += summary.id
+                continue
+            }
+            var label = "${dateLabel(unixToLocalDate(summary.startTime))} · ${sportLabel(summary.sport)}"
+            if (!usedLabels.add(label)) {
+                label = "$label #${summary.id}"
+                usedLabels += label
+            }
+            series += ChartSeries(
+                name = label,
+                points = sampled,
+                color = colors[series.size % colors.size],
+            )
+            val values = sampled.map { it.y }
+            summaries.put(
+                JSONObject().apply {
+                    put("label", label)
+                    put("id", summary.id)
+                    put("points", sampled.size)
+                    put("min", round1(values.min().toDouble()))
+                    put("max", round1(values.max().toDouble()))
+                    put("average", round1(values.average().toDouble()))
+                },
+            )
+        }
+        if (series.isEmpty()) {
+            throw ToolException(
+                "Not enough $metricLabel data to chart those activities. " +
+                    "Ask for another metric or choose activities with recorded data.",
+            )
+        }
+
+        val requestedTitle = args.optString("title").takeIf { it.isNotBlank() }?.take(120)
+        val defaultTitle = if (series.size == 1) {
+            "$metricLabel · ${series.first().name}"
+        } else {
+            "$metricLabel · ${series.size} activities"
+        }
+        val title = prefixedTitle(metricLabel, requestedTitle, defaultTitle)
+        val chart = ChartSpec(
+            type = ChartType.Line,
+            title = title,
+            xLabel = if (xAxis == "distance") "Distance (km)" else "Elapsed (min)",
+            yLabel = yLabel,
+            unit = unit,
+            series = series,
+        )
+        val json = JSONObject().apply {
+            put("chart", metricLabel)
+            put("source", "activities")
+            put("xAxis", xAxis)
+            put("unit", unit)
+            put("series", summaries)
+            if (unavailable.isNotEmpty()) put("unavailableIds", JSONArray(unavailable))
+            if (skipped.isNotEmpty()) put("skippedIds", JSONArray(skipped))
+            put("note", "The chart is displayed with the answer. Compare the lines in prose; do not invent gaps.")
+        }
+        return ToolResult(
+            json = json.toString(),
+            evidence = listOf(
+                "Chart · $metricLabel · ${series.size} ${if (series.size == 1) "activity" else "activities"}",
+            ),
+            charts = listOf(chart),
+        )
+    }
+
+    private fun normalizeActivityMetric(raw: String): String = when (raw.lowercase()) {
+        "", "heart_rate", "heartrate", "hr" -> "heart_rate"
+        "speed", "speed_kmh", "velocity" -> "speed"
+        "pace", "pace_min_km" -> "pace"
+        "cadence", "steps_per_minute", "spm", "rpm" -> "cadence"
+        "altitude", "elevation" -> "altitude"
+        "body_battery", "bodybattery" -> "body_battery"
+        else -> throw ToolException(
+            "Unknown activity metric: $raw (use heart_rate, speed, pace, cadence, altitude, body_battery)",
+        )
+    }
+
+    private fun derivedSpeeds(records: List<RecordPoint>): List<Double?> {
+        val result = ArrayList<Double?>(records.size)
+        var previous: RecordPoint? = null
+        for (record in records) {
+            val direct = record.speedMps?.takeIf { it.isFinite() && it >= 0.0 }
+            val fallback = if (direct == null && previous != null) {
+                val previousDistance = previous.distanceMeters
+                val distance = record.distanceMeters
+                val seconds = (record.timestamp - previous.timestamp).toDouble()
+                if (previousDistance != null && distance != null && seconds > 0 && distance >= previousDistance) {
+                    (distance - previousDistance) / seconds
+                } else {
+                    null
+                }
+            } else {
+                null
+            }
+            result += direct ?: fallback
+            previous = record
+        }
+        return result
+    }
+
+    private fun downsample(points: List<ChartPoint>, maxPoints: Int): List<ChartPoint> {
+        if (points.size <= maxPoints) return points
+        val last = points.lastIndex
+        return (0 until maxPoints)
+            .map { index -> points[(index.toDouble() * last / (maxPoints - 1)).roundToInt()] }
+            .distinct()
+    }
+
+    private fun dateLabel(date: LocalDate): String =
+        date.format(DateTimeFormatter.ofPattern("MMM d", Locale.US))
+
+    private fun prefixedTitle(metric: String, requested: String?, fallback: String): String {
+        val custom = requested?.takeIf { it.isNotBlank() }?.take(120) ?: return fallback
+        return if (custom.contains(metric, ignoreCase = true)) custom else "$metric · $custom"
+    }
+
+    private data class DailyChartMetric(
+        val key: String,
+        val label: String,
+        val unit: String,
+        val defaultType: ChartType,
+        val value: (DailyHealth) -> Double?,
+    )
 }
 
 private data class ZoneResult(val maxHr: Int, val percentages: List<Float>)

@@ -62,6 +62,8 @@ data class RecordPoint(
     val altitudeMeters: Double?,
     val latitude: Double?,
     val longitude: Double?,
+    val cadence: Int? = null,
+    val bodyBattery: Int? = null,
 )
 
 data class WorkoutDetail(
@@ -153,6 +155,8 @@ class RepositoryHealthDataSource(
                 altitudeMeters = it.altitudeMeters,
                 latitude = it.latitude,
                 longitude = it.longitude,
+                cadence = it.cadence,
+                bodyBattery = it.bodyBattery,
             )
         }
         val laps = repository.laps(id).map {

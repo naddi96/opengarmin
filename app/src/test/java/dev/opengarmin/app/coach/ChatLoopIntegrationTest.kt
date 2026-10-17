@@ -132,6 +132,68 @@ class ChatLoopIntegrationTest {
         assertTrue(system.getString("content").contains("<untrusted_data>"))
     }
 
+    @Test
+    fun `propagates charts from a render_chart tool call`() = runBlocking {
+        val arguments = JSONObject()
+            .put("source", "daily")
+            .put("metric", "steps")
+            .put("from", "2026-10-17")
+            .put("to", "2026-10-17")
+            .put("chart_type", "bar")
+            .toString()
+        val toolCall = JSONObject()
+            .put("index", 0)
+            .put("id", "call_chart")
+            .put(
+                "function",
+                JSONObject()
+                    .put("name", "render_chart")
+                    .put("arguments", arguments),
+            )
+        val firstPayload = JSONObject()
+            .put(
+                "choices",
+                org.json.JSONArray().put(
+                    JSONObject()
+                        .put("delta", JSONObject().put("tool_calls", org.json.JSONArray().put(toolCall)))
+                        .put("finish_reason", "tool_calls"),
+                ),
+            )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: $firstPayload\n\ndata: [DONE]\n\n"),
+        )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"The chart below shows today's steps.\"},\"finish_reason\":\"stop\"}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+
+        val loop = ChatLoop(
+            tools = ToolRegistry(FakeSource(today)) { today },
+            systemPrompt = "test prompt",
+            maxHeartRate = null,
+        )
+        val seen = mutableListOf<List<ChartSpec>>()
+        val result = loop.run(
+            client = client(),
+            model = ModelConfig("m", "mock-model"),
+            history = listOf(LlmMessage("user", "Chart my steps today")),
+            scope = ToolScope(),
+            onCharts = { seen += it },
+        )
+
+        assertEquals(1, result.charts.size)
+        assertEquals(ChartType.Bar, result.charts.single().type)
+        assertEquals("steps", result.charts.single().unit)
+        assertTrue(seen.isNotEmpty())
+        assertTrue(result.evidence.any { it.contains("Chart") })
+    }
+
     private class FakeSource(private val today: LocalDate) : HealthDataSource {
         override suspend fun daily(scope: ToolScope, start: LocalDate, end: LocalDate): List<DailyHealth> {
             if (scope.profileId != LOCAL_PROFILE_ID) return emptyList()

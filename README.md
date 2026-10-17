@@ -50,8 +50,9 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
   map, HR/elevation charts, laps, and the FIT data explorer.
 - **Coach:** OpenAI-compatible provider presets (OpenAI, DeepSeek, OpenRouter,
   Ollama, LM Studio, vLLM, Custom), encrypted API keys, model management,
-  connection test, streaming chat with cancel, typed read-only health tools,
-  and evidence chips generated from the tools actually called.
+  connection test, streaming Markdown chat with cancel, typed read-only health
+  tools, code-generated evidence chips, and inline trend/activity charts
+  (including overlaid multi-workout comparisons).
 - **Local-first:** no account, backend, telemetry, or cloud copy.
 
 ## Documentation
