@@ -43,7 +43,7 @@ Non-goals for v1: Connect IQ store, firmware updates, Garmin servers, iOS/deskto
 | **M1** | BLE connect & identify | ✅ app connects, registers GFDI, discovers the ML pair |
 | **M2** | Handshake | ✅ DEVICE_INFORMATION / CONFIGURATION / AUTH / time exchange works |
 | **M3** | File listing | ✅ GDI capabilities + `ItemListRequest`; 78 files listed on FR255 |
-| **M4** | FIT download | in progress: `PullItemDataRequest` + DataTransfer/GFDI bytes |
+| **M4** | FIT download | pull verified live (`SUCCESS`, handle 640); MLR transport pipe pending |
 | **M5** | Archive | app marks synced files ARCHIVE; no redownload; idempotent |
 | **M6** | FIT → DB | parsed activities + records in Room; dashboard shows them |
 | **M7** | Polish | background sync, error recovery, export, health summaries |
@@ -75,4 +75,6 @@ Non-goals for v1: Connect IQ store, firmware updates, Garmin servers, iOS/deskto
 1. `./gradlew :protocol:test` — green.
 2. ✅ M1–M3 validated on a real Forerunner 255 (Pixel 10a, Android 17).
 3. Implement `PullItemDataRequest` and receive file bytes (M4).
+   - request verified on FR255; bytes require the MLR transport pipe
+     (`MLRTransportPipe`, service ids `0x2018..0xE018`, configure/read commands).
 4. Parse FIT → Room DB (M5–M6).
