@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,8 +40,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
 import dev.opengarmin.app.ble.GarminBleClient
 import dev.opengarmin.app.data.ActivityEntity
@@ -53,6 +56,13 @@ import dev.opengarmin.protocol.Hex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.BoundingBox
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -90,6 +100,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        Configuration.getInstance().apply {
+            userAgentValue = packageName
+            osmdroidBasePath = File(cacheDir, "osmdroid")
+            osmdroidTileCache = File(osmdroidBasePath, "tiles")
+        }
+
         repository = ActivityRepository(AppDatabase.get(this).activityDao())
         lifecycleScope.launch {
             repository.activities.collect { list ->
@@ -98,7 +114,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         lifecycleScope.launch(Dispatchers.IO) {
-            runCatching { repository.backfillLaps(filesDir) }
+            runCatching { repository.backfillDerived(filesDir) }
         }
 
         val c = GarminBleClient(
@@ -516,6 +532,9 @@ private fun ActivityDetail(
             }
         }
 
+        Text("Track", style = MaterialTheme.typography.titleMedium)
+        RouteMap(records, Modifier.fillMaxWidth().height(280.dp))
+
         Text("Heart rate", style = MaterialTheme.typography.titleMedium)
         HeartRateChart(records)
 
@@ -562,6 +581,57 @@ private fun RowScope.Stat(label: String, value: String) {
         )
         Text(value, style = MaterialTheme.typography.titleMedium)
     }
+}
+
+@Composable
+private fun RouteMap(records: List<RecordEntity>, modifier: Modifier = Modifier) {
+    val points = remember(records) {
+        records.mapNotNull { record ->
+            val lat = record.latitude ?: return@mapNotNull null
+            val lon = record.longitude ?: return@mapNotNull null
+            GeoPoint(lat, lon)
+        }
+    }
+    if (points.size < 2) {
+        Text(
+            "No GPS track in this activity.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+
+    val context = LocalContext.current
+    val mapView = remember(records) {
+        MapView(context).apply {
+            setTileSource(TileSourceFactory.MAPNIK)
+            setMultiTouchControls(true)
+            val line = Polyline().apply {
+                setPoints(points)
+                outlinePaint.color = 0xFF2E7D32.toInt()
+                outlinePaint.strokeWidth = 10f
+            }
+            overlays.add(line)
+            overlays.add(Marker(this).apply { position = points.first(); title = "Start" })
+            overlays.add(Marker(this).apply { position = points.last(); title = "Finish" })
+            val box = BoundingBox.fromGeoPoints(points)
+            controller.setCenter(
+                GeoPoint((box.latNorth + box.latSouth) / 2.0, (box.lonEast + box.lonWest) / 2.0),
+            )
+            controller.setZoom(16.0)
+            post { zoomToBoundingBox(box, true, 64) }
+        }
+    }
+
+    DisposableEffect(mapView) {
+        mapView.onResume()
+        onDispose {
+            mapView.onPause()
+            mapView.onDetach()
+        }
+    }
+
+    AndroidView(factory = { mapView }, modifier = modifier)
 }
 
 @Composable

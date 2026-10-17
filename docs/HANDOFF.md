@@ -59,7 +59,7 @@ The tree is clean. `captures/`, `apk/`, `tools/` binary downloads are gitignored
 | M3 file directory | ✅ 100 items listed (3697-byte response, 8 chunks) |
 | M4 file download + decode | ✅ **99,357 compressed bytes → 198,627 bytes** (zlib, valid FIT: `.FIT`, profile 21184) |
 | M5 FIT parser | ✅ pure-JVM parser: 7,931 messages, 2,488 records, 6 laps |
-| M6 Room → dashboard | ✅ activities + records + laps; list/detail UI with HR + elevation charts and lap table |
+| M6 Room → dashboard | ✅ activities + records + GPS track; list/detail UI with OSM map, HR + elevation charts, lap table |
 
 The M4 download was proven end-to-end earlier: `PullItemDataRequest` →
 `transfer_handle` → MLR transport pipe on service `0x2018` → zlib stream →
@@ -100,11 +100,12 @@ app/src/main/java/dev/opengarmin/app/
                            dedicated GFDI subscribe, serialized write queue
   sync/SyncCoordinator.kt  capabilities → connection-ready → device requests →
                            list → pull → pipe → zlib → file
-  data/AppDatabase.kt      Room entities/DAO/database (v3: activities, records,
+  data/AppDatabase.kt      Room entities/DAO/database (v4: activities, records,
                            laps) + ActivityRepository (FIT import, UID dedupe,
-                           epoch conversion, lap backfill)
-  MainActivity.kt          Compose dashboard (activity list + detail + HR chart
-                           + lap table), watchdog/reconnect, Sync button
+                           epoch conversion, lap/coordinate backfill)
+  MainActivity.kt          Compose dashboard (activity list + detail + OSM track
+                           map + HR/elevation charts + lap table),
+                           watchdog/reconnect, Sync button
 
 docs/                      PROTOCOL, PLAN, LICENSING, samples, protos
 tools/                     parse_btsnoop.py, extract_protos.py, setup scripts
@@ -136,8 +137,8 @@ With those fixed, a full sync completed on 2026-10-17 18:20:
 → transport pipe → 99,357 compressed B → 198,627 B FIT`.
 
 A cold start (app data cleared, no cached FIT) was re-verified afterwards:
-fresh Room v3 database, 1 activity, 2,488 records, 6 laps, dashboard rendered.
-A second connect with the same item UID skips the PULL and reports
+fresh Room v4 database, 1 activity, 2,488 records, 6 laps, GPS track, dashboard
+rendered. A second connect with the same item UID skips the PULL and reports
 `SYNC up to date`.
 
 ## Immediate next steps
@@ -184,8 +185,11 @@ pairing port (pairing needs the 6-digit code).
 - GDI frames are ACKed per chunk (`[id][offset][ok][code]`), not per message.
 - Store `ItemReference.uid` with the activity and skip the PULL when it is
   already in Room; otherwise every connect re-downloads the same FIT.
-- Room DB is version 3: `itemUid` (1→2) and `laps` (2→3) migrations live in
-  `AppDatabase`.
+- Room DB is version 4: `itemUid` (1→2), `laps` (2→3) and record
+  `latitude`/`longitude` (3→4) migrations live in `AppDatabase`.
+- The track map uses osmdroid/OpenStreetMap (`org.osmdroid:osmdroid-android`).
+  Tiles need `INTERNET`; the cache is under `cacheDir/osmdroid`. Without a
+  network the track still draws over an empty map.
 - `ItemReference.data_size` is **not** the compressed stream length; read until
   the pipe service closes, then zlib-decompress.
 - Full HCI capture is unavailable (no root; bugreport `btsnooz` truncates to

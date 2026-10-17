@@ -67,6 +67,8 @@ data class RecordEntity(
     val speedMps: Double?,
     val altitudeMeters: Double?,
     val cadence: Int?,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
 )
 
 @Entity(
@@ -123,6 +125,12 @@ interface ActivityDao {
     @Query("SELECT COUNT(*) FROM laps WHERE activityId = :activityId")
     suspend fun lapCount(activityId: Long): Int
 
+    @Query("SELECT COUNT(*) FROM records WHERE activityId = :activityId AND latitude IS NOT NULL")
+    suspend fun coordCount(activityId: Long): Int
+
+    @Query("DELETE FROM records WHERE activityId = :activityId")
+    suspend fun deleteRecords(activityId: Long)
+
     @Query("UPDATE activities SET itemUid = :uid WHERE sourceKey = :sourceKey AND itemUid = ''")
     suspend fun backfillItemUid(sourceKey: String, uid: String)
 
@@ -132,7 +140,7 @@ interface ActivityDao {
 
 @Database(
     entities = [ActivityEntity::class, RecordEntity::class, LapEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -171,13 +179,20 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE records ADD COLUMN latitude REAL")
+                db.execSQL("ALTER TABLE records ADD COLUMN longitude REAL")
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "opengarmin.db",
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
             }
     }
 }
@@ -192,17 +207,29 @@ class ActivityRepository(private val dao: ActivityDao) {
     suspend fun clear() = dao.clear()
 
     /**
-     * Adds laps to activities imported before lap storage existed, using the
-     * decoded FIT files still in the app's files directory.
+     * Adds laps and GPS coordinates to activities imported before those
+     * columns existed, using the decoded FIT files still in the app's files
+     * directory.
      */
-    suspend fun backfillLaps(filesDir: File) {
+    suspend fun backfillDerived(filesDir: File) {
         for (activity in dao.all()) {
-            if (dao.lapCount(activity.id) > 0) continue
+            val needLaps = dao.lapCount(activity.id) == 0
+            val needCoords = dao.coordCount(activity.id) == 0
+            if (!needLaps && !needCoords) continue
             val file = File(filesDir, activity.fileName)
             if (!file.exists()) continue
             val parsed = runCatching { Fit.parse(file.readBytes()) }.getOrNull() ?: continue
-            val laps = lapEntities(activity.id, parsed)
-            if (laps.isNotEmpty()) dao.insertLaps(laps)
+            if (needLaps) {
+                val laps = lapEntities(activity.id, parsed)
+                if (laps.isNotEmpty()) dao.insertLaps(laps)
+            }
+            if (needCoords) {
+                val records = recordEntities(activity.id, parsed)
+                if (records.isNotEmpty()) {
+                    dao.deleteRecords(activity.id)
+                    dao.insertRecords(records)
+                }
+            }
         }
     }
 
@@ -250,22 +277,27 @@ class ActivityRepository(private val dao: ActivityDao) {
             if (itemUid.isNotEmpty()) dao.backfillItemUid(sourceKey, itemUid)
             return null
         }
-        val records = parsed.records.map { record ->
+        val records = recordEntities(id, parsed)
+        if (records.isNotEmpty()) dao.insertRecords(records)
+        val laps = lapEntities(id, parsed)
+        if (laps.isNotEmpty()) dao.insertLaps(laps)
+        return entity.copy(id = id)
+    }
+
+    private fun recordEntities(activityId: Long, parsed: Fit.Parsed): List<RecordEntity> =
+        parsed.records.map { record ->
             RecordEntity(
-                activityId = id,
+                activityId = activityId,
                 timestamp = record.timestamp + Gfdi.GARMIN_EPOCH_UNIX,
                 distanceMeters = record.distanceMeters,
                 heartRate = record.heartRate,
                 speedMps = record.speedMps,
                 altitudeMeters = record.altitudeMeters,
                 cadence = record.cadence,
+                latitude = record.latitude,
+                longitude = record.longitude,
             )
         }
-        if (records.isNotEmpty()) dao.insertRecords(records)
-        val laps = lapEntities(id, parsed)
-        if (laps.isNotEmpty()) dao.insertLaps(laps)
-        return entity.copy(id = id)
-    }
 
     private fun lapEntities(activityId: Long, parsed: Fit.Parsed): List<LapEntity> =
         parsed.laps.mapIndexed { index, lap ->
