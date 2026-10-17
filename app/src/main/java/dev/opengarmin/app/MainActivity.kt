@@ -631,9 +631,15 @@ private fun RouteMap(records: List<RecordEntity>, modifier: Modifier = Modifier)
         }
     }
 
-    AndroidView(factory = { mapView }, modifier = modifier)
+    Column(modifier = modifier) {
+        AndroidView(factory = { mapView }, modifier = Modifier.fillMaxWidth().weight(1f))
+        Text(
+            "© OpenStreetMap contributors",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
-
 @Composable
 private fun HeartRateChart(records: List<RecordEntity>) {
     val points = remember(records) { records.mapNotNull { it.heartRate } }
