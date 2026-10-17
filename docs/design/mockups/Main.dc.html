@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pulse Today</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 390px; height: 900px; box-sizing: border-box; background: #0E1311; color: #EAF1EC; font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column; overflow: hidden">
+
+<div style="flex: 1; padding: 28px 20px 0 20px; display: flex; flex-direction: column; gap: 12px; min-height: 0">
+
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: flex-start">
+<div>
+<div style="font-size: 13px; color: #8FA096">Saturday, 17 Oct</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; margin-top: 2px">Good evening</div>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; background: #161D1A; border: 1px solid #2A3530; border-radius: 999px; padding: 8px 12px">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5ED6C1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6l1-3h4l1 3M9 18l1 3h4l1-3"/></svg>
+<div style="font-size: 12px; line-height: 1.25; color: #8FA096"><span style="color: #EAF1EC; font-weight: 500">Synced 2 min ago</span><br>Watch · 82%</div>
+</div>
+</div>
+
+<!-- Steps hero -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 18px; display: flex; align-items: center; gap: 18px">
+<div style="position: relative; width: 124px; height: 124px; flex: none">
+<svg width="124" height="124" viewBox="0 0 124 124" role="img" aria-label="Steps ring, 73 percent of daily goal">
+<circle cx="62" cy="62" r="52" fill="none" stroke="#26322D" stroke-width="12"/>
+<circle cx="62" cy="62" r="52" fill="none" stroke="#C7F26B" stroke-width="12" stroke-linecap="round" stroke-dasharray="237.2 326.7" transform="rotate(-90 62 62)"/>
+</svg>
+<div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center">
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700">73%</div>
+<div style="font-size: 11px; color: #8FA096">of goal</div>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 13px; color: #8FA096">Steps today</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 36px; font-weight: 700; line-height: 1; color: #C7F26B">7,260</div>
+<div style="font-size: 13px; color: #8FA096">2,740 to reach 10,000</div>
+<div style="display: flex; gap: 16px; margin-top: 8px; font-size: 13px">
+<div><span style="font-weight: 700">5.4</span> <span style="color: #8FA096">km</span></div>
+<div><span style="font-weight: 700">14</span> <span style="color: #8FA096">floors</span></div>
+</div>
+</div>
+</div>
+
+<!-- Heart rate -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px 12px 18px">
+<div style="display: flex; justify-content: space-between; align-items: flex-start">
+<div>
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF7A66" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+Heart rate
+</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 34px; font-weight: 700; line-height: 1.1; margin-top: 4px">68 <span style="font-size: 15px; font-weight: 500; color: #8FA096">bpm now</span></div>
+</div>
+<div style="text-align: right; font-size: 13px; color: #8FA096; line-height: 1.5">
+Resting <span style="color: #EAF1EC; font-weight: 700">56</span><br>
+Range <span style="color: #EAF1EC; font-weight: 700">54–118</span>
+</div>
+</div>
+<svg viewBox="0 0 300 70" width="100%" height="64" style="margin-top: 8px; display: block" role="img" aria-label="Heart rate over the last 24 hours" preserveAspectRatio="none">
+<polygon points="0,58 27.3,62 54.5,65 81.8,46 109.1,28 136.4,40 163.6,34 190.9,42 218.2,19 245.5,48 272.7,52 300,56 300,70 0,70" fill="#FF7A66" fill-opacity="0.14"/>
+<polyline points="0,58 27.3,62 54.5,65 81.8,46 109.1,28 136.4,40 163.6,34 190.9,42 218.2,19 245.5,48 272.7,52 300,56" fill="none" stroke="#FF7A66" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+</svg>
+<div style="display: flex; justify-content: space-between; font-size: 11px; color: #8FA096; margin-top: 4px"><span>00:00</span><span>08:00</span><span>16:00</span><span>Now</span></div>
+</div>
+
+<!-- Tiles -->
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 18px; padding: 14px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8FA8FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>Sleep</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700; margin-top: 6px">7h 12m</div>
+<div style="font-size: 12px; color: #8FA096; margin-top: 2px">+14 min vs 7-day avg</div>
+</div>
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 18px; padding: 14px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5ED6C1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2 12 6 12 9 6 13 18 16 12 22 12"/></svg>HRV</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700; margin-top: 6px">48 <span style="font-size: 14px; font-weight: 500; color: #8FA096">ms</span></div>
+<div style="font-size: 12px; color: #8FA096; margin-top: 2px">30-day avg 50 ms</div>
+</div>
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 18px; padding: 14px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C7F26B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>Active time</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700; margin-top: 6px">74 <span style="font-size: 14px; font-weight: 500; color: #8FA096">min</span></div>
+<div style="font-size: 12px; color: #8FA096; margin-top: 2px">Goal 60 min · done</div>
+</div>
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 18px; padding: 14px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFB45E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22c4 0 7-2.8 7-7 0-3-2-5-3-7-1 1-2 2-3 2 0-3-1-6-4-8 0 4-4 6-4 12 0 4.2 3 8 7 8z"/></svg>Calories</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700; margin-top: 6px">2,140 <span style="font-size: 14px; font-weight: 500; color: #8FA096">kcal</span></div>
+<div style="font-size: 12px; color: #8FA096; margin-top: 2px">Total burn so far</div>
+</div>
+</div>
+
+<!-- AI insight -->
+<div style="background: #1E2723; border: 1px solid #2F3F38; border-radius: 22px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #C7F26B">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C7F26B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17v4M17 19h4"/></svg>
+Coach insight
+</div>
+<div style="font-size: 14px; line-height: 1.5">Your resting heart rate is down 3 bpm in two weeks and sleep is steady, a good recovery sign. A 25-minute walk tonight would close your step gap.</div>
+<a href="Coach.dc.html" style="align-self: flex-start; background: #C7F26B; color: #0E1311; font-weight: 700; font-size: 14px; border-radius: 999px; padding: 10px 16px; min-height: 20px">Ask Coach</a>
+</div>
+
+</div>
+
+<!-- Tab bar -->
+<div style="height: 84px; flex: none; box-sizing: border-box; border-top: 1px solid #2A3530; background: #0E1311; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 8px 8px 20px 8px">
+<a href="Main.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; font-weight: 700; color: #C7F26B">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Today</a>
+<a href="Trends.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>Trends</a>
+<a href="Activities.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Activities</a>
+<a href="Coach.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17v4M17 19h4"/></svg>Coach</a>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

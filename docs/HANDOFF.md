@@ -241,3 +241,27 @@ pairing port (pairing needs the 6-digit code).
 - Full HCI capture is unavailable (no root; bugreport `btsnooz` truncates to
   15 bytes/packet). Garmin Connect's own logs are private. A rooted device or a
   BLE sniffer is the fallback if the 5043 path stalls.
+
+## 2026-10-17 — Pulse UI + AI coach pass
+
+Added after the M7 handoff above:
+
+- Compose design system and four-tab UI (Today / Trends / Activities / Coach),
+  activity detail, settings, provider settings, device log. Existing sync and
+  data explorer are preserved.
+- Persisted sync metadata and profile settings (step goal, max HR). Sync/scan/
+  disconnect controls moved out of the Today content into settings.
+- OpenAI-compatible provider layer: presets (OpenAI, DeepSeek, OpenRouter,
+  Ollama, LM Studio, vLLM, Custom), encrypted keys (Android Keystore AES-GCM),
+  model CRUD/default/params, test connection, BuildConfig env fallback, SSE
+  streaming with cancel/timeouts/retries.
+- Typed read-only coach tools with local-profile scope, caps, evidence labels,
+  snapshot fallback, and medical-safety prompt. Chat is persisted locally.
+- 20 app JVM tests (tools, OpenAI client, chat loop) on top of the 34 protocol
+  tests; CI workflow added. See `docs/testing.md`, `docs/providers.md`,
+  `docs/tools.md`, `docs/privacy.md`, and `BACKLOG.md`.
+
+Still open: sleep/HRV/historical wellness ingestion (today only), WorkManager
+background sync, Room migration/importer tests, Compose visual tests, and the
+strict per-endpoint cleartext policy. `docs/PLAN.md` remains stale; `BACKLOG.md`
+is the current status source.

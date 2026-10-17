@@ -9,9 +9,11 @@ This repository started as a reverse-engineering study of the official
 documented in [`docs/PROTOCOL.md`](docs/PROTOCOL.md) and re-implemented from
 scratch in the `protocol/` module.
 
-> **Status:** early. The wire protocol core (framing, CRC, COBS, Multi-Link
-> transport, handshake) is implemented and unit-tested. BLE transport, FIT
-> ingestion and the dashboard UI are in progress. See [`docs/PLAN.md`](docs/PLAN.md).
+> **Status:** working local pipeline. BLE/GFDI sync, FIT + wellness ingestion,
+> the Pulse UI (Today, Trends, Activities, Coach), and an OpenAI-compatible AI
+> coach are implemented. See [`BACKLOG.md`](BACKLOG.md) for the remaining
+> data-coverage items (sleep/HRV/history) and [`docs/HANDOFF.md`](docs/HANDOFF.md)
+> for the protocol notes.
 
 ## Why
 
@@ -24,6 +26,37 @@ the archive.
 Developed against the **Garmin Forerunner** family (245 / 255 / 955 / 965), which use
 the **GFDI v2 / Multi-Link** BLE protocol. The same stack is used by Fenix 5+/6/7,
 Venu/Venu 2/3, Instinct 2 and others, with small differences.
+
+## Features
+
+- **Today:** steps ring and goal, resting/current heart rate with an intraday
+  chart, active time, calories, and explicit empty states for not-yet-ingested
+  sleep/HRV.
+- **Trends:** Day/Week/Month views over real wellness days, partial-history
+  labels (never zero-filled), goal line, resting-HR trend.
+- **Activities:** weekly summary, sport filters, row-to-featured selection,
+  real GPS/HR trace, heart-rate zone bar, full activity detail with map,
+  HR/elevation charts, laps, and the FIT data explorer.
+- **Coach:** OpenAI-compatible provider presets (OpenAI, DeepSeek, OpenRouter,
+  Ollama, LM Studio, vLLM, Custom), encrypted API keys, model management,
+  connection test, streaming chat with cancel, typed read-only health tools,
+  and evidence chips generated from the tools actually called.
+- **Local-first:** no account, backend, telemetry, or cloud copy.
+
+## Documentation
+
+- [`docs/architecture-notes.md`](docs/architecture-notes.md) — stack, data model,
+  ingestion, and coverage gaps.
+- [`docs/design/tokens.md`](docs/design/tokens.md) — design tokens; mockups are
+  in [`docs/design/mockups/`](docs/design/mockups/).
+- [`docs/providers.md`](docs/providers.md) — provider setup, presets, env config,
+  keys, cleartext policy, streaming and troubleshooting.
+- [`docs/tools.md`](docs/tools.md) — coach tools, limits, evidence, safety, and
+  how to add a tool.
+- [`docs/testing.md`](docs/testing.md) — test commands and manual matrix.
+- [`docs/privacy.md`](docs/privacy.md) — what leaves the device and key/log
+  handling.
+- [`BACKLOG.md`](BACKLOG.md) — epics, stories, status, and open questions.
 
 ## Architecture
 
@@ -51,7 +84,7 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
 | Module | Type | Purpose |
 |---|---|---|
 | `protocol` | Kotlin/JVM library | Wire protocol: GFDI framing, CRC-16, COBS, Multi-Link handles, handshake. No Android deps → fully unit-testable. |
-| `app` | Android app | BLE I/O, sync engine, FIT ingestion, Room database, Compose UI. |
+| `app` | Android app | BLE I/O, sync engine, FIT ingestion, Room database, Compose UI, provider/client/tool/chat layer. |
 
 ## Build
 

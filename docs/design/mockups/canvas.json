@@ -1,0 +1,18 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-10-17T17:35:00Z" },
+  "title": "Pulse Fitness App",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 390, "h": 900, "title": "1 · Today" },
+    "Trends.dc.html": { "x": 470, "y": 0, "w": 390, "h": 900, "title": "2 · Trends", "is_interactive": true },
+    "Activities.dc.html": { "x": 940, "y": 0, "w": 390, "h": 900, "title": "3 · Activities", "is_interactive": true },
+    "Coach.dc.html": { "x": 1410, "y": 0, "w": 390, "h": 900, "title": "4 · AI Coach", "is_interactive": true }
+  },
+  "order": ["Main.dc.html", "Trends.dc.html", "Activities.dc.html", "Coach.dc.html"],
+  "notes": {
+    "t1": { "x": 0, "y": -260, "text": "Pulse: watch-synced fitness app with an AI coach", "kind": "title1", "maxW": 1800 }
+  },
+  "designSystems": []
+}

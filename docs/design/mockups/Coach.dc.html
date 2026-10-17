@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pulse AI Coach</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+button,input{font-family:inherit}
+input::placeholder{color:#8FA096}
+</style>
+</helmet>
+<div style="width: 390px; height: 900px; box-sizing: border-box; background: #0E1311; color: #EAF1EC; font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column; overflow: hidden">
+
+<div style="flex: 1; padding: 28px 20px 0 20px; display: flex; flex-direction: column; gap: 12px; min-height: 0">
+
+<!-- Header -->
+<div style="display: flex; align-items: center; gap: 12px">
+<div style="width: 44px; height: 44px; border-radius: 14px; background: #C7F26B; display: flex; align-items: center; justify-content: center; flex: none">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0E1311" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17v4M17 19h4"/></svg>
+</div>
+<div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; line-height: 1.1">Coach</div>
+<div style="font-size: 13px; color: #8FA096">AI insights from your watch data</div>
+</div>
+</div>
+
+<!-- Data access -->
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #161D1A; border: 1px solid #2A3530; border-radius: 14px; padding: 10px 14px">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #8FA096; min-width: 0">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: #5ED6C1; flex: none"></span>
+<span>Reading heart rate, steps, sleep and workouts</span>
+</div>
+<div style="font-size: 12px; font-weight: 700; color: #C7F26B; flex: none">Manage</div>
+</div>
+
+<!-- Messages -->
+<div style="flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column-reverse; gap: 12px; padding-bottom: 4px">
+<sc-for list="{{items}}" as="m" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column">
+
+<sc-if value="{{m.isAi}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; gap: 8px; align-items: flex-start">
+<div style="width: 28px; height: 28px; border-radius: 9px; background: #1E2723; display: flex; align-items: center; justify-content: center; flex: none">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C7F26B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; max-width: 296px">
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 18px 18px 18px 6px; padding: 12px 14px; font-size: 14px; line-height: 1.5">{{m.text}}</div>
+<sc-if value="{{m.hasSources}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{m.sources}}" as="s" hint-placeholder-count="2">
+<span style="font-size: 11px; color: #8FA096; border: 1px solid #2A3530; border-radius: 999px; padding: 3px 9px">{{s.label}}</span>
+</sc-for>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{m.isUser}}" hint-placeholder-val="{{ false }}">
+<div style="align-self: flex-end; max-width: 270px; background: #C7F26B; color: #0E1311; border-radius: 18px 18px 6px 18px; padding: 10px 14px; font-size: 14px; font-weight: 500; line-height: 1.45">{{m.text}}</div>
+</sc-if>
+
+<sc-if value="{{m.isTyping}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; gap: 8px; align-items: center">
+<div style="width: 28px; height: 28px; border-radius: 9px; background: #1E2723; display: flex; align-items: center; justify-content: center; flex: none">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C7F26B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>
+</div>
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 18px 18px 18px 6px; padding: 14px 16px; display: flex; gap: 5px; align-items: center">
+<span style="width: 6px; height: 6px; border-radius: 50%; background: #8FA096"></span>
+<span style="width: 6px; height: 6px; border-radius: 50%; background: #8FA096; opacity: 0.7"></span>
+<span style="width: 6px; height: 6px; border-radius: 50%; background: #8FA096; opacity: 0.4"></span>
+</div>
+</div>
+</sc-if>
+
+</div>
+</sc-for>
+</div>
+
+<!-- Suggestions -->
+<div style="display: flex; gap: 8px; overflow-x: auto; flex: none; padding-bottom: 2px">
+<sc-for list="{{suggestions}}" as="sg" hint-placeholder-count="4">
+<button type="button" onClick="{{sg.pick}}" style="flex: none; white-space: nowrap; border: 1px solid #2F3F38; background: #1E2723; color: #EAF1EC; font-size: 13px; border-radius: 999px; padding: 0 14px; height: 40px; cursor: pointer">{{sg.label}}</button>
+</sc-for>
+</div>
+
+<!-- Composer -->
+<div style="display: flex; align-items: center; gap: 8px; flex: none; padding-bottom: 12px">
+<input type="text" aria-label="Message the coach" placeholder="Ask about your data" value="{{draft}}" onInput="{{onDraft}}" onKeyDown="{{onKey}}" style="flex: 1; min-width: 0; height: 48px; box-sizing: border-box; background: #161D1A; border: 1px solid #2A3530; border-radius: 999px; padding: 0 18px; font-size: 15px; color: #EAF1EC; outline: none">
+<button type="button" aria-label="Send" onClick="{{onSend}}" style="flex: none; width: 48px; height: 48px; border: none; border-radius: 50%; background: #C7F26B; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0E1311" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+</button>
+</div>
+
+</div>
+
+<!-- Tab bar -->
+<div style="height: 84px; flex: none; box-sizing: border-box; border-top: 1px solid #2A3530; background: #0E1311; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 8px 8px 20px 8px">
+<a href="Main.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Today</a>
+<a href="Trends.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>Trends</a>
+<a href="Activities.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Activities</a>
+<a href="Coach.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; font-weight: 700; color: #C7F26B">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17v4M17 19h4"/></svg>Coach</a>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":900}}'>
+class Component extends DCLogic {
+replies() {
+return {
+week: { role: 'ai', text: 'Solid week. You averaged 8,960 steps a day and hit 10k on 2 of 7 days (Sunday and Tuesday). You logged 6 workouts, 4h 53m in total, burning 2,284 kcal. Wednesday’s 6,180 steps looks low only because it was a ride day.', sources: ['Steps · 7 days', 'Workouts · 7 days'] },
+rhr: { role: 'ai', text: 'Your resting heart rate fell from 59 to 56 bpm over two weeks. That lines up with your steady easy sessions and about 7 hours of sleep a night, a typical sign of improving aerobic fitness. If it ever jumps 5+ bpm above baseline while HRV drops, treat that as a cue to rest.', sources: ['Heart rate · 14 days', 'HRV · 14 days', 'Sleep · 14 days'] },
+plan: { role: 'ai', text: 'HRV is 48 ms, close to your 30-day average of 50, and you ran hard on Friday. Tomorrow I’d keep it easy: 45 minutes of cycling or jogging in zone 2, roughly 120–140 bpm. Save the next hard effort for Tuesday.', sources: ['HRV · 30 days', 'Workouts · 7 days'] },
+sleep: { role: 'ai', text: 'Last night was 7h 12m. Your 7-day average is 6h 58m, a little under the 7–9 hour range recommended for adults. Moving bedtime 30 minutes earlier on weeknights would put you back in range.', sources: ['Sleep · 7 days'] },
+other: { role: 'ai', text: 'I checked your last 7 days of heart rate, steps, sleep and workouts and nothing looks out of range. Want me to look at a specific metric or date range?', sources: ['Heart rate · 7 days', 'Steps · 7 days', 'Sleep · 7 days'] }
+};
+}
+initial() {
+const R = this.replies();
+return [
+{ role: 'ai', text: 'Hi, I’m your coach. I can read your heart rate, steps, sleep and workouts, synced from your watch 2 minutes ago. Ask me anything about your data.' },
+{ role: 'user', text: 'Why is my resting HR dropping?' },
+R.rhr
+];
+}
+pickReply(t) {
+const R = this.replies();
+const s = t.toLowerCase();
+if (s.indexOf('sleep') > -1) return R.sleep;
+if (s.indexOf('plan') > -1 || s.indexOf('tomorrow') > -1 || s.indexOf('workout') > -1) return R.plan;
+if (s.indexOf('week') > -1 || s.indexOf('steps') > -1) return R.week;
+if (s.indexOf('hr') > -1 || s.indexOf('heart') > -1) return R.rhr;
+return R.other;
+}
+send(text) {
+const t = (text || '').trim();
+if (!t || (this.state && this.state.typing)) return;
+const cur = (this.state && this.state.msgs) || this.initial();
+this.setState({ msgs: cur.concat([{ role: 'user', text: t }]), draft: '', typing: true });
+setTimeout(() => {
+const now = (this.state && this.state.msgs) || cur;
+this.setState({ msgs: now.concat([this.pickReply(t)]), typing: false });
+}, 900);
+}
+renderVals() {
+const msgs = (this.state && this.state.msgs) || this.initial();
+const typing = !!(this.state && this.state.typing);
+const draft = (this.state && this.state.draft) || '';
+const all = msgs.map((m) => ({
+isAi: m.role === 'ai',
+isUser: m.role === 'user',
+isTyping: false,
+text: m.text,
+hasSources: !!(m.sources && m.sources.length),
+sources: (m.sources || []).map((s) => ({ label: s }))
+}));
+if (typing) {
+all.push({ isAi: false, isUser: false, isTyping: true, text: '', hasSources: false, sources: [] });
+}
+const suggestions = ['How was my week?', 'Why is my resting HR dropping?', 'Plan tomorrow’s workout', 'Am I sleeping enough?'].map((s) => ({
+label: s,
+pick: () => this.send(s)
+}));
+return {
+items: all.slice().reverse(),
+suggestions: suggestions,
+draft: draft,
+onDraft: (e) => this.setState({ draft: e.target.value }),
+onKey: (e) => { if (e.key === 'Enter') { this.send(draft); } },
+onSend: () => this.send(draft)
+};
+}
+}
+</script>
+</body>
+</html>
