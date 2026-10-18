@@ -23,6 +23,13 @@ The official app is a thin client for Garmin's servers; it does not keep your da
 locally. This project reverses that: the watch is the source of truth, your phone is
 the archive.
 
+## Screens
+
+| Today | Coach | Data & backup |
+|:---:|:---:|:---:|
+| ![Today dashboard with steps, heart rate, sleep and HRV](docs/screenshots/today.png) | ![Coach chat with suggestions and data access summary](docs/screenshots/coach.png) | ![Data and backup settings](docs/screenshots/backup-settings.png) |
+| Steps, heart rate, sleep/HRV, Body Battery and daily insight | Streaming coach with typed local-health tools and conversation history | Export or restore the database and coach conversations |
+
 ## Target devices
 
 Developed against the **Garmin Forerunner** family (245 / 255 / 955 / 965), which use
