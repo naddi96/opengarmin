@@ -1,44 +1,113 @@
 package dev.opengarmin.app.ui.screens
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DateRangePicker
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.opengarmin.app.data.HistoryBucket
+import dev.opengarmin.app.data.HistoryGranularity
 import dev.opengarmin.app.data.WellnessDayEntity
+import dev.opengarmin.app.data.WellnessHistory
+import dev.opengarmin.app.data.WellnessMetrics
 import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.ui.components.BarChart
 import dev.opengarmin.app.ui.components.CoachInsightCard
-import dev.opengarmin.app.ui.components.CompactCard
 import dev.opengarmin.app.ui.components.LineChart
-import dev.opengarmin.app.ui.components.SegmentedControl
+import dev.opengarmin.app.ui.components.PillChip
+import dev.opengarmin.app.ui.components.PulseCard
 import dev.opengarmin.app.ui.components.SectionLabel
+import dev.opengarmin.app.ui.components.TinyStat
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
-import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
+
+private enum class TrendRange(val label: String, val days: Long?) {
+    Week("7D", 7),
+    Month("30D", 30),
+    Quarter("90D", 90),
+    Year("1Y", 365),
+    All("All", null),
+    Custom("Custom", -1),
+}
+
+private enum class ChartStyle { Bars, Line }
+
+private enum class TrendMetric(
+    val label: String,
+    val unit: String,
+    val color: Color,
+    val chartStyle: ChartStyle,
+) {
+    Steps("Steps", "steps", PulseColors.Accent, ChartStyle.Bars),
+    Sleep("Sleep", "h", PulseColors.Blue, ChartStyle.Bars),
+    Hrv("HRV", "ms", PulseColors.Teal, ChartStyle.Line),
+    RestingHr("Resting HR", "bpm", PulseColors.Coral, ChartStyle.Line),
+    ActiveMinutes("Active", "min", PulseColors.Accent, ChartStyle.Bars),
+    Calories("Calories", "kcal", PulseColors.Orange, ChartStyle.Bars),
+    Stress("Stress", "/100", PulseColors.Yellow, ChartStyle.Line),
+    Spo2("SpO₂", "%", PulseColors.Blue, ChartStyle.Line),
+    Respiration("Resp.", "brpm", PulseColors.Blue, ChartStyle.Line),
+    BodyBattery("Body Batt.", "/100", PulseColors.Teal, ChartStyle.Line),
+    ;
+
+    fun format(value: Double?): String {
+        if (value == null) return "—"
+        return when (this) {
+            Steps -> "%,d".format(value.roundToInt())
+            Sleep -> WellnessMetrics.formatHours(value)
+            Hrv, RestingHr, ActiveMinutes, Stress, Spo2, BodyBattery -> "%.0f".format(value)
+            Calories -> "%,d".format(value.roundToInt())
+            Respiration -> "%.1f".format(value)
+        }
+    }
+
+    fun formatWithUnit(value: Double?): String {
+        val text = format(value)
+        if (value == null || this == Sleep) return text
+        return if (unit.isNotBlank()) "$text $unit" else text
+    }
+}
+
+private data class DateRange(val start: LocalDate, val end: LocalDate) {
+    val days: Long get() = end.toEpochDay() - start.toEpochDay() + 1
+}
 
 @Composable
 fun TrendsScreen(
@@ -49,9 +118,40 @@ fun TrendsScreen(
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
 ) {
-    var rangeIndex by rememberSaveable { mutableIntStateOf(1) }
-    val sorted = days.sortedBy { it.date }
-    val today = sorted.lastOrNull()
+    var rangeName by rememberSaveable { mutableStateOf(TrendRange.Week.name) }
+    var metricName by rememberSaveable { mutableStateOf(TrendMetric.Steps.name) }
+    var customStartText by rememberSaveable { mutableStateOf<String?>(null) }
+    var customEndText by rememberSaveable { mutableStateOf<String?>(null) }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+
+    val today = LocalDate.now()
+    val range = resolveRange(
+        preset = TrendRange.entries.firstOrNull { it.name == rangeName } ?: TrendRange.Week,
+        days = days,
+        today = today,
+        customStart = customStartText?.let(WellnessHistory::parse),
+        customEnd = customEndText?.let(WellnessHistory::parse),
+    )
+    val metric = TrendMetric.entries.firstOrNull { it.name == metricName } ?: TrendMetric.Steps
+    val hrvByDate = remember(hrSamples) {
+        hrSamples.filter { it.kind == "hrv" && it.value > 0.0 }
+            .groupBy { localDateOf(it.timestamp).toString() }
+            .mapValues { (_, samples) -> samples.map { it.value }.average() }
+    }
+    val valueOf: (WellnessDayEntity) -> Double? = { day -> metricValue(metric, day, hrvByDate) }
+
+    val inRange = WellnessHistory.daysInRange(days, range.start, range.end)
+    val granularity = WellnessHistory.granularityFor(range.start, range.end)
+    val buckets = WellnessHistory.buckets(inRange, granularity, valueOf)
+    val average = WellnessHistory.average(inRange, valueOf)
+    val total = WellnessHistory.total(inRange, valueOf)
+    val daysWithMetric = inRange.count { valueOf(it) != null }
+    val rangeLabel = formatRange(range, today)
+    val granularityLabel = when (granularity) {
+        HistoryGranularity.Daily -> "daily"
+        HistoryGranularity.Weekly -> "weekly"
+        HistoryGranularity.Monthly -> "monthly"
+    }
 
     Column(
         modifier = modifier
@@ -73,75 +173,145 @@ fun TrendsScreen(
                 Spacer(Modifier.width(PulseSpacing.md))
             }
             Text("Trends", style = MaterialTheme.typography.headlineLarge, color = PulseColors.Text)
-            Spacer(Modifier.weight(1f))
-            val rangeLabel = when (rangeIndex) {
-                0 -> today?.let { formatShortDate(it.date) } ?: "Today"
-                1 -> "Last 7 days"
-                else -> "Last 4 weeks"
-            }
-            Text(
-                text = rangeLabel,
-                modifier = Modifier
-                    .padding(start = PulseSpacing.md),
-                style = MaterialTheme.typography.bodySmall,
-                color = PulseColors.TextMuted,
-            )
         }
 
-        SegmentedControl(
-            options = listOf("Day", "Week", "Month"),
-            selectedIndex = rangeIndex,
-            onSelected = { rangeIndex = it },
-        )
+        // Period presets -----------------------------------------------------
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+        ) {
+            TrendRange.entries.forEach { preset ->
+                PillChip(
+                    label = preset.label,
+                    selected = rangeName == preset.name,
+                    onClick = {
+                        if (preset == TrendRange.Custom) {
+                            showDatePicker = true
+                        } else {
+                            rangeName = preset.name
+                        }
+                    },
+                    leading = if (preset == TrendRange.Custom) Icons.Outlined.DateRange else null,
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(rangeLabel, style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
+            Spacer(Modifier.weight(1f))
+            if (rangeName == TrendRange.Custom.name) {
+                TextButton(onClick = { showDatePicker = true }) { Text("Change period") }
+            }
+        }
 
-        if (today == null) {
-            Text(
-                "No wellness data yet. Sync your watch to build a trend.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = PulseColors.TextMuted,
-            )
+        // Metric selector ----------------------------------------------------
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+        ) {
+            TrendMetric.entries.forEach { candidate ->
+                PillChip(
+                    label = candidate.label,
+                    selected = metric == candidate,
+                    onClick = { metricName = candidate.name },
+                )
+            }
+        }
+
+        if (inRange.isEmpty()) {
+            PulseCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(PulseSpacing.xlPlus),
+                    verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+                ) {
+                    Text("No wellness data in this period", style = MaterialTheme.typography.titleSmall, color = PulseColors.Text)
+                    Text(
+                        "Sync your watch to build history. This app never zero-fills days the watch did not record.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+            }
+            Spacer(Modifier.height(PulseSpacing.lg))
             return@Column
         }
 
-        val view = buildTrendView(rangeIndex, sorted, hrSamples, settings, LocalDate.now())
-        SectionLabel(view.caption)
-        Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
-            SummaryTile("Steps", view.stepsAvg, "steps", Modifier.weight(1f))
-            SummaryTile("Resting HR", view.restingAvg, "bpm", Modifier.weight(1f))
-            SummaryTile("Active", view.activeAvg, "min", Modifier.weight(1f))
-            SummaryTile("Burn", view.burnAvg, "kcal", Modifier.weight(1f))
-        }
-
-        dev.opengarmin.app.ui.components.PulseCard(modifier = Modifier.fillMaxWidth()) {
+        // Selected metric ----------------------------------------------------
+        PulseCard(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(start = PulseSpacing.xlPlus, end = PulseSpacing.xlPlus, top = PulseSpacing.xl, bottom = PulseSpacing.lg),
                 verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
             ) {
                 Row(modifier = Modifier.fillMaxWidth()) {
-                    Text("Steps", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
+                    Text(metric.label, style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
                     Spacer(Modifier.weight(1f))
-                    Text(view.stepsSub, style = MaterialTheme.typography.labelMedium, color = PulseColors.TextMuted)
+                    Text(
+                        "$granularityLabel average",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = PulseColors.TextMuted,
+                    )
                 }
-                Text(view.stepsBig, style = MaterialTheme.typography.displaySmall, color = PulseColors.Accent)
-                BarChart(
-                    values = view.bars,
-                    labels = view.barLabels,
-                    goal = settings.stepGoal.toFloat(),
-                    color = PulseColors.Accent,
-                    selectedIndex = view.bars.lastIndex,
-                    contentDescription = view.stepsContentDescription,
-                    height = 120.dp,
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        metric.format(average),
+                        style = MaterialTheme.typography.displaySmall,
+                        color = metric.color,
+                    )
+                    if (average != null && metric != TrendMetric.Sleep) {
+                        Text(
+                            " ${metric.unit}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PulseColors.TextMuted,
+                            modifier = Modifier.padding(bottom = 4.dp),
+                        )
+                    }
+                }
+                Text(
+                    selectedMetricSubtitle(metric, average, total, daysWithMetric, range.days.toInt()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PulseColors.TextMuted,
                 )
-                if (settings.stepGoal > 0) {
+                if (buckets.size >= 2 && metric.chartStyle == ChartStyle.Line) {
+                    LineChart(
+                        values = buckets.map { it.average.toFloat() },
+                        labels = chartLabels(buckets, granularity),
+                        color = metric.color,
+                        contentDescription = "${metric.label} trend across ${buckets.size} $granularityLabel buckets",
+                        height = 120.dp,
+                    )
+                } else if (buckets.isNotEmpty()) {
+                    BarChart(
+                        values = buckets.map { it.average.toFloat() },
+                        labels = chartLabels(buckets, granularity),
+                        goal = if (metric == TrendMetric.Steps) settings.stepGoal.toFloat() else null,
+                        color = metric.color,
+                        selectedIndex = buckets.lastIndex,
+                        contentDescription = "${metric.label} trend across ${buckets.size} $granularityLabel buckets",
+                        height = 120.dp,
+                    )
+                } else {
+                    Text(
+                        "No ${metric.label.lowercase(Locale.getDefault())} data in this period.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+                if (metric == TrendMetric.Steps && settings.stepGoal > 0) {
                     Text(
                         "Dashed line: goal ${"%,d".format(settings.stepGoal)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = PulseColors.TextMuted,
                     )
                 }
-                if (view.daysWithData < view.daysRequested) {
+                if (daysWithMetric < inRange.size) {
                     Text(
-                        "${view.daysWithData} of ${view.daysRequested} days have data. Missing days are not zero-filled.",
+                        "$daysWithMetric of ${inRange.size} days with data. Missing values are not zero-filled.",
                         style = MaterialTheme.typography.labelSmall,
                         color = PulseColors.TextMuted,
                     )
@@ -149,254 +319,296 @@ fun TrendsScreen(
             }
         }
 
-        dev.opengarmin.app.ui.components.PulseCard(modifier = Modifier.fillMaxWidth()) {
+        // Averages for every metric -----------------------------------------
+        PulseCard(modifier = Modifier.fillMaxWidth()) {
             Column(
-                modifier = Modifier.padding(start = PulseSpacing.xlPlus, end = PulseSpacing.xlPlus, top = PulseSpacing.xl, bottom = PulseSpacing.lg),
+                modifier = Modifier.padding(PulseSpacing.xlPlus),
                 verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
             ) {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(view.hrTitle, style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
+                SectionLabel("Averages in this period")
+                metricRows(inRange, hrvByDate)
+            }
+        }
+
+        // Bucket breakdown ---------------------------------------------------
+        if (buckets.isNotEmpty()) {
+            PulseCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(PulseSpacing.xlPlus),
+                    verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            view.hrBig,
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = PulseColors.Text,
+                            "$granularityLabel history",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PulseColors.TextMuted,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "${buckets.size} buckets",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = PulseColors.TextMuted,
                         )
                     }
-                    Text(
-                        view.hrNote,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = PulseColors.TextMuted,
-                        modifier = Modifier.padding(start = PulseSpacing.md),
-                    )
+                    buckets.forEach { bucket ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                formatBucketLabel(bucket, granularity),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = PulseColors.Text,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "${metric.format(bucket.average)} ${metric.unit}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = PulseColors.Text,
+                            )
+                        }
+                        Text(
+                            "${bucket.daysWithData} ${if (bucket.daysWithData == 1) "day" else "days"} with data",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = PulseColors.TextMuted,
+                        )
+                    }
                 }
-                LineChart(
-                    values = view.hrValues,
-                    labels = view.hrLabels,
-                    color = PulseColors.Coral,
-                    contentDescription = view.hrContentDescription,
-                    height = 80.dp,
-                )
             }
         }
 
         CoachInsightCard(
-            text = view.insight,
+            text = trendInsight(inRange, average, total, daysWithMetric, settings.stepGoal),
             onAskCoach = onAskCoach,
         )
         Spacer(Modifier.height(PulseSpacing.lg))
     }
-}
 
-private data class TrendView(
-    val caption: String,
-    val stepsAvg: String,
-    val restingAvg: String,
-    val activeAvg: String,
-    val burnAvg: String,
-    val stepsBig: String,
-    val stepsSub: String,
-    val bars: List<Float>,
-    val barLabels: List<String>,
-    val daysWithData: Int,
-    val daysRequested: Int,
-    val stepsContentDescription: String,
-    val hrTitle: String,
-    val hrBig: String,
-    val hrNote: String,
-    val hrValues: List<Float>,
-    val hrLabels: List<String>,
-    val hrContentDescription: String,
-    val insight: String,
-)
-
-private fun buildTrendView(
-    rangeIndex: Int,
-    sortedDays: List<WellnessDayEntity>,
-    hrSamples: List<WellnessSampleEntity>,
-    settings: PulseSettings,
-    today: LocalDate,
-): TrendView {
-    val todayDay = sortedDays.lastOrNull()
-    if (rangeIndex == 0) {
-        val samples = hrSamples.filter { it.kind == "hr" }.sortedBy { it.timestamp }
-        val minHr = samples.minOfOrNull { it.value }?.roundToInt()
-        val maxHr = samples.maxOfOrNull { it.value }?.roundToInt()
-        val latestHr = samples.lastOrNull()?.value?.roundToInt()
-        val steps = todayDay?.steps ?: 0
-        val insight = if (todayDay == null) {
-            "No wellness data for today yet."
-        } else {
-            "You logged ${"%,d".format(todayDay.steps)} steps and ${todayDay.activeSeconds / 60} active minutes today. " +
-                if (samples.size >= 2) {
-                    "The heart-rate chart uses ${samples.size} real samples from your watch."
-                } else {
-                    "No intraday heart-rate samples are stored for today."
-                }
-        }
-        val latestIsToday = todayDay?.date == LocalDate.now().toString()
-        return TrendView(
-            caption = if (latestIsToday) "Today so far" else "Latest recorded day",
-            stepsAvg = todayDay?.let { "%,d".format(it.steps) } ?: "—",
-            restingAvg = todayDay?.restingHeartRate?.takeIf { it in 1..250 }?.toString() ?: "—",
-            activeAvg = todayDay?.let { "${it.activeSeconds / 60}" } ?: "—",
-            burnAvg = todayDay?.let { "%,d".format(it.activeCalories) } ?: "—",
-            stepsBig = "%,d".format(steps),
-            stepsSub = if (latestIsToday) "steps today (no hourly step samples)" else "steps on latest day",
-            bars = listOf(steps.toFloat()),
-            barLabels = listOf("Today"),
-            daysWithData = if (todayDay != null) 1 else 0,
-            daysRequested = 1,
-            stepsContentDescription = "Steps today: $steps",
-            hrTitle = "Heart rate today",
-            hrBig = if (latestHr != null) "$latestHr bpm" else "— bpm",
-            hrNote = if (minHr != null && maxHr != null) "Day range $minHr–$maxHr bpm" else "No samples",
-            hrValues = samples.map { it.value.toFloat() },
-            hrLabels = if (samples.size >= 2) listOf("Start", "Mid", "End", if (latestIsToday) "Now" else "Last") else emptyList(),
-            hrContentDescription = if (minHr != null && maxHr != null) {
-                "Heart rate today from $minHr to $maxHr bpm"
-            } else {
-                "No heart-rate samples today"
+    if (showDatePicker) {
+        CustomRangeDialog(
+            today = today,
+            initialStart = range.start,
+            initialEnd = range.end,
+            onDismiss = { showDatePicker = false },
+            onApply = { start, end ->
+                customStartText = start.toString()
+                customEndText = end.toString()
+                rangeName = TrendRange.Custom.name
+                showDatePicker = false
             },
-            insight = insight,
         )
     }
-
-    val requested = if (rangeIndex == 1) 7 else 28
-    val start = today.minusDays(requested.toLong() - 1)
-    val inRange = sortedDays.filter {
-        val date = runCatching { LocalDate.parse(it.date) }.getOrNull()
-        date != null && !date.isBefore(start)
-    }
-    val avgSteps = if (inRange.isEmpty()) 0.0 else inRange.map { it.steps }.average()
-    val restingValues = inRange.mapNotNull { it.restingHeartRate?.takeIf { value -> value in 1..250 } }
-    val avgResting = restingValues.takeIf { it.isNotEmpty() }?.average()
-    val avgActive = if (inRange.isEmpty()) 0.0 else inRange.map { it.activeSeconds / 60.0 }.average()
-    val avgBurn = if (inRange.isEmpty()) 0.0 else inRange.map { it.activeCalories.toDouble() }.average()
-    val goal = settings.stepGoal.coerceAtLeast(1)
-    val goalDays = inRange.count { it.steps >= goal }
-
-    val bars: List<Float>
-    val barLabels: List<String>
-    val stepsBig: String
-    val stepsSub: String
-    val hrValues: List<Float>
-    val hrLabels: List<String>
-    val hrTitle: String
-    val hrBig: String
-    val hrNote: String
-    val caption: String
-
-    if (rangeIndex == 1) {
-        bars = inRange.map { it.steps.toFloat() }
-        barLabels = inRange.map {
-            runCatching { LocalDate.parse(it.date).format(DateTimeFormatter.ofPattern("EEE", Locale.getDefault())) }
-                .getOrDefault(it.date)
-        }
-        val total = inRange.sumOf { it.steps }
-        stepsBig = "%,d".format(total)
-        stepsSub = "steps in $requested days" + if (inRange.size < requested) " · ${inRange.size} with data" else ""
-        hrValues = inRange.mapNotNull { it.restingHeartRate?.takeIf { value -> value in 1..250 }?.toFloat() }
-        hrLabels = inRange.mapNotNull { day ->
-            day.restingHeartRate?.let {
-                runCatching { LocalDate.parse(day.date).format(DateTimeFormatter.ofPattern("EEE", Locale.getDefault())) }
-                    .getOrDefault(day.date)
-            }
-        }
-        hrTitle = "Resting heart rate"
-        hrBig = todayDay?.restingHeartRate?.takeIf { it in 1..250 }?.let { "$it bpm today" } ?: "— bpm today"
-        hrNote = deltaNote(inRange, "since the first day")
-        caption = "Daily average, last 7 days"
-    } else {
-        val weeks = inRange
-            .groupBy { day ->
-                runCatching { LocalDate.parse(day.date).with(DayOfWeek.MONDAY) }.getOrNull()
-            }
-            .toSortedMap(compareBy { it?.toString() ?: "" })
-        bars = weeks.values.map { entries -> entries.map { it.steps }.average().toFloat() }
-        barLabels = weeks.keys.map { it?.format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault())) ?: "—" }
-        stepsBig = "%,d".format(avgSteps.roundToInt())
-        stepsSub = "avg steps per day" + if (inRange.size < requested) " · ${inRange.size} days with data" else ""
-        hrValues = weeks.values.mapNotNull { entries ->
-            entries.mapNotNull { it.restingHeartRate?.takeIf { value -> value in 1..250 } }
-                .takeIf { it.isNotEmpty() }
-                ?.average()
-                ?.toFloat()
-        }
-        hrLabels = weeks.keys.map { it?.format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault())) ?: "" }
-        hrTitle = "Resting heart rate"
-        hrBig = todayDay?.restingHeartRate?.takeIf { it in 1..250 }?.let { "$it bpm" } ?: "— bpm"
-        hrNote = deltaNote(inRange, "over the period")
-        caption = "Daily average, last 4 weeks"
-    }
-
-    val insight = if (inRange.isEmpty()) {
-        "No wellness data in this range. Sync your watch to build a trend."
-    } else {
-        "You averaged ${"%,d".format(avgSteps.roundToInt())} steps a day across ${inRange.size} ${if (inRange.size == 1) "day" else "days"} with data, and reached your " +
-            "${"%,d".format(goal)} goal on $goalDays of them. " +
-            (avgResting?.let { "Average resting heart rate was ${formatOneDecimal(it)} bpm." }
-                ?: "Resting heart rate is not available in this range.")
-    }
-
-    return TrendView(
-        caption = caption,
-        stepsAvg = "%,d".format(avgSteps.roundToInt()),
-        restingAvg = avgResting?.let { formatOneDecimal(it) } ?: "—",
-        activeAvg = avgActive.roundToInt().toString(),
-        burnAvg = "%,d".format(avgBurn.roundToInt()),
-        stepsBig = stepsBig,
-        stepsSub = stepsSub,
-        bars = bars,
-        barLabels = barLabels,
-        daysWithData = inRange.size,
-        daysRequested = requested,
-        stepsContentDescription = "Steps trend: ${bars.joinToString { it.roundToInt().toString() }} across ${bars.size} buckets",
-        hrTitle = hrTitle,
-        hrBig = hrBig,
-        hrNote = hrNote,
-        hrValues = hrValues,
-        hrLabels = if (hrValues.size >= 2) hrLabels else emptyList(),
-        hrContentDescription = if (hrValues.isEmpty()) {
-            "No resting heart-rate data in this range"
-        } else {
-            "Resting heart rate trend over ${hrValues.size} days"
-        },
-        insight = insight,
-    )
 }
 
 @Composable
-private fun SummaryTile(label: String, value: String, unit: String, modifier: Modifier = Modifier) {
-    CompactCard(modifier = modifier) {
-        Column(modifier = Modifier.padding(horizontal = PulseSpacing.mdPlus, vertical = PulseSpacing.md)) {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted, maxLines = 1)
-            Text(
-                value,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = PulseColors.Text,
-                maxLines = 1,
-            )
-            Text(unit, style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted, maxLines = 1)
+private fun metricRows(days: List<WellnessDayEntity>, hrvByDate: Map<String, Double>) {
+    MetricPairRow(TrendMetric.Steps, TrendMetric.Sleep, days, hrvByDate)
+    MetricPairRow(TrendMetric.Hrv, TrendMetric.RestingHr, days, hrvByDate)
+    MetricPairRow(TrendMetric.ActiveMinutes, TrendMetric.Calories, days, hrvByDate)
+    MetricPairRow(TrendMetric.Stress, TrendMetric.Spo2, days, hrvByDate)
+    MetricPairRow(TrendMetric.Respiration, TrendMetric.BodyBattery, days, hrvByDate)
+}
+
+@Composable
+private fun MetricPairRow(
+    left: TrendMetric,
+    right: TrendMetric,
+    days: List<WellnessDayEntity>,
+    hrvByDate: Map<String, Double>,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.lg)) {
+        TinyStat(
+            left.label,
+            left.formatWithUnit(WellnessHistory.average(days) { metricValue(left, it, hrvByDate) }),
+            Modifier.weight(1f),
+        )
+        TinyStat(
+            right.label,
+            right.formatWithUnit(WellnessHistory.average(days) { metricValue(right, it, hrvByDate) }),
+            Modifier.weight(1f),
+        )
+    }
+}
+
+private fun resolveRange(
+    preset: TrendRange,
+    days: List<WellnessDayEntity>,
+    today: LocalDate,
+    customStart: LocalDate?,
+    customEnd: LocalDate?,
+): DateRange {
+    val earliest = days.mapNotNull { WellnessHistory.parse(it.date) }
+        .filter { !it.isAfter(today) }
+        .minOrNull()
+    return when (preset) {
+        TrendRange.All -> DateRange(earliest ?: today.minusDays(29), today)
+        TrendRange.Custom -> {
+            val start = customStart ?: today.minusDays(29)
+            val end = (customEnd ?: today).coerceAtMost(today)
+            if (start.isAfter(end)) DateRange(end, start.coerceAtMost(today)) else DateRange(start, end)
+        }
+        else -> DateRange(today.minusDays((preset.days ?: 7) - 1), today)
+    }
+}
+
+private fun metricValue(
+    metric: TrendMetric,
+    day: WellnessDayEntity,
+    hrvByDate: Map<String, Double>,
+): Double? = when (metric) {
+    TrendMetric.Steps -> day.steps.toDouble()
+    TrendMetric.Sleep -> WellnessMetrics.sleepSeconds(day)?.div(3600.0)
+    TrendMetric.Hrv -> day.hrvLastNight?.takeIf { it > 0.0 } ?: hrvByDate[day.date]
+    TrendMetric.RestingHr -> day.restingHeartRate?.takeIf { it in 1..250 }?.toDouble()
+    TrendMetric.ActiveMinutes -> day.activeSeconds / 60.0
+    TrendMetric.Calories -> day.activeCalories.toDouble()
+    TrendMetric.Stress -> day.stressAvg?.takeIf { it in 0..100 }?.toDouble()
+    TrendMetric.Spo2 -> day.spo2Avg?.takeIf { it in 1..100 }?.toDouble()
+    TrendMetric.Respiration -> day.respirationAvg?.takeIf { it > 0.0 }
+    TrendMetric.BodyBattery -> (day.bodyBatteryLatest ?: day.bodyBatteryMax)
+        ?.takeIf { it in 1..100 }
+        ?.toDouble()
+}
+
+private fun selectedMetricSubtitle(
+    metric: TrendMetric,
+    average: Double?,
+    total: Double?,
+    daysWithMetric: Int,
+    daysRequested: Int,
+): String {
+    if (average == null) {
+        return "No ${metric.label.lowercase(Locale.getDefault())} recorded in this period."
+    }
+    val coverage = "$daysWithMetric of $daysRequested days with data"
+    return when (metric) {
+        TrendMetric.Steps -> "%,d total steps · %s".format(total?.roundToInt() ?: 0, coverage)
+        TrendMetric.Sleep -> "Average per night across $daysWithMetric ${if (daysWithMetric == 1) "day" else "days"} · $coverage"
+        TrendMetric.Hrv -> "Average overnight HRV · $coverage"
+        else -> "Average per day across $daysWithMetric ${if (daysWithMetric == 1) "day" else "days"} · $coverage"
+    }
+}
+
+private fun chartLabels(buckets: List<HistoryBucket>, granularity: HistoryGranularity): List<String> {
+    if (buckets.size > 14) return emptyList()
+    return buckets.map { bucket ->
+        when (granularity) {
+            HistoryGranularity.Daily -> bucket.start.format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()))
+            HistoryGranularity.Weekly -> bucket.start.format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()))
+            HistoryGranularity.Monthly -> bucket.start.format(DateTimeFormatter.ofPattern("MMM", Locale.getDefault()))
         }
     }
 }
 
-private fun deltaNote(days: List<WellnessDayEntity>, suffix: String): String {
-    val values = days.mapNotNull { it.restingHeartRate?.takeIf { value -> value in 1..250 } }
-    if (values.size < 2) return "Not enough resting HR data"
-    val delta = values.last() - values.first()
-    return when {
-        delta < 0 -> "Down ${-delta} bpm $suffix"
-        delta > 0 -> "Up $delta bpm $suffix"
-        else -> "Stable $suffix"
+private fun formatBucketLabel(bucket: HistoryBucket, granularity: HistoryGranularity): String {
+    val includeYear = bucket.start.year != LocalDate.now().year || bucket.end.year != LocalDate.now().year
+    return when (granularity) {
+        HistoryGranularity.Daily -> bucket.start.format(
+            DateTimeFormatter.ofPattern(if (includeYear) "EEE d MMM yyyy" else "EEE d MMM", Locale.getDefault()),
+        )
+        HistoryGranularity.Weekly -> {
+            val formatter = DateTimeFormatter.ofPattern(if (includeYear) "d MMM yyyy" else "d MMM", Locale.getDefault())
+            "${bucket.start.format(formatter)} – ${bucket.end.format(formatter)}"
+        }
+        HistoryGranularity.Monthly -> bucket.start.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()))
     }
 }
 
-private fun formatShortDate(date: String): String = runCatching {
-    LocalDate.parse(date).format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()))
-}.getOrDefault(date)
+private fun formatRange(range: DateRange, today: LocalDate): String {
+    val includeYear = range.start.year != range.end.year || range.start.year != today.year
+    val formatter = DateTimeFormatter.ofPattern(if (includeYear) "d MMM yyyy" else "d MMM", Locale.getDefault())
+    return "${range.start.format(formatter)} – ${range.end.format(formatter)} · ${range.days} " +
+        if (range.days == 1L) "day" else "days"
+}
 
-private fun formatOneDecimal(value: Double): String =
-    if (value == value.roundToInt().toDouble()) value.roundToInt().toString() else "%.1f".format(value)
+private fun trendInsight(
+    days: List<WellnessDayEntity>,
+    average: Double?,
+    total: Double?,
+    daysWithMetric: Int,
+    stepGoal: Int,
+): String {
+    if (days.isEmpty()) {
+        return "No wellness data in this range. Sync your watch to build a trend."
+    }
+    val goalDays = days.count { it.steps >= stepGoal.coerceAtLeast(1) }
+    val sleep = WellnessHistory.average(days) { WellnessMetrics.sleepSeconds(it)?.toDouble() }
+    val hrv = WellnessHistory.average(days) { it.hrvLastNight?.takeIf { value -> value > 0.0 } }
+    val parts = ArrayList<String>()
+    parts.add(
+        "Steps averaged ${"%,d".format(WellnessHistory.average(days) { it.steps.toDouble() }?.roundToInt() ?: 0)} a day " +
+            "and reached the ${"%,d".format(stepGoal.coerceAtLeast(1))} goal on $goalDays of ${days.size} days with data.",
+    )
+    sleep?.let { parts.add("Sleep averaged ${WellnessMetrics.formatSleepDuration(it.roundToInt())}.") }
+    hrv?.let { parts.add("Overnight HRV averaged ${"%.0f".format(it)} ms.") }
+    if (average == null) {
+        parts.add("No values for the selected metric in this period.")
+    } else if (total != null && daysWithMetric > 0) {
+        parts.add("The selected metric is based on $daysWithMetric days and is never zero-filled.")
+    }
+    return parts.joinToString(" ")
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CustomRangeDialog(
+    today: LocalDate,
+    initialStart: LocalDate,
+    initialEnd: LocalDate,
+    onDismiss: () -> Unit,
+    onApply: (LocalDate, LocalDate) -> Unit,
+) {
+    val todayMillis = today.toUtcMillis()
+    val state = rememberDateRangePickerState(
+        initialSelectedStartDateMillis = initialStart.toUtcMillis(),
+        initialSelectedEndDateMillis = initialEnd.toUtcMillis(),
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean = utcTimeMillis <= todayMillis
+        },
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            val start = state.selectedStartDateMillis?.let(::utcMillisToDate)
+            val end = state.selectedEndDateMillis?.let(::utcMillisToDate)
+            val canApply = start != null && end != null &&
+                !start.isAfter(today) && !end.isAfter(today) && !start.isAfter(end)
+            TextButton(
+                onClick = {
+                    if (start != null && end != null && canApply) {
+                        onApply(start, end)
+                    }
+                },
+                enabled = canApply,
+            ) {
+                Text("Apply")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    ) {
+        DateRangePicker(
+            state = state,
+            showModeToggle = false,
+            modifier = Modifier.heightIn(max = 460.dp),
+            title = {
+                Text(
+                    "Select period",
+                    modifier = Modifier.padding(start = PulseSpacing.xl, top = PulseSpacing.lg),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            },
+        )
+    }
+}
+
+private fun LocalDate.toUtcMillis(): Long =
+    atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+private fun utcMillisToDate(millis: Long): LocalDate =
+    Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+
+private fun localDateOf(timestamp: Long): LocalDate =
+    Instant.ofEpochSecond(timestamp).atZone(ZoneId.systemDefault()).toLocalDate()

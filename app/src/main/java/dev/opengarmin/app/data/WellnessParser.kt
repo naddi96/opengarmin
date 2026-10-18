@@ -4,6 +4,7 @@ import dev.opengarmin.protocol.Fit
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZoneOffset
 import kotlin.math.roundToInt
 
 /**
@@ -81,7 +82,11 @@ object WellnessParser {
 
     fun parse(messages: List<Fit.Message>, zone: ZoneId = ZoneId.systemDefault()): List<WellnessDayDraft> {
         if (messages.isEmpty()) return emptyList()
-        val ordered = messages.sortedBy { it.timestamp ?: Long.MAX_VALUE }
+        // Keep FIT file order: `timestamp_16` is only meaningful relative to
+        // the previous full timestamp. Sorting null-timestamp messages to the
+        // end would resolve them against the newest time in the file and can
+        // push early-day samples into the next day.
+        val ordered = messages
         val fallbackTimestamp = ordered.mapNotNull { it.timestamp }.maxOrNull() ?: return emptyList()
 
         val samplesByDate = LinkedHashMap<String, MutableList<WellnessSampleDraft>>()
@@ -90,10 +95,11 @@ object WellnessParser {
         val intensityByDate = HashMap<String, Pair<Int?, Int?>>()
         val bodyBatteryByDate = HashMap<String, MutableList<Int>>()
         val hrvSummaryByDate = HashMap<String, Fit.Message>()
+        val lhaByDate = HashMap<String, Fit.Message>()
         val sleepTransitions = ArrayList<Pair<Long, Stage>>()
         val sleepAssessments = ArrayList<Pair<Long, Int?>>()
 
-        var referenceTimestamp = fallbackTimestamp
+        var referenceTimestamp = ordered.firstOrNull { it.timestamp != null }?.timestamp ?: fallbackTimestamp
         for (message in ordered) {
             message.timestamp?.let { referenceTimestamp = it }
             when (message.name) {
@@ -101,7 +107,15 @@ object WellnessParser {
                     val timestamp = message.timestamp
                         ?: int(message, "timestamp_16")?.let { resolveTimestamp16(referenceTimestamp, it) }
                         ?: referenceTimestamp
-                    val date = dateOf(timestamp, zone)
+                    // Monitoring files carry both UTC `timestamp` and a
+                    // `local_timestamp` wall clock. Prefer the watch's own
+                    // local date: it avoids the date shifting when the phone
+                    // and watch are in different zones (and keeps a midnight
+                    // rollover from becoming a phantom "tomorrow" row).
+                    val date = long(message, "local_timestamp")
+                        ?.takeIf { it in 1 until 0xFFFFFFFFL }
+                        ?.let { dateOfWallClock(it) }
+                        ?: dateOf(timestamp, zone)
                     monitoringByDate.getOrPut(date) { ArrayList() }.add(message)
                     int(message, "heart_rate")?.takeIf { it in 1..250 }?.let {
                         addSample(samplesByDate, date, timestamp, "hr", it.toDouble())
@@ -168,6 +182,14 @@ object WellnessParser {
                     hrvSummaryByDate[date] = message
                 }
 
+                // Firstbeat daily analytics. The FR255 writes the overnight
+                // rMSSD here (field 7) instead of a HRV_STATUS_SUMMARY.
+                "fbt_lha_daily_data" -> {
+                    val timestamp = message.timestamp ?: referenceTimestamp
+                    val date = dateOf(timestamp, zone)
+                    lhaByDate[date] = message
+                }
+
                 "sleep_level" -> {
                     val timestamp = message.timestamp ?: referenceTimestamp
                     val stage = stageOf(int(message, "sleep_level")) ?: continue
@@ -214,6 +236,7 @@ object WellnessParser {
         dates.addAll(samplesByDate.keys)
         dates.addAll(bodyBatteryByDate.keys)
         dates.addAll(hrvSummaryByDate.keys)
+        dates.addAll(lhaByDate.keys)
         dates.addAll(sleepByDate.keys)
 
         return dates.sorted().mapNotNull { date ->
@@ -226,9 +249,18 @@ object WellnessParser {
             val bodyBattery = bodyBatteryByDate[date].orEmpty()
             val sleep = sleepByDate[date]?.resolve(samples)
             val hrvSummary = hrvSummaryByDate[date]
+            val lha = lhaByDate[date]
+            val lhaSleepScore = lha?.let { int(it, "sleep_score") }
+            val hrvSamples = samples.filter { it.kind == "hrv" }.map { it.value }
             val intensity = intensityByDate[date]
 
-            if (totals == null && samples.isEmpty() && sleep == null && hrvSummary == null) {
+            if (totals == null && samples.isEmpty() && sleep == null && hrvSummary == null && lha == null) {
+                return@mapNotNull null
+            }
+            // A monitoring rollover at midnight can produce an all-zero row for
+            // the next local day. It carries no health data and would otherwise
+            // become the "latest" day and hide today's real numbers.
+            if (totals != null && !hasValues(totals) && samples.isEmpty() && sleep == null && hrvSummary == null) {
                 return@mapNotNull null
             }
 
@@ -249,10 +281,10 @@ object WellnessParser {
                 bodyBatteryMin = bodyBattery.minOrNull(),
                 bodyBatteryMax = bodyBattery.maxOrNull(),
                 bodyBatteryLatest = bodyBattery.lastOrNull(),
-                sleepStart = sleep?.start,
-                sleepEnd = sleep?.end,
-                sleepScore = sleep?.score,
-                sleepQuality = sleep?.quality,
+                sleepStart = sleep?.start ?: lha?.let { long(it, "sleep_begin_time_utc") },
+                sleepEnd = sleep?.end ?: lha?.let { long(it, "sleep_end_time_utc") },
+                sleepScore = sleep?.score ?: lhaSleepScore,
+                sleepQuality = sleep?.quality ?: sleepQuality(lhaSleepScore),
                 deepSleepSeconds = sleep?.deepSeconds,
                 lightSleepSeconds = sleep?.lightSeconds,
                 remSleepSeconds = sleep?.remSeconds,
@@ -261,7 +293,9 @@ object WellnessParser {
                 sleepLowestSpo2 = sleep?.lowestSpo2,
                 sleepAvgRespiration = sleep?.avgRespiration,
                 sleepLowestHeartRate = sleep?.lowestHeartRate,
-                hrvLastNight = hrvSummary?.let { double(it, "last_night_average") }?.takeIf { it > 0.0 },
+                hrvLastNight = hrvSummary?.let { double(it, "last_night_average") }?.takeIf { it > 0.0 }
+                    ?: lha?.let { double(it, "rmssd_average_sleep") }?.takeIf { it > 0.0 }
+                    ?: hrvSamples.takeIf { it.isNotEmpty() }?.average(),
                 hrvWeeklyAvg = hrvSummary?.let { double(it, "weekly_average") }?.takeIf { it > 0.0 },
                 hrvStatus = hrvSummary?.let { hrvStatusName(int(it, "status")) },
                 hrvBaselineLow = hrvSummary?.let { double(it, "baseline_balanced_lower") }?.takeIf { it > 0.0 },
@@ -280,6 +314,9 @@ object WellnessParser {
         var activeCalories = 0
         var activeSeconds = 0
     }
+
+    private fun hasValues(totals: MonitoringTotals): Boolean =
+        totals.steps != 0 || totals.distance != 0.0 || totals.activeCalories != 0 || totals.activeSeconds != 0
 
     /**
      * Garmin assigns a night's sleep to the wake-up date. Transitions can
@@ -413,6 +450,14 @@ object WellnessParser {
     private fun dateOf(timestamp: Long, zone: ZoneId): String =
         Instant.ofEpochSecond(timestamp).atZone(zone).toLocalDate().toString()
 
+    /**
+     * `local_timestamp` is a wall clock encoded as Garmin-epoch seconds. The
+     * FIT parser already adds the Garmin epoch, so read it as UTC to recover
+     * the watch's local calendar date without shifting it twice.
+     */
+    private fun dateOfWallClock(timestamp: Long): String =
+        Instant.ofEpochSecond(timestamp).atZone(ZoneOffset.UTC).toLocalDate().toString()
+
     private fun resolveTimestamp16(reference: Long, raw: Int): Long {
         val mask = 0xFFFFL
         var value = (reference and mask.inv()) or (raw.toLong() and mask)
@@ -452,6 +497,9 @@ object WellnessParser {
 
     private fun int(message: Fit.Message, name: String): Int? =
         (field(message, name) as? Number)?.toInt()
+
+    private fun long(message: Fit.Message, name: String): Long? =
+        (field(message, name) as? Number)?.toLong()
 
     private fun double(message: Fit.Message, name: String): Double? =
         (field(message, name) as? Number)?.toDouble()

@@ -19,6 +19,9 @@ object Fit {
     const val RECORD = 20
     const val ACTIVITY = 34
 
+    /** FIT's "invalid" sentinel for uint32 date/time fields. */
+    private const val INVALID_U32 = 0xFFFFFFFFL
+
     private val TIME_FIELDS = setOf(
         "start_time",
         "end_time",
@@ -29,6 +32,8 @@ object Fit {
         "start_of_activity",
         "end_of_previous_activity",
         "wake_up_time",
+        "sleep_begin_time_utc",
+        "sleep_end_time_utc",
     )
 
     data class FileId(
@@ -235,7 +240,7 @@ object Fit {
                 values[253] = timestamp
                 lastTimestamp = timestamp
             } else {
-                (values[253] as? Number)?.let { lastTimestamp = it.toLong() }
+                (values[253] as? Number)?.toLong()?.takeIf { it != INVALID_U32 }?.let { lastTimestamp = it }
             }
 
             messages.add(
@@ -330,7 +335,7 @@ object Fit {
         rawDevFields: List<Pair<FieldDef, ByteArray>>,
         values: Map<Int, Any?>,
     ): Message {
-        val tsRaw = (values[253] as? Number)?.toLong()
+        val tsRaw = (values[253] as? Number)?.toLong()?.takeIf { it != INVALID_U32 }
         val unixTs = tsRaw?.plus(Gfdi.GARMIN_EPOCH_UNIX)
         val fields = ArrayList<FieldValue>(rawFields.size + rawDevFields.size + 1)
 
@@ -344,7 +349,12 @@ object Fit {
             val scaled = decoded.map { scaleValue(it, scale, offset, units) }
             val adjusted = if (name in TIME_FIELDS && field.number != 253) {
                 scaled.map { value ->
-                    if (value is Number) value.toLong() + Gfdi.GARMIN_EPOCH_UNIX else value
+                    if (value is Number) {
+                        val rawValue = value.toLong()
+                        if (rawValue == INVALID_U32) null else rawValue + Gfdi.GARMIN_EPOCH_UNIX
+                    } else {
+                        value
+                    }
                 }
             } else {
                 scaled
@@ -388,7 +398,7 @@ object Fit {
         if (raw.isEmpty()) return emptyList()
         if (baseType == 0x07) return listOfNotNull(decode(baseType, raw, bigEndian))
         val size = baseSize(baseType)
-        if (size <= 0 || raw.size <= size) return listOfNotNull(decode(baseType, raw, bigEndian))
+        if (size <= 0 || raw.size <= size) return listOf(decode(baseType, raw, bigEndian))
         val out = ArrayList<Any?>()
         var pos = 0
         while (pos + size <= raw.size) {
@@ -399,7 +409,8 @@ object Fit {
     }
 
     private fun int(values: Map<Int, Any?>, field: Int): Int? = (values[field] as? Number)?.toInt()
-    private fun long(values: Map<Int, Any?>, field: Int): Long? = (values[field] as? Number)?.toLong()
+    private fun long(values: Map<Int, Any?>, field: Int): Long? =
+        (values[field] as? Number)?.toLong()?.takeIf { it != INVALID_U32 }
     private fun string(values: Map<Int, Any?>, field: Int): String? = values[field] as? String
 
     private fun scaled(

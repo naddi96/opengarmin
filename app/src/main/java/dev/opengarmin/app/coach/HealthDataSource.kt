@@ -21,6 +21,15 @@ data class DailyHealth(
     val stressAvg: Int?,
     val spo2Avg: Int?,
     val respirationAvg: Double?,
+    val sleepSeconds: Int? = null,
+    val sleepScore: Int? = null,
+    val deepSleepSeconds: Int? = null,
+    val lightSleepSeconds: Int? = null,
+    val remSleepSeconds: Int? = null,
+    val awakeSleepSeconds: Int? = null,
+    val hrvLastNight: Double? = null,
+    val hrvStatus: String? = null,
+    val bodyBatteryLatest: Int? = null,
 )
 
 data class HealthSample(
@@ -114,6 +123,19 @@ class RepositoryHealthDataSource(
                 stressAvg = day.stressAvg?.takeIf { it in 0..100 },
                 spo2Avg = day.spo2Avg?.takeIf { it in 1..100 },
                 respirationAvg = day.respirationAvg?.takeIf { it > 0.0 },
+                sleepSeconds = listOfNotNull(
+                    day.deepSleepSeconds,
+                    day.lightSleepSeconds,
+                    day.remSleepSeconds,
+                ).takeIf { it.isNotEmpty() }?.sum(),
+                sleepScore = day.sleepScore,
+                deepSleepSeconds = day.deepSleepSeconds,
+                lightSleepSeconds = day.lightSleepSeconds,
+                remSleepSeconds = day.remSleepSeconds,
+                awakeSleepSeconds = day.awakeSleepSeconds,
+                hrvLastNight = day.hrvLastNight?.takeIf { it > 0.0 },
+                hrvStatus = day.hrvStatus,
+                bodyBatteryLatest = day.bodyBatteryLatest,
             )
         }
     }

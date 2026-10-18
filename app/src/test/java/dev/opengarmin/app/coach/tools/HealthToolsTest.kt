@@ -178,6 +178,44 @@ class HealthToolsTest {
     }
 
     @Test
+    fun `sleep and hrv use real stored nights`() = runBlocking {
+        val withSleep = days + DailyHealth(
+            date = "2026-10-14",
+            steps = 9_000,
+            distanceMeters = 6_750.0,
+            activeCalories = 300,
+            activeSeconds = 2_400,
+            restingHeartRate = 56,
+            avgHeartRate = 80,
+            maxHeartRate = 140,
+            stressAvg = 28,
+            spo2Avg = 97,
+            respirationAvg = 14.2,
+            sleepSeconds = 7 * 3600 + 30 * 60,
+            sleepScore = 82,
+            deepSleepSeconds = 3600,
+            lightSleepSeconds = 4 * 3600,
+            remSleepSeconds = 2 * 3600 + 30 * 60,
+            hrvLastNight = 48.0,
+            hrvStatus = "Balanced",
+        )
+        val sleepRegistry = ToolRegistry(FakeSource(withSleep, workouts)) { today }
+
+        val result = sleepRegistry.execute(
+            "get_sleep",
+            """{"from":"2026-10-14","to":"2026-10-14"}""",
+            ToolScope(),
+        )
+        val json = JSONObject(result.json)
+
+        assertTrue(json.getBoolean("available"))
+        val session = json.getJSONArray("sessions").getJSONObject(0)
+        assertEquals(7.5, session.getDouble("sleepHours"), 0.01)
+        assertEquals(82, session.getInt("sleepScore"))
+        assertEquals(48.0, session.getDouble("hrvMs"), 0.01)
+    }
+
+    @Test
     fun `snapshot is compact and labels unavailable metrics`() = runBlocking {
         val snapshot = registry.snapshot(ToolScope(), days = 7)
         assertTrue(snapshot.json.length < 6_000)

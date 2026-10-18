@@ -105,9 +105,7 @@ class ToolRegistry(
             put(
                 "unavailable",
                 JSONArray().apply {
-                    put("sleep")
-                    put("hrv")
-                    put("floors")
+                    missingMetrics(daily).forEach { put(it) }
                 },
             )
         }
@@ -186,9 +184,7 @@ private class DailySummaryTool(
             put(
                 "unavailable",
                 JSONArray().apply {
-                    put("sleep")
-                    put("hrv")
-                    put("floors")
+                    missingMetrics(days).forEach { put(it) }
                 },
             )
         }
@@ -346,7 +342,7 @@ private class SleepTool(
 ) : BaseTool(dataSource, today) {
     override val definition = LlmToolDefinition(
         name = "get_sleep",
-        description = "Sleep duration, stages and score. Returns available=false when sleep data has not been ingested; never infer sleep from other data.",
+        description = "Sleep duration, stages, score and overnight HRV by day. Returns available=false when sleep data has not been ingested; never infer sleep from other data.",
         parameters = schema(
             required = emptyList(),
             props = mapOf(
@@ -358,17 +354,43 @@ private class SleepTool(
 
     override suspend fun execute(scope: ToolScope, args: JSONObject): ToolResult {
         val (from, to) = range(args, defaultDays = 7, maxDays = 90)
+        val sessions = daily(scope, from, to).filter {
+            it.sleepSeconds != null || it.sleepScore != null || it.hrvLastNight != null
+        }
         val json = JSONObject().apply {
             put("from", from.toString())
             put("to", to.toString())
-            put("available", false)
-            put("sessions", JSONArray())
+            put("available", sessions.isNotEmpty())
             put(
-                "reason",
-                "Sleep files are not ingested yet. Ask the user to sync, or say that sleep data is missing.",
+                "sessions",
+                JSONArray().apply {
+                    sessions.forEach { day ->
+                        put(
+                            JSONObject().apply {
+                                put("date", day.date)
+                                put("sleepHours", day.sleepSeconds?.let { round1(it / 3600.0) } ?: JSONObject.NULL)
+                                put("sleepScore", day.sleepScore ?: JSONObject.NULL)
+                                put("deepMinutes", day.deepSleepSeconds?.div(60) ?: JSONObject.NULL)
+                                put("lightMinutes", day.lightSleepSeconds?.div(60) ?: JSONObject.NULL)
+                                put("remMinutes", day.remSleepSeconds?.div(60) ?: JSONObject.NULL)
+                                put("awakeMinutes", day.awakeSleepSeconds?.div(60) ?: JSONObject.NULL)
+                                put("hrvMs", day.hrvLastNight?.let { round1(it) } ?: JSONObject.NULL)
+                                put("hrvStatus", day.hrvStatus ?: JSONObject.NULL)
+                            },
+                        )
+                    }
+                },
             )
+            if (sessions.isEmpty()) {
+                put("reason", "Sleep and HRV have not been synced for this range. Ask the user to sync after waking.")
+            }
         }
-        return ToolResult(json.toString(), listOf("Sleep · not synced"))
+        val evidence = if (sessions.isEmpty()) {
+            "Sleep · not synced"
+        } else {
+            "Sleep · ${sessions.size} ${dayWord(sessions.size)}"
+        }
+        return ToolResult(json.toString(), listOf(evidence))
     }
 }
 
@@ -506,7 +528,7 @@ private class ComparePeriodsTool(
             required = listOf("metric", "range_a_start", "range_a_end", "range_b_start", "range_b_end"),
             props = mapOf(
                 "metric" to enumProp(
-                    "Metric to compare (sleep/hrv are unavailable until ingested)",
+                    "Metric to compare",
                     listOf("steps", "resting_hr", "active_minutes", "calories", "sleep", "hrv"),
                     "steps",
                 ),
@@ -574,7 +596,8 @@ private class ComparePeriodsTool(
         "resting_hr" -> days.mapNotNull { it.restingHeartRate }.takeIf { it.isNotEmpty() }?.average()
         "active_minutes" -> days.takeIf { it.isNotEmpty() }?.map { it.activeSeconds / 60.0 }?.average()
         "calories" -> days.takeIf { it.isNotEmpty() }?.map { it.activeCalories }?.average()
-        "sleep", "hrv" -> null
+        "sleep" -> days.mapNotNull { it.sleepSeconds }.takeIf { it.isNotEmpty() }?.average()?.div(3600.0)
+        "hrv" -> days.mapNotNull { it.hrvLastNight }.takeIf { it.isNotEmpty() }?.average()
         else -> null
     }
 
@@ -582,6 +605,8 @@ private class ComparePeriodsTool(
         "resting_hr" -> "Resting HR"
         "active_minutes" -> "Active minutes"
         "calories" -> "Calories"
+        "sleep" -> "Sleep"
+        "hrv" -> "HRV"
         else -> metric.replaceFirstChar { it.uppercase() }
     }
 }
@@ -605,6 +630,13 @@ private class RenderChartTool(
         DailyChartMetric("stress", "Stress", "", ChartType.Line) { it.stressAvg?.toDouble() },
         DailyChartMetric("spo2", "SpO2", "%", ChartType.Line) { it.spo2Avg?.toDouble() },
         DailyChartMetric("respiration", "Respiration", "brpm", ChartType.Line) { it.respirationAvg },
+        DailyChartMetric("sleep", "Sleep", "h", ChartType.Bar) {
+            it.sleepSeconds?.div(3600.0)
+        },
+        DailyChartMetric("hrv", "HRV", "ms", ChartType.Line) { it.hrvLastNight },
+        DailyChartMetric("body_battery", "Body Battery", "/100", ChartType.Line) {
+            it.bodyBatteryLatest?.toDouble()
+        },
     )
 
     private val activityMetrics = listOf(
@@ -633,9 +665,9 @@ private class RenderChartTool(
                 ),
                 "metric" to enumProp(
                     "Daily: steps, distance, active_minutes, calories, resting_hr, avg_hr, max_hr, " +
-                        "stress, spo2, respiration. Activities: heart_rate, speed, pace, cadence, " +
+                        "stress, spo2, respiration, sleep, hrv, body_battery. Activities: heart_rate, speed, pace, cadence, " +
                         "altitude, body_battery.",
-                    dailyMetrics.map { it.key } + activityMetrics,
+                    (dailyMetrics.map { it.key } + activityMetrics).distinct(),
                     null,
                 ),
                 "from" to dateProp("Daily chart first day, default 14 days ago"),
@@ -1151,6 +1183,17 @@ private fun DailyHealth.toJson(): JSONObject = JSONObject().apply {
     put("stress", stressAvg ?: JSONObject.NULL)
     put("spo2", spo2Avg ?: JSONObject.NULL)
     put("respiration", respirationAvg ?: JSONObject.NULL)
+    if (sleepSeconds != null) put("sleepHours", round1(sleepSeconds / 3600.0)) else put("sleepHours", JSONObject.NULL)
+    put("sleepScore", sleepScore ?: JSONObject.NULL)
+    put("hrvMs", hrvLastNight?.let { round1(it) } ?: JSONObject.NULL)
+    put("hrvStatus", hrvStatus ?: JSONObject.NULL)
+    put("bodyBattery", bodyBatteryLatest ?: JSONObject.NULL)
+}
+
+private fun missingMetrics(days: List<DailyHealth>): List<String> = buildList {
+    if (days.none { it.sleepSeconds != null || it.sleepScore != null }) add("sleep")
+    if (days.none { it.hrvLastNight != null }) add("hrv")
+    add("floors")
 }
 
 private fun schema(required: List<String>, props: Map<String, JSONObject>): JSONObject =

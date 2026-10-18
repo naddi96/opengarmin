@@ -192,7 +192,7 @@ class MainActivity : ComponentActivity() {
             repository.wellnessDays.collect { list ->
                 wellnessDays.clear()
                 wellnessDays.addAll(list)
-                val latest = list.firstOrNull()
+                val latest = dev.opengarmin.app.data.WellnessMetrics.latestDay(list)
                 if (latest != null) {
                     val (samples, stages) = withContext(Dispatchers.IO) {
                         repository.wellnessSamples(latest.id) to repository.sleepStages(latest.date)
@@ -208,6 +208,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             knownWellnessUids = runCatching { repository.importedWellnessFileIds() }
                 .getOrDefault(emptySet())
+            runCatching { repository.backfillHrvFromSamples() }
             runCatching { repository.backfillWellnessFiles(filesDir) }
             knownWellnessUids = runCatching { repository.importedWellnessFileIds() }
                 .getOrDefault(knownWellnessUids)
@@ -805,7 +806,7 @@ private fun Screen(
             )
         } else {
             if (wellnessDays.isNotEmpty()) {
-                val today = wellnessDays.first()
+                val today = dev.opengarmin.app.data.WellnessMetrics.latestDay(wellnessDays) ?: wellnessDays.first()
                 HealthCard(today) { onSelectWellness(today) }
             }
             Text(

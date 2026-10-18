@@ -132,6 +132,8 @@ data class FitMessageEntity(
 
 data class MessageCount(val messageName: String, val cnt: Int)
 
+data class DailySampleAverage(val date: String, val value: Double)
+
 @Entity(
     tableName = "wellness_days",
     indices = [Index(value = ["date"], unique = true)],
@@ -270,6 +272,13 @@ interface ActivityDao {
 
     @Query("SELECT * FROM wellness_days WHERE date = :date")
     suspend fun wellnessDay(date: String): WellnessDayEntity?
+
+    @Query(
+        "SELECT d.date AS date, AVG(s.value) AS value FROM wellness_samples s " +
+            "JOIN wellness_days d ON d.id = s.dayId " +
+            "WHERE s.kind = :kind AND s.value > 0 GROUP BY d.date",
+    )
+    suspend fun dailySampleAverages(kind: String): List<DailySampleAverage>
 
     @Insert
     suspend fun insertWellnessDay(day: WellnessDayEntity): Long
@@ -563,6 +572,23 @@ class ActivityRepository(private val dao: ActivityDao) {
     suspend fun wellnessDaysBetween(start: String, end: String): List<WellnessDayEntity> =
         dao.wellnessDaysBetween(start, end)
 
+    suspend fun dailySampleAverages(kind: String): List<DailySampleAverage> =
+        dao.dailySampleAverages(kind)
+
+    /**
+     * Fills `hrvLastNight` for days that only have `hrv_value` samples. Older
+     * imports stored those samples without promoting them to the daily row, so
+     * the HRV card appeared empty even though the data was present.
+     */
+    suspend fun backfillHrvFromSamples() {
+        for (row in dao.dailySampleAverages("hrv")) {
+            val day = dao.wellnessDay(row.date) ?: continue
+            if (day.hrvLastNight == null && row.value > 0.0) {
+                dao.updateWellnessDay(day.copy(hrvLastNight = row.value))
+            }
+        }
+    }
+
     suspend fun wellnessSamplesBetween(kind: String, start: Long, end: Long): List<WellnessSampleEntity> =
         dao.wellnessSamplesBetween(kind, start, end)
 
@@ -816,6 +842,7 @@ class ActivityRepository(private val dao: ActivityDao) {
             val spo2 = allSamples.filter { it.kind == "spo2" }.map { it.value }
             val respiration = allSamples.filter { it.kind == "respiration" }.map { it.value }
             val hr = allSamples.filter { it.kind == "hr" }.map { it.value }
+            val hrvSamples = allSamples.filter { it.kind == "hrv" && it.value > 0.0 }.map { it.value }
             val merged = entity.copy(
                 id = id,
                 avgHeartRate = hr.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
@@ -831,6 +858,8 @@ class ActivityRepository(private val dao: ActivityDao) {
                 bodyBatteryMin = bodyBattery.minOrNull() ?: entity.bodyBatteryMin,
                 bodyBatteryMax = bodyBattery.maxOrNull() ?: entity.bodyBatteryMax,
                 bodyBatteryLatest = bodyBattery.lastOrNull() ?: entity.bodyBatteryLatest,
+                hrvLastNight = entity.hrvLastNight
+                    ?: hrvSamples.takeIf { it.isNotEmpty() }?.average(),
             )
             if (merged != entity) dao.updateWellnessDay(merged)
             result.add(merged)
@@ -851,7 +880,10 @@ class ActivityRepository(private val dao: ActivityDao) {
         } ?: return
         val known = dao.importedWellnessFileIds().toHashSet()
         for (file in files) {
-            val key = "file:${file.name}"
+            // v2 re-parses once after adding Firstbeat rMSSD/sleep fields, so
+            // users upgrading at least once get historical HRV from files that
+            // were already marked as imported by the previous parser.
+            val key = "file-v2:${file.name}"
             if (key in known) continue
             val bytes = runCatching { file.readBytes() }.getOrNull() ?: continue
             val parsed = runCatching { Fit.parse(bytes) }.getOrNull() ?: continue
@@ -860,7 +892,7 @@ class ActivityRepository(private val dao: ActivityDao) {
                 continue
             }
             val days = runCatching { importWellness(bytes) }.getOrDefault(emptyList())
-            if (days.isNotEmpty()) markWellnessFileImported(key, "backfill")
+            if (days.isNotEmpty()) markWellnessFileImported(key, "backfill-v2")
         }
     }
 

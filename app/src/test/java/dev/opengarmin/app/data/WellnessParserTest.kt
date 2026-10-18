@@ -96,6 +96,108 @@ class WellnessParserTest {
         assertNotNull(day.sleepStages.firstOrNull { it.stage == "deep" })
     }
 
+    @Test
+    fun `prefers the watch local timestamp for the monitoring date`() {
+        // 00:10 in Rome on 19 Oct is 22:10 UTC on 18 Oct. The watch's own
+        // local_timestamp says 23:50 on 18 Oct, which is the day the steps
+        // belong to.
+        val utcTimestamp = java.time.LocalDateTime.of(2026, 10, 18, 22, 10)
+            .toInstant(java.time.ZoneOffset.UTC).epochSecond
+        val wallClock = java.time.LocalDateTime.of(2026, 10, 18, 23, 50)
+            .toInstant(java.time.ZoneOffset.UTC).epochSecond
+        val day = WellnessParser.parse(
+            listOf(
+                message(
+                    "monitoring",
+                    utcTimestamp,
+                    field(5, "activity_type", 0),
+                    field(9, "cycles_16", 500),
+                    field(11, "local_timestamp", wallClock),
+                ),
+            ),
+            zone,
+        ).single()
+
+        assertEquals("2026-10-18", day.date)
+        assertEquals(1_000, day.steps)
+    }
+
+    @Test
+    fun `drops the all-zero midnight rollover row`() {
+        val drafts = WellnessParser.parse(
+            listOf(
+                monitoring(epoch(2026, 10, 19, 0, 0), cycles16 = 0, distance = 0.0, activeSeconds = 0.0, calories = 0),
+            ),
+            zone,
+        )
+
+        assertEquals(0, drafts.size)
+    }
+
+    @Test
+    fun `resolves timestamp 16 against the previous file timestamp`() {
+        val tenAm = epoch(2026, 10, 18, 10, 0)
+        val drafts = WellnessParser.parse(
+            listOf(
+                monitoring(epoch(2026, 10, 18, 8, 0), cycles16 = 100, distance = 0.0, activeSeconds = 0.0, calories = 0),
+                Fit.Message(
+                    0,
+                    "monitoring",
+                    null,
+                    listOf(
+                        field(5, "activity_type", 0),
+                        field(9, "cycles_16", 200),
+                        // FIT timestamp_16 matches the low 16 bits of the
+                        // watch's Unix-based monitoring time.
+                        field(26, "timestamp_16", (tenAm.toInt() and 0xFFFF)),
+                    ),
+                ),
+                message(
+                    "monitoring_hr_data",
+                    epoch(2026, 10, 18, 23, 59),
+                    field(1, "current_day_resting_heart_rate", 55),
+                ),
+            ),
+            zone,
+        )
+
+        val day = drafts.single()
+        assertEquals("2026-10-18", day.date)
+        assertEquals(400, day.steps)
+    }
+
+    @Test
+    fun `uses hrv samples when the watch has no status summary`() {
+        val day = WellnessParser.parse(
+            listOf(
+                message("hrv_value", epoch(2026, 10, 18, 2, 0), field(0, "value", 44.0)),
+                message("hrv_value", epoch(2026, 10, 18, 3, 0), field(0, "value", 48.0)),
+            ),
+            zone,
+        ).single()
+
+        assertEquals(46.0, day.hrvLastNight!!, 0.01)
+    }
+
+    @Test
+    fun `reads overnight rmssd from firstbeat daily data`() {
+        val day = WellnessParser.parse(
+            listOf(
+                message(
+                    "fbt_lha_daily_data",
+                    epoch(2026, 10, 18, 6, 3),
+                    field(2, "sleep_score", 75),
+                    field(7, "rmssd_average_sleep", 40.5),
+                ),
+            ),
+            zone,
+        ).single()
+
+        assertEquals("2026-10-18", day.date)
+        assertEquals(75, day.sleepScore)
+        assertEquals(40.5, day.hrvLastNight!!, 0.01)
+    }
+
     private fun monitoring(
         timestamp: Long,
         cycles16: Int,

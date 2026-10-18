@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.data.WellnessDayEntity
+import dev.opengarmin.app.data.WellnessMetrics
 import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.formatWellnessDate
 import dev.opengarmin.app.settings.PulseSettings
@@ -63,8 +64,10 @@ fun TodayScreen(
     onAskCoach: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val day = days.firstOrNull()
+    val day = WellnessMetrics.latestDay(days)
     val now = LocalDateTime.now()
+    val today = LocalDate.now()
+    val hrvValue = WellnessMetrics.hrvMs(day, hrSamples)
     val dateLabel = now.format(DateTimeFormatter.ofPattern("EEEE, d MMM", Locale.getDefault()))
     val greeting = when (now.hour) {
         in 5..11 -> "Good morning"
@@ -152,12 +155,22 @@ fun TodayScreen(
             return@Column
         }
 
-        val isToday = day.date == LocalDate.now().toString()
+        val isToday = day.date == today.toString()
         val dayLabel = if (isToday) "today" else formatWellnessDate(day.date)
         val goal = settings.stepGoal.coerceAtLeast(1)
         val restingHr = day.restingHeartRate?.takeIf { it in 1..250 }
         val progress = (day.steps.toFloat() / goal).coerceIn(0f, 1f)
         val remaining = (goal - day.steps).coerceAtLeast(0)
+        if (!isToday && day.date > today.toString()) {
+            PulseCard(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "The watch date is ahead of the phone. Sync the watch clock so new health data lands on the right day.",
+                    modifier = Modifier.padding(PulseSpacing.xlPlus),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PulseColors.Coral,
+                )
+            }
+        }
         PulseCard(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.padding(PulseSpacing.xlPlus),
@@ -274,11 +287,11 @@ fun TodayScreen(
             )
             StatTile(
                 label = "HRV",
-                value = day.hrvLastNight?.let { "%.0f".format(it) } ?: "—",
-                unit = if (day.hrvLastNight != null) "ms" else null,
+                value = hrvValue?.let { "%.0f".format(it) } ?: "—",
+                unit = if (hrvValue != null) "ms" else null,
                 icon = Icons.Outlined.MonitorHeart,
                 iconColor = PulseColors.Teal,
-                footnote = day.hrvStatus ?: "Not synced yet",
+                footnote = day.hrvStatus ?: if (hrvValue != null) "Overnight" else "Not synced yet",
                 modifier = Modifier.weight(1f),
             )
         }
@@ -390,9 +403,10 @@ private fun localInsight(
     goal: Int,
     isToday: Boolean,
 ): String {
-    val today = days.firstOrNull() ?: return "Sync your watch to see an evidence-based summary."
+    val today = WellnessMetrics.latestDay(days) ?: return "Sync your watch to see an evidence-based summary."
+    val previousDays = days.sortedByDescending { it.date }.filter { it.date < today.date }
     val todayResting = today.restingHeartRate?.takeIf { it in 1..250 }
-    val previous = days.drop(1).take(7).mapNotNull { it.restingHeartRate?.takeIf { value -> value in 1..250 } }
+    val previous = previousDays.take(7).mapNotNull { it.restingHeartRate?.takeIf { value -> value in 1..250 } }
     val restingDelta = if (previous.isNotEmpty() && todayResting != null) {
         todayResting - previous.average().roundToInt()
     } else {

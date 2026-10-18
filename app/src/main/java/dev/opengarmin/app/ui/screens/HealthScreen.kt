@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.data.SleepStageEntity
 import dev.opengarmin.app.data.TrainingSummary
 import dev.opengarmin.app.data.WellnessDayEntity
+import dev.opengarmin.app.data.WellnessMetrics
 import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.formatWellnessDate
 import dev.opengarmin.app.ui.components.BarChart
@@ -79,9 +80,12 @@ fun HealthScreen(
     onSync: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val day = days.maxByOrNull { it.date }
+    val day = WellnessMetrics.latestDay(days)
     val dateLabel = day?.let { formatWellnessDate(it.date) }
         ?: LocalDateTime.now().format(DateTimeFormatter.ofPattern("EEEE, d MMM", Locale.getDefault()))
+    val hrvValue = WellnessMetrics.hrvMs(day, samples)
+    val hrvWeekly = WellnessMetrics.hrvWeeklyAverage(days, samples, sampleDate = day?.date)
+    val hrvSamples = samples.filter { it.kind == "hrv" && it.value > 0.0 }.sortedBy { it.timestamp }
     val bodyBattery = samples
         .filter { it.kind == "body_battery" && it.value in 1.0..100.0 }
         .sortedBy { it.timestamp }
@@ -281,7 +285,7 @@ fun HealthScreen(
                             contentDescription = "Sleep score ${day.sleepScore ?: "unknown"}",
                         )
                         Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.xxs)) {
-                            val asleep = (day.deepSleepSeconds ?: 0) + (day.lightSleepSeconds ?: 0) + (day.remSleepSeconds ?: 0)
+                            val asleep = WellnessMetrics.sleepSeconds(day) ?: 0
                             Text(
                                 formatSleepDuration(asleep.coerceAtLeast(0)),
                                 style = MaterialTheme.typography.headlineSmall,
@@ -336,7 +340,7 @@ fun HealthScreen(
                     Spacer(Modifier.weight(1f))
                     day.hrvStatus?.let { StatusLabel(it) }
                 }
-                if (day.hrvLastNight == null) {
+                if (hrvValue == null) {
                     Text("HRV not synced yet", style = MaterialTheme.typography.titleSmall, color = PulseColors.Text)
                     Text(
                         "HRV comes from the watch's overnight recording. It will appear after a night with the watch worn and a sync.",
@@ -346,7 +350,7 @@ fun HealthScreen(
                 } else {
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(
-                            "%.0f".format(day.hrvLastNight),
+                            "%.0f".format(hrvValue),
                             style = MaterialTheme.typography.displaySmall,
                             color = PulseColors.Text,
                         )
@@ -357,10 +361,19 @@ fun HealthScreen(
                             modifier = Modifier.padding(bottom = 4.dp),
                         )
                     }
-                    day.hrvWeeklyAvg?.let {
+                    hrvWeekly?.let {
                         Text("7-day average %.0f ms".format(it), style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted)
                     }
-                    HrvBaseline(day.hrvBaselineLow, day.hrvBaselineHigh, day.hrvLastNight)
+                    if (hrvSamples.size >= 2) {
+                        LineChart(
+                            values = hrvSamples.map { it.value.toFloat() },
+                            labels = chartLabels(hrvSamples.map { it.timestamp }),
+                            color = PulseColors.Teal,
+                            contentDescription = "HRV through the night, average %.0f milliseconds".format(hrvValue),
+                            height = 64.dp,
+                        )
+                    }
+                    HrvBaseline(day.hrvBaselineLow, day.hrvBaselineHigh, hrvValue)
                 }
             }
         }
@@ -460,7 +473,7 @@ fun HealthScreen(
         }
 
         CoachInsightCard(
-            text = healthInsight(day, currentBodyBattery, bodyBatteryStart, stress, training),
+            text = healthInsight(day, currentBodyBattery, bodyBatteryStart, stress, training, hrvValue),
             onAskCoach = onAskCoach,
         )
         Spacer(Modifier.height(PulseSpacing.lg))
@@ -690,6 +703,7 @@ private fun healthInsight(
     start: Int?,
     stress: List<WellnessSampleEntity>,
     training: TrainingSummary,
+    hrvValue: Double?,
 ): String {
     val parts = ArrayList<String>()
     if (current != null && start != null) {
@@ -701,7 +715,7 @@ private fun healthInsight(
     }
     day.sleepScore?.let { parts.add("Last night's sleep score is $it (${day.sleepQuality ?: "recorded"}).") }
     training.latestVo2Max?.let { parts.add("VO₂ max is %.1f.".format(it)) }
-    if (day.sleepScore == null || day.hrvLastNight == null) {
+    if (day.sleepScore == null || hrvValue == null) {
         parts.add("Sleep and HRV will populate after the next overnight sync.")
     }
     return parts.joinToString(" ")

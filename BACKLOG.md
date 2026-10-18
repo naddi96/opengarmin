@@ -95,6 +95,24 @@ downloaded one and reported the rest as up to date. `Gdi.GdxmlLookup` now learns
 key/string pairs from every list or notification and resolves key-only items
 before classification.
 
+Third device-pass fixes (2026-10-18):
+
+- **Date rollover:** a monitoring rollover for the next local day could become
+  the newest `wellness_days` row and shadow today's data. Monitoring days now
+  prefer the watch's `local_timestamp` calendar date, all-zero rollover rows are
+  discarded, the Fit parser treats `0xFFFFFFFF` timestamps as missing, and every
+  screen selects the newest day that is not after the phone's date.
+- **HRV:** `hrv_value` samples are promoted to the nightly HRV value when the
+  watch does not write an `hrv_status_summary`, and existing rows are backfilled
+  on startup. The FR255's proprietary Firstbeat `fbt_lha_daily_data` (global
+  384, field 7 `rmssd_average_sleep`, 16.16 fixed point) is now decoded too.
+  The Health card also plots the overnight HRV samples.
+- **History:** Trends now has 7D/30D/90D/1Y/All/custom date ranges, metric
+  selection (steps, sleep, HRV, resting HR, active minutes, calories, stress,
+  SpO₂, respiration, Body Battery), period averages, daily/weekly/monthly
+  buckets, and an explicit "days with data" count. Sleep and HRV are also
+  exposed to the coach tools and daily charts.
+
 ## Delivery milestones
 
 1. **M0 — Foundation (done):** docs and mockups in place.

@@ -157,6 +157,26 @@ class FitTest {
     }
 
     @Test
+    fun `treats the invalid uint32 timestamp sentinel as missing`() {
+        val w = FitWriter()
+        w.definition(0, Fit.FILE_ID, listOf(Triple(4, 4, 0x86)))
+        w.record(0) { u32(0xFFFFFFFFL) }
+        w.definition(1, Fit.RECORD, listOf(Triple(253, 4, 0x86), Triple(3, 1, 0x02)))
+        w.record(1) {
+            u32(0xFFFFFFFFL)
+            u8(120)
+        }
+
+        val parsed = Fit.parse(w.file())
+
+        val record = parsed.messages.first { it.name == "record" }
+        assertEquals(null, record.timestamp)
+        assertEquals(null, record.fields.first { it.number == 253 }.value)
+        assertEquals(0, parsed.records.size)
+        assertEquals(null, parsed.fileId?.timeCreated)
+    }
+
+    @Test
     fun `handles a truncated definition gracefully`() {
         val bad = byteArrayOf(0x0E, 0x10, 0, 0, 0x01, 0, 0, 0, '.'.code.toByte(), 'F'.code.toByte(), 'I'.code.toByte(), 'T'.code.toByte(), 0, 0, 0x40)
         val parsed = runCatching { Fit.parse(bad) }

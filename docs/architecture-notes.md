@@ -128,10 +128,25 @@ non-activity file of type `FIT_TYPE_49` (SLEEP_DATA) or `FIT_TYPE_44`
 `sleep_stages` table. Already-imported wellness UIDs are recorded in
 `imported_wellness_files` so normal syncs stay incremental.
 
+Monitoring days use the watch's `local_timestamp` wall clock when present (the
+UTC `timestamp` is the fallback), all-zero midnight rollover rows are skipped,
+and FIT `0xFFFFFFFF` time sentinels decode as missing. This keeps a next-day
+rollover from becoming a phantom "tomorrow" row. If a watch exposes `hrv_value`
+samples without an `hrv_status_summary`, their average becomes the nightly HRV
+value; existing rows are backfilled from stored samples at startup.
+
+The FR255 writes overnight HRV in the proprietary Firstbeat
+`fbt_lha_daily_data` message (global 384), field 7
+`rmssd_average_sleep` (fixed-point 16.16, scaled by 65536). It is parsed into
+the same nightly HRV value, and its `sleep_score` is used when no
+`sleep_assessment` message is present.
+
 Important limitations:
 
 - A cut contains the **current day's delta**. Multi-day history is only built by
-  syncing repeatedly; the app cannot yet request older wellness days.
+  syncing repeatedly; the app cannot yet request older wellness days. Trends
+  aggregates every day that has actually been synced and labels partial history
+  instead of zero-filling it.
 - Sleep/HRV depend on the watch emitting a SLEEP_DATA/biometric file. The FR255
   used for development did not have one in its directory after daytime syncs;
   the UI says so explicitly instead of estimating sleep from heart rate.

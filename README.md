@@ -40,9 +40,11 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
   load focus, lactate threshold, performance condition, and the latest training
   effect, all decoded from the watch's `activity_metrics`/`user_metrics` FIT
   messages.
-- **Trends:** Day/Week/Month views over real wellness days, partial-history
-  labels (never zero-filled), goal line, resting-HR trend. Reachable from the
-  Health header.
+- **Trends:** selectable 7-day, 30-day, 90-day, 1-year, all-time or custom
+  date ranges; per-metric charts and averages for steps, sleep, HRV, resting
+  HR, active minutes, calories, stress, SpO₂, respiration and Body Battery;
+  daily/weekly/monthly buckets with partial-history labels (never zero-filled).
+  Reachable from the Health header.
 - **Recovery:** Settings → **Import FIT file** imports a local FIT activity that the watch no longer exposes, without using Garmin Connect or any API.
 - **Activities:** weekly summary, sport filters (Run, Ride, Cardio, Strength,
   Walk, and an Other bucket for every remaining sport), row-to-featured
