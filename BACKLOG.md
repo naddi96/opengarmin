@@ -1,19 +1,22 @@
 # BACKLOG — Pulse UI + AI coach
 
-_Last updated: 2026-10-17. Baseline commit: `519964d`. Phase 0 status: **complete**; implementation intentionally not started._
+_Last updated: 2026-10-18. Baseline commit: `d071f3a`. Phase 0 is complete and epics A–E are implemented; F is partially done._
 
 This backlog turns the Pulse mockups and the OpenAI-compatible coach brief into
 reviewable increments. It assumes the current app is a local-first Android
-Compose app with Room, no auth, and no HTTP/LLM layer; see
+Compose app with Room, no auth, an OpenAI-compatible coach, local conversation
+history, and database backup/restore; see
 [`docs/architecture-notes.md`](docs/architecture-notes.md).
 
 ## How to read this
 
 - **Size:** S ≈ 1–2 days, M ≈ 3–5 days, L ≈ 1–2 weeks (rough, for one developer).
-- **Status:** Phase 0 is done; every implementation story is `Not started`.
-- **Order:** A → B → C → D → E → F. Within B, the data-coverage spike runs early
-  because it is the biggest unknown. The Coach shell (B8) is built after C so it
-  can link to a real provider settings screen; chat becomes live in E.
+- **Status:** Phase 0 and epics A–E are done to the level recorded below; F is
+  partially done. Individual checkboxes are kept as the original acceptance
+  criteria rather than rewritten retroactively.
+- **Order:** A → B → C → D → E → F. The remaining work is primarily F (tests,
+  accessibility, hardening) plus the data-coverage items listed under open
+  questions.
 - **Definition of done for every story:** acceptance criteria met, tests added,
   loading/empty/error states handled, accessibility checked, docs updated,
   `BACKLOG.md` status updated, and a small reviewable commit/PR.
@@ -27,11 +30,11 @@ Compose app with Room, no auth, and no HTTP/LLM layer; see
 | Epic | Outcome | Status |
 |---|---|---|
 | Phase 0 | Architecture, mockups, tokens, backlog | ✅ Done |
-| A. Design system | Token-based Compose primitives matching mockups | Not started |
-| B. Screens | Today, Health, Training, Activities, Coach shell, real data + states | In progress |
-| C. LLM provider settings | Presets, encrypted keys, models, test connection, streaming transport | Not started |
-| D. LLM data access | Typed read-only health tools + evidence + safety | Not started |
-| E. Coach chat | Streaming chat with tool calls, cancel, sources, persistence | Not started |
+| A. Design system | Token-based Compose primitives matching mockups | ✅ Done |
+| B. Screens | Today, Health, Training, Activities, Coach, real data + states | ✅ Done (background sync remains open) |
+| C. LLM provider settings | Presets, encrypted keys, models, test connection, streaming transport | ✅ Done |
+| D. LLM data access | Typed read-only health tools + evidence + safety | ✅ Done |
+| E. Coach chat | Streaming chat with tool calls, cancel, sources, persistence, history | ✅ Done |
 | F. Quality | Tests, accessibility, performance, CI, docs, privacy audit | Partially done |
 
 ## Implementation update — 2026-10-17
@@ -58,14 +61,17 @@ Shipped in this pass (see commits/working tree):
 - **E:** persistent local chat, streaming updates, cancel, tool loop, evidence
   chips from actual calls, provider-gated onboarding, suggestions, errors,
   safety copy.
-- **F:** 25 app JVM tests (tools, FIT insights, mock OpenAI + chat loop), existing 35 protocol
-  tests, CI workflow, provider/tools/testing/privacy docs.
+- **F:** tests, CI workflow, provider/tools/testing/privacy docs. At the time
+  this was 25 app JVM tests and 35 protocol tests; the current counts are 72 app
+  and 44 protocol tests (backup/conversation work added more).
 
 Known deviations / still open:
 
 - Provider/model config uses private SharedPreferences JSON instead of Room
   tables. Keys are still Keystore-encrypted; this avoids a schema migration and
-  is easy to move to Room later.
+  is easy to move to Room later. Coach conversations use the same approach (with
+  a JSON codec and legacy migration) instead of Room tables, so they are included
+  in the backup's `chat.json` rather than in the SQLite snapshot.
 - B1 uses screen state holders in the activity/Compose state rather than
   ViewModels. Screens are split out of `MainActivity` and state survives tab
   changes, but process-death restoration is limited.
@@ -113,15 +119,46 @@ Third device-pass fixes (2026-10-18):
   buckets, and an explicit "days with data" count. Sleep and HRV are also
   exposed to the coach tools and daily charts.
 
+## Implementation update — 2026-10-18
+
+Shipped after the first coach pass:
+
+- **Coach conversation history (E1/E6):** the single `pulse_chat` value is now a
+  multi-conversation store (50 conversations × 200 messages) with a JSON codec,
+  migration from the legacy value, title inference, and preserved evidence and
+  chart specs. The Coach header has History/New conversation, a list showing
+  title/time/message count, reopen, and confirmed delete. The most recent
+  conversation reopens on launch. Stale streaming turns are ignored with a
+  generation counter.
+- **Database backup/restore (new data-ownership surface):** Settings → Data &
+  backup exports a ZIP containing a consistent Room snapshot (`VACUUM INTO` on
+  Android 10+, WAL checkpoint on Android 9), `chat.json`, and a manifest.
+  Import accepts the ZIP or a raw SQLite database, validates header/schema/
+  tables, keeps a safety copy, replaces and force-opens the database, then
+  restarts Room observers. Invalid or newer-schema files are rejected.
+- **Tests/docs:** `ConversationCodecTest` covers round-trip, title inference,
+  streaming→cancelled recovery, and invalid JSON. Manual verification is
+  recorded in `docs/testing.md` and `docs/HANDOFF.md`. Updated README,
+  architecture notes, plan, privacy, tools, testing, and handoff docs.
+
+Remaining on this surface: an instrumented backup/restore test and optional
+backup encryption. Exported ZIPs are currently unencrypted and contain the full
+database.
+
 ## Delivery milestones
 
 1. **M0 — Foundation (done):** docs and mockups in place.
-2. **M1 — Design system usable (A):** theme + component gallery.
-3. **M2 — App aligned (B):** four-tab app with real data and honest empty states.
-4. **M3 — Provider ready (C):** user can configure and test an endpoint.
-5. **M4 — Data tools ready (D):** model can call typed, limited, read-only tools.
-6. **M5 — Coach live (E):** streaming, cancellable, evidence-backed chat.
-7. **M6 — Hardened (F):** automated tests, a11y/perf checks, CI, docs.
+2. **M1 — Design system usable (done, A):** theme + component gallery.
+3. **M2 — App aligned (done, B):** five-tab app with real data and honest empty
+   states; background/periodic sync still open.
+4. **M3 — Provider ready (done, C):** user can configure and test an endpoint.
+5. **M4 — Data tools ready (done, D):** model can call typed, limited, read-only
+   tools.
+6. **M5 — Coach live (done, E):** streaming, cancellable, evidence-backed chat
+   with local multi-conversation history.
+7. **M6 — Hardened (in progress, F):** tests, a11y/perf checks, CI, docs.
+8. **M7 — Data ownership (done, 2026-10-18):** full database + conversation
+   backup/restore.
 
 ---
 
@@ -642,16 +679,21 @@ persistence, and safety UX.
 ### E1. Chat state and persistence
 
 **Size:** L · **Depends on:** C1, D1 · **Risk:** Medium
+**Status (2026-10-18):** implemented with private SharedPreferences JSON
+(`ConversationStore.kt`), not Room. Includes multi-conversation history, legacy
+migration, and a JSON codec test. No ViewModel/state test yet.
+
 **Acceptance criteria**
-- [ ] Room (or equivalent) stores conversations/messages: role, content, evidence
+- [x] Room (or equivalent) stores conversations/messages: role, content, evidence
       metadata, created time, status (streaming/complete/cancelled/error).
-- [ ] Chat survives rotation, process death, and app restart; user can start a
+- [x] Chat survives rotation, process death, and app restart; user can start a
       new conversation and delete one with confirmation.
-- [ ] No API key and no raw provider response headers are stored; health data is
+- [x] No API key and no raw provider response headers are stored; health data is
       only stored locally in the app's DB.
-- [ ] Sending is blocked while a response is streaming; cancel is available.
+- [x] Sending is blocked while a response is streaming; cancel is available.
 - [ ] Migration and ViewModel/state tests cover reload, partial/cancelled
-      messages, and empty conversations.
+      messages, and empty conversations. (`ConversationCodecTest` covers reload
+      and partial/cancelled messages; empty/ViewModel tests remain.)
 
 ### E2. Streaming response loop
 
@@ -868,12 +910,12 @@ Additional gaps found during Phase 0 and now tracked: persisted sync metadata,
 step goal and max-HR settings, provider settings, no CI, no app/UI tests, and the
 need to split `MainActivity.kt` before adding four tabs and streaming chat.
 
-`docs/PLAN.md` is also stale relative to the handoff (it still describes M5/M7
-differently and lists `Device`, `SyncState`, `SleepSession`, `BodyMetric`, and
-FIT/CSV/GPX export as intended, but only activities/records/laps/messages/
-wellness exist). Mapping: `SyncState` → B2, `SleepSession` → B3b. Body metrics
-and export are outside this brief and remain deferred; F7 updates the plan so it
-no longer contradicts the handoff.
+`docs/PLAN.md`, `docs/architecture-notes.md`, and `docs/HANDOFF.md` were brought
+up to date on 2026-10-18: they now describe database version 7, the five-tab UI,
+the coach/provider/tool layers, conversation history, and database backup/
+restore. FIT/CSV/GPX **activity** export is still deferred; the implemented
+export is a full local database plus conversation backup. `SyncState` maps to
+B2 (Room/settings persistence is done; WorkManager background sync is not).
 
 # Open questions
 
@@ -939,8 +981,10 @@ answers are suggestions, not decisions.
 11. **Local-profile scoping:** confirm that "authenticated user" should be
     implemented as an explicit local profile scope (single user, no auth) for
     v1. There is no login and no server.
-12. **Chat persistence:** persist conversations locally in Room, or keep them
-    ephemeral? _Recommendation:_ persist locally with delete/new-chat controls.
+12. **Chat persistence:** ~~persist conversations locally in Room, or keep them
+    ephemeral?~~ **Resolved 2026-10-18:** persist locally in private
+    SharedPreferences JSON with multi-conversation history and confirmed delete;
+    moves to Room if schema-backed querying becomes necessary.
 13. **Provider key storage:** direct Android Keystore AES-GCM (no new dependency)
     versus `androidx.security:security-crypto` (convenience, extra dependency,
     deprecation concerns). _Recommendation:_ direct Keystore.

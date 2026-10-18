@@ -1,29 +1,30 @@
-# Architecture notes — Phase 0 discovery
+# Architecture notes
 
-_Last updated: 2026-10-17. Baseline commit: `519964d` (`Add daily wellness: steps, heart rate, stress, SpO2`)._
+_Last updated: 2026-10-18. Baseline commit: `d071f3a` (backup/restore + coach conversation history)._
 
-This document records the stack as it exists **today**, before the UI and LLM
-work. It is the reference for the design-system and coach work in
-[`BACKLOG.md`](../BACKLOG.md).
+This document describes the app as it is implemented today: a local-first Android
+companion that syncs a Garmin watch over BLE, stores health data in Room, and
+offers an optional OpenAI-compatible coach. Product history and remaining work
+live in [`BACKLOG.md`](../BACKLOG.md).
 
 ## 1. At a glance
 
 | Area | Current choice |
 |---|---|
-| Platform | Native Android app, single activity |
+| Platform | Native Android app, single activity, Compose screens |
 | Language | Kotlin 1.9.24 (JVM 17) |
-| UI | Jetpack Compose + Material 3, Compose BOM `2024.06.00`; no design system, no navigation library, no ViewModel layer |
+| UI | Jetpack Compose + Material 3, Compose BOM `2024.06.00`; Pulse design tokens and reusable components |
 | Build | Gradle 8.7, AGP 8.5.2, KSP, `compileSdk 34`, `minSdk 28`, `targetSdk 34` |
 | Modules | `:protocol` (pure JVM) and `:app` (Android) |
-| Persistence | Room 2.6.1, database version 6, hand-written migrations |
-| Async | Kotlin coroutines + `lifecycleScope`; a `Handler` watchdog for sync timeouts |
+| Persistence | Room 2.6.1, database version 7, hand-written migrations; SharedPreferences for settings, provider configs, and conversations |
+| Async | Kotlin coroutines + `lifecycleScope`; Room flows feed Compose state; a `Handler` watchdog guards sync timeouts |
 | Watch transport | Custom BLE/GFDI/Multi-Link implementation in `:protocol` + `GarminBleClient` |
-| Networking | Only osmdroid map tiles today; no HTTP client or LLM client yet |
-| Auth | **None.** Local-first, single implicit local profile; no account, no server |
-| Secrets | Nothing stored today; no Keystore/EncryptedSharedPreferences usage |
-| Tests | 34 protocol unit tests (`:protocol:test`); **no app unit, integration, or UI tests** |
-| CI | **None** in the repo (no `.github/workflows`, no other CI config) |
-| Docs | Protocol/handoff/plan docs; no architecture, design, provider, or tool docs yet |
+| Networking | OkHttp for the configured OpenAI-compatible endpoint; osmdroid/OpenStreetMap for map tiles |
+| Auth | **None.** Local-first, single implicit local profile; no account or server |
+| Secrets | Provider keys encrypted with Android Keystore AES-GCM |
+| Tests | 44 protocol unit tests and 72 app JVM tests; one instrumented Keystore test |
+| CI | GitHub Actions runs protocol tests, app unit/integration tests, and `assembleDebug` |
+| Docs | Architecture, protocol, handoff, plan, backlog, providers, tools, privacy, testing, design tokens |
 
 ## 2. Module map
 
@@ -36,76 +37,128 @@ protocol/  pure Kotlin/JVM, no Android dependencies
   Fit, FitProfile             FIT parser + generated profile (all messages/fields)
   Proto, Hex, Uuids           defensive protobuf, encoding helpers
 
-app/       Android application
+app/src/main/java/dev/opengarmin/app/
+  MainActivity.kt             activity shell: BLE client, sync coordinator, Room
+                              collectors, settings/provider/coach wiring
   ble/GarminBleClient.kt      scan/connect/reconnect, MTU, write queue
-  sync/SyncCoordinator.kt     capabilities → wellness cut → file list → pull → zlib
-  data/AppDatabase.kt         Room entities/DAO/migrations + ActivityRepository
-  MainActivity.kt             Activity + all Compose UI (1,456 lines)
+  sync/                       SyncCoordinator, foreground service, notifications,
+                              activity progress
+  data/
+    AppDatabase.kt            Room entities/DAO/migrations + ActivityRepository
+    BackupManager.kt          ZIP export/import of the database and conversations
+    WellnessParser.kt         monitoring/sleep/HRV FIT parsing
+    WellnessMetrics.kt        daily display metrics and latest-day selection
+    WellnessHistory.kt        day/week/month trend buckets
+    TrainingMetrics.kt        activity_metrics/user_metrics decoding
+  coach/
+    CoachController.kt        chat state, streaming, cancel, conversation switching
+    ConversationStore.kt      multi-conversation persistence + JSON codec
+    ChatLoop.kt               tool-calling loop and SSE assembly
+    ChatMarkdown.kt           Markdown rendering blocks
+    ChartSpec.kt              renderer-agnostic chart descriptions
+    HealthDataSource.kt       read-only profile-scoped data interface
+    tools/HealthTools.kt      typed coach tools + evidence
+  llm/                        OpenAI-compatible client and provider/model store
+  settings/PulseSettings.kt   profile values and persisted sync metadata
+  ui/
+    PulseApp.kt               tab bar and route state
+    screens/                  Today, Health, Training, Activities, Coach,
+                              Settings, Provider settings, Trends, Activity detail
+    components/               cards, tiles, chips, controls, charts, chat UI
+    theme/                    colors, typography, shapes, spacing
 ```
 
-The `protocol` module is cleanly separated and independently testable. The app
-module is not: BLE, sync, import, data access, formatting, charts, and every
-screen currently live in `MainActivity.kt`.
+The `protocol` module remains independently testable with plain JVM tests. The
+app keeps most state in `MainActivity` and screen-level Compose state rather than
+a separate ViewModel layer; the Coach has its own `CoachController`.
 
 ## 3. UI, state, and routing
 
-- One `ComponentActivity` (`MainActivity`) calls `setContent { MaterialTheme { … } }`.
-- All screens are private composables in the same file:
-  `Screen`, `HealthCard`, `HealthDetail`, `ActivityCard`, `ActivityDetail`,
-  `DataExplorer`, plus chart helpers.
-- State is held in the activity as `mutableStateOf` / `mutableStateListOf`
-  (`activities`, `wellnessDays`, `selectedActivity`, `selectedWellnessDay`,
-  `dataActivity`, `state`, …) and passed down as parameters. There is no
-  ViewModel, repository-flow-to-UI layer, or saved-state handling.
-- Routing is **conditional rendering**, not a navigation graph:
-  `dataActivity != null` → data explorer; `selectedActivity != null` → activity
-  detail; `selectedWellnessDay != null` → health detail; otherwise dashboard.
-  No back-stack, no deep links, no tab bar, no `BackHandler`.
-- Styling is default Material 3 light theme (`themes.xml` inherits
-  `android:Theme.Material.Light.NoActionBar`). There are no custom colors,
-  typography, shapes, or spacing tokens.
-- The current dashboard is a functional developer-oriented page: a header with
-  Sync/Scan/Stop/Disconnect/Log buttons, one health card, an activity list, and
-  optional log/device panels. It does **not** resemble the Pulse mockups.
-- Accessibility is ad hoc: `OutlinedButton`/`Button` provide semantics, but
-  icon-only controls, chart alternatives, focus order, and touch-target sizing
-  are not systematically addressed. The mockups' 40 px chips/suggestions are
-  below the required 44 px and must be raised in the implementation.
+- One `ComponentActivity` (`MainActivity`) calls `setContent { PulseTheme { PulseApp(...) } }`.
+- `MainActivity` owns the BLE client, `SyncCoordinator`, `ActivityRepository`
+  flows, `PulseSettings`, `ProviderStore`, `ChatStore`, and `CoachController`.
+  Room flows are collected into `mutableStateListOf`/`mutableStateOf` values and
+  passed to Compose.
+- `PulseApp` renders five tabs (Today, Health, Training, Activities, Coach) and a
+  small route model: tabs, Trends, Activity detail, Settings, Provider settings,
+  Data explorer, and Device log. A `BackHandler` implements the back stack.
+- Screens live under `ui/screens/`; shared cards, charts, chat bubbles, and
+  controls live under `ui/components/`. Styling comes from `ui/theme/` and the
+  Pulse spacing/color tokens; DM Sans and Space Grotesk are bundled.
+- Settings includes profile values (step goal, max HR), provider management,
+  sync/scan/disconnect controls, the device log, FIT import, and the
+  **Data & backup** section.
+- The Coach screen header exposes **History** and **New conversation**. History
+  lists saved conversations with title, last-used time and message count, and
+  supports reopening and deleting (with confirmation).
+- The activity detail screen shows a map, HR/elevation charts, laps, running
+  dynamics, and a FIT data explorer.
+- Accessibility is handled at the component level (minimum 44 dp targets, text
+  labels on icon buttons); Compose UI tests are still missing.
 
-### Implication
+## 4. Data model and local storage
 
-The mockups need a real app shell (four tabs + detail routes) and a token-based
-component layer. This can be done with Compose without a new UI framework. A
-navigation dependency is **not** required for v1: a small sealed route model +
-`BackHandler` is enough. We should still split screens out of `MainActivity.kt`
-and introduce ViewModels/UI state before adding the coach, otherwise the file
-becomes unmaintainable.
-
-## 4. Data model and ingestion
-
-### Room entities (version 6)
+### Room entities (version 7)
 
 | Table | Purpose | Key columns |
 |---|---|---|
 | `activities` | One imported FIT activity | `sourceKey` unique, `itemUid`, `startTime`, `sport`, `subSport`, distance/duration, avg/max HR, calories, ascent/descent |
-| `records` | Per-sample activity records | `activityId`, timestamp, distance, HR, speed, altitude, cadence, lat/lon |
+| `records` | Per-sample activity records | `activityId`, timestamp, distance, HR, speed, altitude, cadence, lat/lon, Body Battery |
 | `laps` | FIT laps | `activityId`, lap index, duration, distance, HR, speed, calories, ascent/descent |
 | `fit_messages` | Every parsed FIT message/field | `activityId`, `messageName`, timestamp, `fieldsJson`, `unitsJson` |
-| `wellness_days` | Daily wellness roll-up | unique local `date`, steps, distance, active calories/seconds, resting/avg/max HR, stress, SpO2, respiration |
-| `wellness_samples` | Intraday wellness samples | `dayId`, timestamp, `kind` (`hr`, `stress`, `spo2`, `respiration`), value |
+| `wellness_days` | Daily wellness roll-up | unique local `date`, steps, distance, active calories/seconds, HR, stress, SpO2, respiration, Body Battery, sleep, HRV, intensity minutes |
+| `wellness_samples` | Intraday wellness samples | `dayId`, timestamp, `kind` (`hr`, `stress`, `spo2`, `respiration`, `body_battery`, `hrv`), value |
+| `sleep_stages` | Sleep-stage transitions | `date`, `startTime`, `endTime`, `stage` |
+| `imported_wellness_files` | Imported watch file UIDs | `itemUid` primary key, `type`, `importedAt` |
 
-Migrations 1→6 are hand-written in `AppDatabase`; `exportSchema = false`. Any new
-tables (provider configs, conversations, sleep/HRV) require a version bump and a
-tested migration.
+Migrations 1→7 are hand-written in `AppDatabase`; `exportSchema = false`.
+`AppDatabase.SCHEMA_VERSION` is the single version constant used by the database
+and backup validation. A new table or column requires a version bump and a
+migration test.
+
+### Other local state
+
+| Storage | Contents |
+|---|---|
+| `pulse_settings` prefs | Step goal, optional max HR, last sync time/status/error, watch name |
+| `pulse_provider` prefs | Provider preset/base URL/models and a masked key hint |
+| `pulse_secrets` prefs | Base64 IV + AES-GCM ciphertext for the API key; the encryption key stays in AndroidKeyStore |
+| `pulse_chat` prefs | Up to 50 coach conversations × 200 messages as JSON, including evidence and chart specs; the legacy single-chat value is migrated on first read |
+
+Provider keys never enter the Room database or conversation JSON.
+
+### Backup and restore
+
+`data/BackupManager.kt` exports a ZIP containing:
+
+- `opengarmin.db` — a consistent snapshot of the Room database. On Android 10+
+  the snapshot uses `VACUUM INTO`; older versions checkpoint the WAL and copy the
+  database file.
+- `chat.json` — all coach conversations.
+- `backup.json` — app name, schema version, timestamp.
+
+Import accepts that ZIP or a raw SQLite database. It verifies the SQLite header,
+schema version, and the presence of the `activities` table before replacing
+anything. `AppDatabase.replaceDatabase` closes Room, keeps a safety copy of the
+current file, installs the imported database, and forces Room to open/migrate it
+before deleting the safety copy. `MainActivity` cancels its Room flow collectors
+during the swap and restarts them afterwards; `ActivityRepository` resolves its
+DAO through the current `AppDatabase` instance so the coach's read-only data
+source remains valid.
+
+The backup is not encrypted. It contains the full local health database and
+chat text but not provider configuration or API keys, so it should still be
+stored with the same care as the app's own health data.
+
+## 5. Ingestion
 
 ### Activity ingestion
 
 1. `GarminBleClient` connects over BLE (GFDI v2 / Multi-Link), negotiates MTU,
    subscribes to GFDI notifications, and serializes writes.
 2. `SyncCoordinator` performs capabilities/handshake, sends
-   `CutWellnessFilesRequest`, obtains the FileAccess item list, resolves
-   key-only data types (`Gdi.GdxmlLookup`; the watch sends `gdxml_string` only
-   once per type), and pulls new `FIT_TYPE_4` activity files (skipping known
+   `CutWellnessFilesRequest`, pages the FileAccess item list, resolves key-only
+   data types, and pulls new `FIT_TYPE_4` activity files (skipping known
    `itemUid`s).
 3. Each file arrives over the MLR transport pipe as a zlib stream.
 4. `ActivityRepository.importFit` parses with the pure-JVM `Fit.parse`, inserts
@@ -120,26 +173,19 @@ tested migration.
 
 `CutWellnessFilesRequest` makes the watch emit monitoring and settings-change
 files (FR255: `FIT_TYPE_29/32`, `FIT_TYPE_41`). The app pulls them and parses
-`monitoring`, `monitoring_hr_data`, `stress_level` (including the undocumented
-Body Battery field 3), `spo2_data`, `respiration_rate`, and `hrv_value`. Any
-non-activity file of type `FIT_TYPE_49` (SLEEP_DATA) or `FIT_TYPE_44`
-(BIOMETRIC) found in the item list is pulled too, and `sleep_level`,
-`sleep_assessment`, `hrv_status_summary` are parsed into the daily row and the
-`sleep_stages` table. Already-imported wellness UIDs are recorded in
+`monitoring`, `monitoring_hr_data`, `stress_level` (including Body Battery field
+3), `spo2_data`, `respiration_rate`, and `hrv_value`. Any non-activity file of
+type `FIT_TYPE_49` (SLEEP_DATA) or `FIT_TYPE_44` (BIOMETRIC) found in the item
+list is pulled too, and `sleep_level`, `sleep_assessment`, `hrv_status_summary`,
+and Firstbeat `fbt_lha_daily_data` are parsed into the daily row and
+`sleep_stages`. Already-imported wellness UIDs are recorded in
 `imported_wellness_files` so normal syncs stay incremental.
 
 Monitoring days use the watch's `local_timestamp` wall clock when present (the
 UTC `timestamp` is the fallback), all-zero midnight rollover rows are skipped,
-and FIT `0xFFFFFFFF` time sentinels decode as missing. This keeps a next-day
-rollover from becoming a phantom "tomorrow" row. If a watch exposes `hrv_value`
-samples without an `hrv_status_summary`, their average becomes the nightly HRV
-value; existing rows are backfilled from stored samples at startup.
-
-The FR255 writes overnight HRV in the proprietary Firstbeat
-`fbt_lha_daily_data` message (global 384), field 7
-`rmssd_average_sleep` (fixed-point 16.16, scaled by 65536). It is parsed into
-the same nightly HRV value, and its `sleep_score` is used when no
-`sleep_assessment` message is present.
+and FIT `0xFFFFFFFF` time sentinels decode as missing. If a watch exposes
+`hrv_value` samples without an `hrv_status_summary`, their average becomes the
+nightly HRV value; existing rows are backfilled from stored samples at startup.
 
 Important limitations:
 
@@ -148,11 +194,11 @@ Important limitations:
   aggregates every day that has actually been synced and labels partial history
   instead of zero-filling it.
 - Sleep/HRV depend on the watch emitting a SLEEP_DATA/biometric file. The FR255
-  used for development did not have one in its directory after daytime syncs;
-  the UI says so explicitly instead of estimating sleep from heart rate.
+  used for development did not expose one after daytime syncs; the UI says so
+  explicitly instead of estimating sleep from heart rate.
 - Floors are not stored.
-- Watch battery level and connection freshness are not tracked. `lastFile` and
-  `state` are ephemeral UI state, not persisted sync metadata.
+- Watch battery level is not read. Last-sync time, status, error, and watch name
+  are persisted in `PulseSettings`.
 
 ### Data coverage vs. the mockups
 
@@ -165,108 +211,71 @@ Important limitations:
 | Stress, SpO2, respiration | ✅ | `wellness_samples` |
 | **Body Battery** | ✅ | `stress_level` field 3 → `wellness_samples(kind = body_battery)` |
 | **Sleep duration / stages / score** | ⚠️ | parsed from SLEEP_DATA when the watch exposes it; empty state otherwise |
-| **HRV (nightly/status)** | ⚠️ | parsed from `hrv_status_summary`/`hrv_value` when present; empty state otherwise |
+| **HRV (nightly/status)** | ⚠️ | parsed from `hrv_status_summary`/`hrv_value`/Firstbeat data when present; empty state otherwise |
 | **VO₂ max / recovery / training load / LT** | ✅ | `activity_metrics` (140) and `user_metrics` (79) in each activity FIT |
 | **Training effect / performance condition** | ✅ | `activity_metrics` fields |
 | **Floors** | ❌ | not stored |
-| **HR zones** | ⚠️ | derivable from `records.heartRate`; needs a max-HR/zone model |
-| **Step goal** | ❌ | no goal setting; mockup's 10,000 is a placeholder |
-| **Watch battery / "Synced 2 min ago"** | ❌ / ⚠️ | battery not read; last-sync timestamp not persisted |
-| Weekly/monthly aggregates | ⚠️ | computable, but Week/Month trends need accumulated wellness history |
-| AI insight cards | ⚠️ | deterministic summaries from local data; Ask Coach opens the LLM chat |
+| **HR zones** | ✅ | derived from activity records + configured max HR |
+| **Step goal / max HR** | ✅ | `PulseSettings`, editable in Settings |
+| **Watch battery** | ❌ | not read |
+| **"Synced N min ago"** | ✅ | persisted `lastSyncAt` / `lastSyncStatus` |
+| Weekly/monthly aggregates | ✅ | `WellnessHistory` over accumulated days, with partial-history labels |
+| AI insight cards | ✅ | deterministic summaries from local data; Ask Coach opens the LLM chat |
 
-## 5. Auth and multi-user implications
+## 6. Auth, networking, and security
 
 There is no authentication, account, backend, or sync server. All health data is
 in the app's local Room database. This is a deliberate product property
 ("local-first, no Garmin account").
 
-Consequences for the LLM work:
+- The coach uses `ToolScope(profileId = "local")`. The tool layer still takes an
+  explicit scope and refuses unknown profiles, so a future multi-profile or
+  server-backed version does not need to rewrite every query.
+- The provider layer uses OkHttp for SSE chat completions and model discovery.
+  Keys are stored with Android Keystore AES-GCM and are only read while building
+  an HTTP request. The UI receives a masked hint, never the plaintext key.
+- Cleartext HTTP is allowed app-wide for local model endpoints, with a visible
+  warning. A stricter per-endpoint policy remains a hardening item.
+- The provider screen and `docs/privacy.md` explain what is sent to the endpoint.
+  No request/response bodies, authorization headers, keys, or chat content are
+  logged. The device log is protocol-oriented.
+- A generic SQL tool is not implemented; the coach only receives typed,
+  read-only tool results.
 
-- "Scope every tool to the authenticated user" becomes **scope every tool to the
-  current local profile**. The tool layer should still take an explicit
-  `ToolScope`/`profileId` parameter and refuse requests outside it, so a future
-  multi-profile or server-backed version does not need to rewrite every query.
-- There is no client/server boundary today. "Never return the API key to the
-  client" means the settings state exposes only a masked value and the chat layer
-  obtains the key internally when making a request; it is never placed in UI
-  state, tool results, model context, or logs.
-- A generic SQL tool would be especially dangerous here because the same SQLite
-  file holds all local health data. v1 should expose only typed read-only tools;
-  a generic query tool stays an optional, separately threat-modeled story.
+## 7. Testing and CI
 
-## 6. Networking and security baseline
-
-- `INTERNET` and `ACCESS_NETWORK_STATE` are already declared (map tiles).
-- No OkHttp/Retrofit/Ktor dependency exists. OpenAI-compatible streaming (SSE),
-  cancellation, timeouts, and retries need an HTTP client; OkHttp is the
-  smallest standard choice. This is a new dependency and needs approval before
-  implementation.
-- Android blocks cleartext HTTP by default. Ollama/LM Studio presets use
-  `http://localhost:…`; a phone cannot reach a desktop's localhost without a LAN
-  address or `adb reverse`. Supporting local endpoints will require an explicit
-  cleartext policy (preferably limited to loopback/emulator, with an opt-in and a
-  warning for LAN HTTP).
-- API keys should be encrypted with an Android Keystore AES-GCM key. The
-  existing stack has no secret store, so this is new code (not necessarily a new
-  dependency). Keys must be write-only from the UI's perspective, masked on
-  read, excluded from logs, and never sent to tools or the model.
-- A central redacting logger is required: no `Authorization` headers, keys,
-  request/response bodies containing health data, or full tool payloads.
-
-## 7. Testing and CI baseline
-
-- `:protocol:test` has Cobs, CRC16, FIT, GDI, GFDI, MLR, and Multi-Link tests
-  (34 tests, per the handoff).
-- There are **no tests for**: `ActivityRepository` import/dedupe/migrations,
-  `SyncCoordinator`, UI/components, formatting, or anything LLM.
-- No instrumented tests, no Compose UI tests, no screenshot tests, no lint
-  configuration, and no CI workflow.
-- Room in-memory tests on the JVM need Robolectric or instrumentation; an
-  alternative is to put the health-query logic behind a pure interface and test
-  it with fakes, plus a smaller set of instrumented DAO tests.
-- For the LLM integration tests, a local mock OpenAI-compatible server (OkHttp
-  `MockWebServer`) can exercise SSE streaming, tool calls, HTTP errors, and
-  read timeouts without network access.
+- `:protocol:test` — 44 JVM tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, and
+  FIT parsing.
+- `:app:testDebugUnitTest` — 72 JVM tests covering provider tools, FIT insights,
+  OpenAI streaming/errors, the chat loop, chart specs, Markdown rendering,
+  sport categories, wellness parsing/metrics/history, training metrics, and
+  conversation JSON round-trips.
+- `:app:connectedDebugAndroidTest` — `SecretStoreTest` verifies the Keystore
+  round-trip without plaintext in preferences.
+- `.github/workflows/android.yml` runs protocol tests, app unit/integration
+  tests, and `assembleDebug` on pushes and pull requests.
+- Not yet automated: Room migration/importer tests, Compose UI/screenshot tests,
+  and an instrumented end-to-end backup test. The backup and conversation flows
+  were verified manually on a Pixel 10a (Android 17); see `docs/testing.md`.
 
 ## 8. Build and commands
 
 ```bash
 cd /home/naddi/garmin-connect-reverse
 source tools/env.sh
-./tools/gradle-8.7/bin/gradle --no-daemon :protocol:test :app:assembleDebug
-
-ADB="$PWD/tools/android-sdk/platform-tools/adb -s 192.168.1.162:32999"
-$ADB install -r app/build/outputs/apk/debug/app-debug.apk
+./gradlew --no-daemon :protocol:test :app:testDebugUnitTest :app:assembleDebug
 ```
 
 The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. See
 [`HANDOFF.md`](HANDOFF.md) for wireless ADB, watch pairing, and protocol gotchas.
 
-## 9. Handoff review — what is actually left
+## 9. Remaining gaps
 
-`docs/HANDOFF.md` is accurate on milestones M1–M7, but its "latest commit" line
-is stale (it names `e09220e`; the tree is now at `519964d`, which adds M7 daily
-wellness). Its "Immediate next steps" overlap with this task:
-
-| Handoff next step | Relevance to this task | Recommendation |
-|---|---|---|
-| Accumulate multi-day wellness history / request older days | **High** — Trends Week/Month and coach questions need history | Investigate historical wellness request first; ship Trends with real available days + empty states in the meantime |
-| Sleep / HRV | **High** — mockups show both; coach tools list them | Reverse-engineer which files carry them and add ingestion; otherwise show honest "not synced" states |
-| Background/periodic sync + connected-device state | **Medium** — needed for "Synced N min ago"/freshness | Add persisted last-sync metadata and WorkManager sync in the screens epic |
-| Units/axis labels + saved custom plots in explorer | Low — not part of the four mockups | Defer; keep explorer reachable from activity detail |
-| ConnectIQ weather responses | None | Defer/out of scope |
-| Room importer/migration tests | **High** — required by quality epic and new tables | Do with the first schema change (provider configs) |
-
-Additional gaps found in Phase 0:
-
-- No step-goal or max-HR/zone configuration, so the mockups' goal ring and zone
-  percentages have no truthful input yet.
-- No watch battery and no persisted "last synced" time; the mockup header cannot
-  be reproduced literally without new data.
-- No settings surface at all; provider settings, tool scope, privacy notice, and
-  profile values need a home.
-- The current 1,456-line `MainActivity.kt` and activity-owned state will not
-  scale to four tabs, detail routes, and streaming chat. Split into screens,
-  components, and ViewModels as part of Epic A/B, without introducing a new UI
-  framework.
+- Historical wellness requests: the watch only exposes the current day's delta,
+  so history depends on repeated syncs.
+- WorkManager/periodic background sync and a richer connected-device state.
+- Room migration/importer tests and Compose UI tests.
+- Stricter cleartext policy for provider endpoints.
+- Optional encrypted backups; today's ZIP is unencrypted.
+- FIT/CSV/GPX activity export and other planned data-ownership features remain
+  deferred; the implemented export is a full local database backup.

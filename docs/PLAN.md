@@ -1,39 +1,49 @@
 # Project plan
 
+_Last updated: 2026-10-18. Current baseline: `d071f3a`._
+
 ## Goal & scope
 
-Build an **Android** app that connects to a Garmin Forerunner over BLE, syncs
-activities and health data into an **on-device database**, and presents a dashboard —
-with **no Garmin account and no network**.
+Build an **Android** app that connects to a Garmin watch over BLE, syncs
+activities and health data into an **on-device database**, and presents a
+local-first dashboard with an optional OpenAI-compatible coach.
 
-Non-goals for v1: Connect IQ store, firmware updates, Garmin servers, iOS/desktop.
+Non-goals for v1: Connect IQ store, firmware updates, Garmin servers, iOS/desktop,
+cloud accounts, and telemetry.
 
 ## Constraints & decisions
 
 | Decision | Choice |
 |---|---|
-| Protocol generation | GFDI **v2 / Multi-Link** (Forerunner 245/255/955/965) |
-| Reliability layer | plain **ML** first; add **MLR** only if long transfers flake |
-| Language | Kotlin (protocol core is pure JVM so it is unit-testable) |
-| Storage | Room (SQLite) + raw FIT files kept on disk |
-| UI | Jetpack Compose |
-| Data ownership | files + DB local; export to FIT/CSV/GPX on demand |
+| Protocol generation | GFDI **v2 / Multi-Link** (Forerunner 245/255/955/965 and related) |
+| Transport | MLR pipe for file transfers; zlib-compressed FIT payloads |
+| Language | Kotlin; the protocol core is pure JVM and unit-testable |
+| Storage | Room 2.6.1, database **version 7**, raw FIT files kept on disk |
+| Local preferences | SharedPreferences for profile/sync metadata, provider configs, and coach conversations |
+| UI | Jetpack Compose + Material 3 with the Pulse design tokens |
+| Networking | OkHttp only for the user-configured LLM endpoint; osmdroid for map tiles |
+| Secrets | Android Keystore AES-GCM for provider API keys |
+| Data ownership | Local database + FIT files; user-initiated ZIP backup/restore of the database and conversations |
 
 ## Layered architecture
 
 1. **`protocol/` — wire codec (done)**
-   - `Crc16`, `Cobs`, `GfdiMessage` (build/parse), `MessageType`/`Status`.
-   - `MlTransport` (handle management, chunking) behind a `BleLink` interface.
-   - `GfdiSession` (close-all → register GFDI → handshake → file ops).
-   - No Android imports → runs under `:protocol:test`.
+   - `Crc16`, `Cobs`, `Gfdi` framing, `MultiLink`/`Mlr` transport, `Handshake`,
+     `Gdi`, `TransportPipe`.
+   - `Fit`/`FitProfile` parser covering every FIT message and field.
+   - No Android imports; runs under `:protocol:test`.
 
 2. **`app/` — Android integration**
-   - `AndroidBleLink` (BluetoothGatt: scan, connect, MTU, notify queues).
-   - `SyncEngine` (foreground service): discover files → stream → parse → persist.
-   - `FitParser` (port of the FIT profile; start with the files we need).
-   - Room entities: `Device`, `Activity`, `ActivityLap`, `ActivityRecord`,
-     `DailySummary`, `SleepSession`, `BodyMetric`, `SyncState`.
-   - Compose dashboard: device status, last sync, activity list + detail charts.
+   - `GarminBleClient` (scan, connect, reconnect, MTU, write queue) and
+     `SyncCoordinator` (capabilities, directory pagination, wellness cut, item
+     pulls, retries).
+   - `SyncForegroundService` and `SyncNotifications` for progress/finish states.
+   - Room entities/DAO/migrations in `AppDatabase`, plus `ActivityRepository`,
+     wellness/training parsers, and `BackupManager`.
+   - Compose UI in `ui/`: five tabs, detail/settings/provider/log routes, shared
+     components, charts, and the coach chat.
+   - `llm/` provider store and streaming OpenAI-compatible client; `coach/` tool
+     registry, evidence, chat loop, and multi-conversation history.
 
 ## Milestones
 
@@ -42,39 +52,45 @@ Non-goals for v1: Connect IQ store, firmware updates, Garmin servers, iOS/deskto
 | **M0** | RE + protocol core | ✅ protocol library builds; CRC/COBS/framing vectors pass |
 | **M1** | BLE connect & identify | ✅ app connects, registers GFDI, discovers the ML pair |
 | **M2** | Handshake | ✅ DEVICE_INFORMATION / CONFIGURATION / AUTH / time exchange works |
-| **M3** | File listing | ✅ GDI capabilities + `ItemListRequest`; 78 files listed on FR255 |
-| **M4** | FIT download | ✅ transport pipe + zlib verified (3966 → 40292 bytes) |
-| **M5** | Archive | app marks synced files ARCHIVE; no redownload; idempotent |
-| **M6** | FIT → DB | parsed activities + records in Room; dashboard shows them |
-| **M7** | Polish | background sync, error recovery, export, health summaries |
+| **M3** | File listing | ✅ GDI capabilities + paged `ItemListResponse` |
+| **M4** | FIT download | ✅ transport pipe + zlib verified |
+| **M5** | Deduplication | ✅ imported item UIDs skip re-download; idempotent sync |
+| **M6** | FIT → DB | ✅ activities, records, laps, messages, wellness in Room |
+| **M7** | Polish | ✅ daily wellness, Body Battery, sleep/HRV paths, training metrics, foreground sync, manual FIT import |
+| **M8** | Pulse UI + coach | ✅ five-tab UI, settings, provider/model management, streaming tool-calling coach, evidence, charts |
+| **M9** | Local data ownership | ✅ multi-conversation history and full database backup/restore (2026-10-18) |
 
 ## Testing strategy
 
-- **Unit tests** (`:protocol:test`) against documented vectors and round-trips — no
-  hardware needed.
-- **Live capture** (user has watch + Android + ADB):
-  - `adb logcat` filtered to the app's BLE layer for every write/notify frame.
-  - Compare our frames against the official app using Android's **Bluetooth HCI
-    snoop log** (`adb bugreport` → `btsnoop_hci.log`, open in Wireshark) while the
-    official Garmin Connect app performs a sync.
-  - Validate our file download byte-for-byte against `adb pull` of the same FIT or
-    against an export from Garmin Connect.
-- **Golden tests**: record real frames as fixtures for regression.
+- **Unit tests** (`:protocol:test`, `:app:testDebugUnitTest`) against protocol
+  vectors, FIT fixtures, mock OpenAI servers, and pure data/formatting logic.
+- **Instrumented test** for the Android Keystore secret store.
+- **CI** (`.github/workflows/android.yml`) runs protocol tests, app
+  unit/integration tests, and `assembleDebug`.
+- **Device checks** on a real watch/phone cover BLE sync, wellness import,
+  notifications, charts, provider configuration, coach streaming, backup/restore,
+  and conversation history. See [`testing.md`](testing.md).
+- **Live capture** (developer-only): `adb logcat` for BLE frames and, where
+  available, HCI snoop logs for comparison with Garmin Connect.
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| MLR required for large FIT transfers | start with ML; capture official-app traffic to confirm |
-| Pairing/auth differences per model | read `AUTH_NEGOTIATION`/pairing smali; capture live |
-| FIT parsing breadth | use the public FIT profile; parse incrementally |
+| MLR required for large FIT transfers | implemented and verified on FR255 |
+| Pairing/auth differences per model | capability-driven handshake; capture real traffic |
+| FIT parsing breadth | generated profile + typed fallback names for unknown fields |
+| Health-data exposure through the coach | typed read-only tools, explicit scope, local provider option, privacy docs |
+| Destructive restore/import | schema validation, safety copy, confirmation dialog, flow restart |
 | AGPL contamination | independent implementation from protocol facts; see `LICENSING.md` |
 
 ## Immediate next actions
 
-1. `./gradlew :protocol:test` — green.
-2. ✅ M1–M3 validated on a real Forerunner 255 (Pixel 10a, Android 17).
-3. Implement `PullItemDataRequest` and receive file bytes (M4).
-   - request verified on FR255; bytes require the MLR transport pipe
-     (`MLRTransportPipe`, service ids `0x2018..0xE018`, configure/read commands).
-4. Parse FIT → Room DB (M5–M6).
+1. Add Room migration/importer tests and an instrumented end-to-end backup test.
+2. Decide whether to request historical wellness days; until then, accumulate
+   history by syncing repeatedly.
+3. Add WorkManager/periodic background sync and richer connected-device state.
+4. Tighten cleartext handling for non-local provider endpoints.
+5. Add Compose UI/screenshot tests for the tab shell, coach history dialog, and
+   backup settings card.
+6. Consider optional encryption for exported backups.

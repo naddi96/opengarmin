@@ -1,6 +1,6 @@
 # Handoff — OpenGarmin offline sync
 
-_Last updated: 2026-10-17. Written so a fresh session can continue without the
+_Last updated: 2026-10-18. Written so a fresh session can continue without the
 original chat context._
 
 ## Goal
@@ -19,17 +19,17 @@ Decisions already made with the user:
 
 ## Repo state
 
-Latest commit: `e09220e` (pushed). History:
+Latest feature commit: `d071f3a` (pushed to `origin/main`; documentation
+updates follow). Recent history:
 
 ```
+d071f3a Add database backup/restore and coach conversation history
+44e5d14 Fix wellness date rollover and HRV, add history ranges
+d2ef301 Render coach Markdown and add inline health charts
+ba17957 Add OpenGarmin launcher icon
+389fd19 Add Health and Training tabs with watch-only data
+39b80ad Add foreground sync notification with import progress
 e09220e Parse device-initiated GDI over 5043; harden protobuf reader
-4872c82 Parse GFDI 5057 protobuf notifications; act on ConnectionReady
-6de404b Diagnostics: prefer ML pair 2, subscribe dedicated GFDI notify, send sync-ready
-c83a3d1 Sync loop: try Core SyncRequest before capabilities; log GDI probes
-d14f349 Add reconnect/sync loop with per-connection state and watchdog
-8fac632 M4: download and decompress files from the watch
-0b80963 Validate protocol on a real Forerunner 255 and add the GDI file-access layer
-0da90ad Reverse-engineer Garmin watch protocol and scaffold offline companion app
 ```
 
 The tree is clean. `captures/`, `apk/`, `tools/` binary downloads are gitignored.
@@ -43,8 +43,10 @@ The tree is clean. `captures/`, `apk/`, `tools/` binary downloads are gitignored
 - APK: `apk/base.apk` (extracted from the `.apkm`), smali in
   `apk/apktool_out/`, jadx output in `apk/jadx8/` + `apk/jadx8bad/`.
 - Phone: **Pixel 10a, Android 17**. Watch: **Forerunner 255** (bonded).
-- ADB is **wireless**: serial `192.168.1.162:32999`.
-  `ADB="$PWD/tools/android-sdk/platform-tools/adb -s 192.168.1.162:32999"`.
+- ADB is **wireless**; the mDNS serial changes when pairing is renewed. Run
+  `tools/android-sdk/platform-tools/adb devices -l` and use the current serial,
+  e.g. `ADB="$PWD/tools/android-sdk/platform-tools/adb -s <serial>"`. A previous
+  pairing used `192.168.1.162:32999`.
   Packed app id: `dev.opengarmin.app` (debuggable → `run-as` works).
 - Garmin Connect `com.garmin.android.apps.connectmobile` (5.30.1) is installed
   and **signed in**; it is force-stopped before each test. It auto-restarts via
@@ -60,7 +62,9 @@ The tree is clean. `captures/`, `apk/`, `tools/` binary downloads are gitignored
 | M4 file download + decode | ✅ **99,357 compressed bytes → 198,627 bytes** (zlib, valid FIT: `.FIT`, profile 21184) |
 | M5 FIT parser | ✅ pure-JVM parser: all 7,931 messages / every field, plus typed session/lap/record |
 | M6 Room → dashboard | ✅ activities + records + laps + all FIT messages; OSM track map, HR/elevation charts, lap table, data explorer with cross-plots |
-| M7 daily wellness | ✅ steps, distance, active calories/time, resting HR, HR/stress/SpO2/respiration samples; Health card + daily detail |
+| M7 daily wellness | ✅ steps, distance, active calories/time, resting HR, HR/stress/SpO2/respiration samples, Body Battery, sleep/HRV paths; Health card + daily detail |
+| M8 Pulse UI + coach | ✅ five tabs, settings, provider/model management, streaming tool-calling coach, evidence, charts, multi-conversation history |
+| M9 local data ownership | ✅ database + conversation ZIP backup/restore, schema validation, safe reopen |
 
 The M4 download was proven end-to-end earlier: `PullItemDataRequest` →
 `transfer_handle` → MLR transport pipe on service `0x2018` → zlib stream →
@@ -72,7 +76,8 @@ decoded file. See `docs/PROTOCOL.md` §10.5.
   GDI transport, FileAccess, transport pipe, verified test vectors.
 - `docs/protos/` — **141 complete GDI protobuf schemas** extracted from the APK
   (`GDIFileAccess`, `GDICore`, `GDIDataTypes`, `GDIDataTransfer`, extensions…).
-- `docs/samples/fr255_file_list.txt` — a real directory capture (78 items).
+- `docs/samples/fr255_file_list.txt` — a real early directory capture (78
+  items; later FR255 directories have held ~200 entries across pages).
 - Key facts:
   - GFDI message = `[size:2][type:2][payload][crc:2]`, LE, CRC-16 Dallas/Maxim;
     then COBS.
@@ -103,19 +108,27 @@ app/src/main/java/dev/opengarmin/app/
                            dedicated GFDI subscribe, serialized write queue
   sync/SyncCoordinator.kt  capabilities → connection-ready → device requests →
                            list → pull → pipe → zlib → file
-  data/AppDatabase.kt      Room entities/DAO/database (v6: activities, records,
-                           laps, fit_messages, wellness_days, wellness_samples)
+  data/AppDatabase.kt      Room entities/DAO/database (v7: activities, records,
+                           laps, fit_messages, wellness_days, wellness_samples,
+                           sleep_stages, imported_wellness_files)
                            + ActivityRepository (FIT/wellness import, UID dedupe,
                            epoch conversion, lap/coordinate/message backfill)
-  MainActivity.kt          Compose dashboard (Today health card + daily detail,
-                           activity list + OSM track map + HR/elevation charts +
-                           lap table, All data explorer), watchdog/reconnect
+  data/BackupManager.kt    full database + conversation ZIP export/restore
+  coach/                   coach controller, conversation store, chat loop,
+                           tools, charts, Markdown, health data source
+  llm/                     OpenAI-compatible client + encrypted provider store
+  settings/                profile values and persisted sync metadata
+  ui/                      PulseApp routes, screens, components, theme
+  MainActivity.kt          activity shell: BLE/sync, Room collectors, coach and
+                           settings wiring, watchdog/reconnect
 
-docs/                      PROTOCOL, PLAN, LICENSING, samples, protos
+docs/                      PROTOCOL, PLAN, LICENSING, architecture, providers,
+                           tools, privacy, testing, samples, protos
 tools/                     parse_btsnoop.py, extract_protos.py, setup scripts
 ```
 
-Tests: **34 protocol tests pass** (`:protocol:test`). Build:
+Tests: **44 protocol tests** (`:protocol:test`) and **72 app JVM tests**
+(`:app:testDebugUnitTest`) pass, plus the instrumented `SecretStoreTest`. Build:
 `:app:assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## The current blocker / latest discovery (RESOLVED)
@@ -141,7 +154,7 @@ With those fixed, a full sync completed on 2026-10-17 18:20:
 → transport pipe → 99,357 compressed B → 198,627 B FIT`.
 
 A cold start (app data cleared, no cached FIT) was re-verified afterwards:
-fresh Room v6 database, 1 activity, 2,488 records, 6 laps, 7,931 stored FIT
+fresh Room database (v6 at that time; v7 now), 1 activity, 2,488 records, 6 laps, 7,931 stored FIT
 messages, GPS track and daily wellness, dashboard rendered. A second connect
 with the same item UID skips the PULL and reports `SYNC up to date`.
 
@@ -194,7 +207,7 @@ cd /home/naddi/garmin-connect-reverse
 source tools/env.sh
 ./tools/gradle-8.7/bin/gradle --no-daemon :protocol:test :app:assembleDebug
 
-ADB="$PWD/tools/android-sdk/platform-tools/adb -s 192.168.1.162:32999"
+ADB="$PWD/tools/android-sdk/platform-tools/adb -s <wireless-serial>"
 $ADB install -r app/build/outputs/apk/debug/app-debug.apk
 $ADB shell pm grant dev.opengarmin.app android.permission.BLUETOOTH_SCAN
 $ADB shell pm grant dev.opengarmin.app android.permission.BLUETOOTH_CONNECT
@@ -220,9 +233,10 @@ pairing port (pairing needs the 6-digit code).
 - GDI frames are ACKed per chunk (`[id][offset][ok][code]`), not per message.
 - Store `ItemReference.uid` with the activity and skip the PULL when it is
   already in Room; otherwise every connect re-downloads the same FIT.
-- Room DB is version 6: `itemUid` (1→2), `laps` (2→3), record
-  `latitude`/`longitude` (3→4), `fit_messages` (4→5) and wellness tables
-  (5→6) migrations live in `AppDatabase`.
+- Room DB is version 7: `itemUid` (1→2), `laps` (2→3), record
+  `latitude`/`longitude` (3→4), `fit_messages` (4→5), wellness tables (5→6),
+  and sleep/HRV/Body Battery columns + `sleep_stages` +
+  `imported_wellness_files` (6→7) migrations live in `AppDatabase`.
 - Daily wellness comes from `CutWellnessFilesRequest` → `ItemAddedNotification`
   (FIT_TYPE_32). Use `cycles_16 * 2` for steps and resolve `timestamp_16`
   against the last full timestamp. The watch may ignore a re-cut within its
@@ -257,14 +271,13 @@ Added after the M7 handoff above:
   streaming with cancel/timeouts/retries.
 - Typed read-only coach tools with local-profile scope, caps, evidence labels,
   snapshot fallback, and medical-safety prompt. Chat is persisted locally.
-- 25 app JVM tests (tools, FIT insights, OpenAI client, chat loop) on top of the 34 protocol
-  tests; CI workflow added. See `docs/testing.md`, `docs/providers.md`,
-  `docs/tools.md`, `docs/privacy.md`, and `BACKLOG.md`.
+- 25 app JVM tests at the time (72 now) on top of the protocol tests; CI
+  workflow added. See `docs/testing.md`, `docs/providers.md`, `docs/tools.md`,
+  `docs/privacy.md`, and `BACKLOG.md`.
 
-Still open: sleep/HRV/historical wellness ingestion (today only), WorkManager
-background sync, Room migration/importer tests, Compose visual tests, and the
-strict per-endpoint cleartext policy. `docs/PLAN.md` remains stale; `BACKLOG.md`
-is the current status source.
+Still open: historical wellness ingestion (today only), WorkManager background
+sync, Room migration/importer tests, Compose visual tests, and the strict
+per-endpoint cleartext policy.
 
 ### Activity sync fix (2026-10-17)
 
@@ -447,3 +460,54 @@ workouts (Thu 15 Oct: 7.72 km Running; Fri 16 Oct and Mon 12 Oct: Cardio
 sessions). The directory is incremental after that, so the pagination cursor
 plus a routine watch reboot is the reliable recovery path when history and the
 FIT directory disagree.
+
+### Local backup/restore + coach conversation history (2026-10-18)
+
+Settings now has a **Data & backup** section:
+
+- **Export backup** writes a ZIP to a user-selected document-provider location.
+  It contains `opengarmin.db` (a consistent Room snapshot produced with
+  `VACUUM INTO` on Android 10+, or a WAL checkpoint + file copy on Android 9),
+  `chat.json` with all coach conversations, and `backup.json` with the app name,
+  schema version and timestamp.
+- **Import backup** accepts that ZIP or a raw SQLite database. It validates the
+  SQLite header, `user_version` (rejecting newer schemas), and the presence of
+  the `activities` table. `AppDatabase.replaceDatabase` closes Room, keeps a
+  safety copy of the live database, installs and force-opens the imported file
+  so migrations and Room's identity check run, then deletes the safety copy. If
+  anything fails, the previous database is restored.
+- `MainActivity` cancels the Room flow collectors during the swap and restarts
+  them afterwards. `ActivityRepository` now resolves its DAO through the current
+  `AppDatabase` instance, so `RepositoryHealthDataSource`, `ToolRegistry` and the
+  active `CoachController` remain usable across the reopen.
+- A background busy flag disables both backup buttons while an export/import is
+  running. Restore is refused while a sync/import is active.
+
+Coach chat persistence moved from one `pulse_chat` JSON array to a
+multi-conversation store (`ConversationStore.kt`):
+
+- Up to 50 conversations × 200 messages, including role, text, status, evidence
+  labels and chart specs.
+- The legacy single conversation is migrated on first read.
+- The Coach header has **History** and **New conversation**. History shows the
+  title (derived from the first user message), last-used time and message count;
+  tapping reopens it, and delete is confirmed. The most recent conversation is
+  reopened on app start.
+- Stale streaming turns are ignored through a generation counter, so switching
+  conversations or restoring a backup cannot let an old response overwrite the
+  new active conversation.
+
+Verified on a **Pixel 10a / Android 17** against a Forerunner 255 on 2026-10-18:
+
+- Exported a 42.7 MB ZIP to Downloads; `unzip -l` showed the ~364 MB database,
+  `chat.json` and `backup.json`. Importing the same ZIP restored successfully,
+  reloaded the Room flows, and preserved two conversations (one migrated from
+  the old format, one new).
+- Opened the older conversation from History, confirmed it continued normally,
+  deleted the temporary test conversation with confirmation, and verified the
+  remaining conversation survived a force-stop/relaunch.
+- No app exceptions appeared in `logcat`.
+
+New tests: `ConversationCodecTest` (round-trip, title inference, streaming →
+cancelled recovery, invalid JSON). Backup file swapping and Room reopen still
+need an instrumented test; see `docs/testing.md`.

@@ -21,8 +21,8 @@ ANDROID_SERIAL=<serial> ./tools/gradle-8.7/bin/gradle --no-daemon :app:connected
 
 Current coverage:
 
-- `:protocol:test` — 35 tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT.
-- `:app:testDebugUnitTest` — 25 JVM tests:
+- `:protocol:test` — 44 tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT.
+- `:app:testDebugUnitTest` — 72 JVM tests:
   - `HealthToolsTest`: scope rejection, missing-day handling, date-range caps,
     sample caps, activity filters/pages, zone calculation, comparisons,
     unavailable sleep, snapshot budget, unknown tool/bad JSON.
@@ -34,6 +34,13 @@ Current coverage:
   - `ChatLoopIntegrationTest`: streaming tool call → execution → evidence →
     final answer, and the no-tool snapshot fallback, against a local
     OpenAI-compatible mock server.
+  - `ConversationCodecTest`: conversation JSON round-trip, title inference,
+    interrupted/streaming messages, and invalid input.
+  - `ChartSpecTest`, `ChatMarkdownTest`, `SportCategoryTest`: chart parsing and
+    caps, Markdown rendering, and sport-category mapping.
+  - `WellnessParserTest`, `WellnessMetricsTest`, `WellnessHistoryTest`,
+    `TrainingMetricsTest`: monitoring/sleep/HRV parsing, daily metrics and
+    trend bucketing, and legacy/new training-metric encodings.
 - `:app:connectedDebugAndroidTest` — `SecretStoreTest` verifies the Android
   Keystore round-trip and that the plaintext key is not present in preferences.
 
@@ -48,10 +55,11 @@ tool call. Keep real keys and health data out of any mock fixture.
 
 ## Device / manual checks
 
-Wireless ADB example:
+Wireless ADB example (replace `<wireless-serial>` with the value from
+`adb devices -l`):
 
 ```bash
-ADB="tools/android-sdk/platform-tools/adb -s 192.168.1.162:32999"
+ADB="tools/android-sdk/platform-tools/adb -s <wireless-serial>"
 ./tools/gradle-8.7/bin/gradle --no-daemon :app:assembleDebug
 $ADB install -r app/build/outputs/apk/debug/app-debug.apk
 $ADB shell am force-stop com.garmin.android.apps.connectmobile
@@ -76,13 +84,26 @@ Manual matrix used for the UI/coach pass:
   last imported activity. Disconnect or complete the sync and confirm a separate
   dismissible `Sync stopped`/`Sync complete` notification remains.
 - Activity detail: map/HR/elevation/laps/`All data`.
-- Settings: step goal, max HR, sync state, provider summary, device log.
+- Settings: step goal, max HR, sync state, provider summary, device log,
+  Import FIT file, Data & backup.
 - Provider: presets (including DeepSeek), model add/edit/delete/default,
   masked key, test connection, save, remove.
 - Coach: provider gate, suggestions, streaming, tool call, evidence chips,
   cancel, errors, persistence.
+- Coach history: open History, verify titles/times/message counts, switch
+  between conversations, start a new one, delete with confirmation, force-stop
+  and relaunch to verify the latest conversation returns.
+- Backup export: Settings → Data & backup → Export backup, save the ZIP, and
+  verify it contains `opengarmin.db`, `chat.json`, and `backup.json`.
+- Backup restore: import the same backup (or another device's), confirm the
+  warning, and verify activities/wellness and conversations return after the
+  Room flow collectors restart. Importing an invalid/truncated file must show an
+  error and leave the current database intact.
 - Accessibility spot checks: 44 dp controls, TalkBack labels, focus order,
   200% font scale.
+
+Manual flows above were last exercised on a **Pixel 10a / Android 17** against a
+Forerunner 255 on 2026-10-18.
 
 ## CI
 
@@ -97,4 +118,7 @@ no provider key.
   UI-test job with Robolectric or an emulator when it is worth the CI cost.
 - Room migration tests for the existing hand-written migrations. Add them with
   the next schema change.
+- An end-to-end backup/restore instrumented test. `BackupManager` currently has
+  tests at the JSON-codec level only; the file swap and Room reopen are verified
+  manually.
 - Live BLE sync tests (hardware-dependent; see `docs/HANDOFF.md`).

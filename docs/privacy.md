@@ -52,13 +52,30 @@ notification. It shows the current activity index/file size and the last
 imported activity's date, sport, and distance; its content is hidden on the lock
 screen unless the user changes the system notification privacy setting.
 
+## Backups
+
+- **Settings → Data & backup → Export backup** creates a ZIP containing the full
+  local Room database and the coach conversation history. It is written only to
+  the location you choose in the system file picker; the app does not upload it.
+- The ZIP is **not encrypted**. It contains all health data, FIT-derived
+  records, and chat text, so treat it like the app's own data and delete old
+  copies securely. Provider configuration and API keys are not included.
+- **Import backup** validates the archive before replacing anything and keeps a
+  temporary safety copy of the current database until the new one opens
+  successfully. On success, the current database and (when present in the ZIP)
+  the conversations are replaced.
+- A raw SQLite database backup is also accepted. Importing one replaces the
+  database but leaves the current conversations untouched.
+
 ## Data deletion
 
-- **New conversation** clears the current local chat.
+- **New conversation** leaves previous conversations in History if they have
+  messages; use the History list to delete them individually with confirmation.
 - **Remove provider configuration** removes the endpoint, models, and stored
   key.
-- Clearing app data or uninstalling removes the Room database, FIT files, chat,
-  and settings. There is no cloud copy.
+- Clearing app data or uninstalling removes the Room database, FIT files,
+  conversations, and settings. There is no cloud copy.
+- Exported backup files are outside the app's storage; delete them separately.
 
 ## Medical safety
 
@@ -67,5 +84,7 @@ or give medical advice. For concerning patterns it suggests consulting a
 qualified healthcare professional. The UI shows a persistent
 "Informational only · not medical advice" line.
 
-Sleep, HRV, and floors are currently not ingested. The UI and tools show them as
-unavailable; they are never estimated or fabricated.
+Sleep, HRV, and floors are not available on every watch/sync. The app imports
+sleep and HRV when the watch exposes the relevant SLEEP_DATA/biometric files,
+and shows an explicit empty state otherwise. Floors are not ingested. None of
+these metrics are estimated or fabricated.

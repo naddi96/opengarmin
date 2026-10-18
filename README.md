@@ -10,11 +10,12 @@ documented in [`docs/PROTOCOL.md`](docs/PROTOCOL.md) and re-implemented from
 scratch in the `protocol/` module.
 
 > **Status:** working local pipeline. BLE/GFDI sync, FIT + wellness ingestion,
-> the five-tab Pulse UI (Today, Health, Training, Activities, Coach), and an
-> OpenAI-compatible AI coach are implemented. All health data comes from the
-> watch's own FIT files; no Garmin Connect account or REST API is used. See [`BACKLOG.md`](BACKLOG.md) for the remaining
-> data-coverage items (sleep/HRV/history) and [`docs/HANDOFF.md`](docs/HANDOFF.md)
-> for the protocol notes.
+> the five-tab Pulse UI (Today, Health, Training, Activities, Coach), an
+> OpenAI-compatible AI coach with multi-conversation history, and local
+> database backup/restore are implemented. All health data comes from the
+> watch's own FIT files; no Garmin Connect account or REST API is used. See
+> [`BACKLOG.md`](BACKLOG.md) for remaining data-coverage items and
+> [`docs/HANDOFF.md`](docs/HANDOFF.md) for the protocol notes.
 
 ## Why
 
@@ -49,7 +50,9 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
 - **Backup:** Settings → **Export backup** writes a single ZIP with a consistent
   snapshot of the local database (activities, records, laps, FIT messages and
   wellness data) plus the coach conversation history. **Import backup** validates
-  the file and restores it, replacing the local data.
+  the archive and schema version, then replaces the local data; a raw SQLite
+  database exported earlier is also accepted. Provider settings and API keys are
+  not included. The archive is unencrypted, so store it somewhere you trust.
 - **Activities:** weekly summary, sport filters (Run, Ride, Cardio, Strength,
   Walk, and an Other bucket for every remaining sport), row-to-featured
   selection, real GPS/HR trace, heart-rate zone bar, full activity detail with
@@ -64,17 +67,21 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
 
 ## Documentation
 
-- [`docs/architecture-notes.md`](docs/architecture-notes.md) — stack, data model,
-  ingestion, and coverage gaps.
+- [`docs/architecture-notes.md`](docs/architecture-notes.md) — current stack,
+  data model, storage, backup/restore, ingestion, and coverage gaps.
 - [`docs/design/tokens.md`](docs/design/tokens.md) — design tokens; mockups are
   in [`docs/design/mockups/`](docs/design/mockups/).
 - [`docs/providers.md`](docs/providers.md) — provider setup, presets, env config,
   keys, cleartext policy, streaming and troubleshooting.
-- [`docs/tools.md`](docs/tools.md) — coach tools, limits, evidence, safety, and
-  how to add a tool.
-- [`docs/testing.md`](docs/testing.md) — test commands and manual matrix.
-- [`docs/privacy.md`](docs/privacy.md) — what leaves the device and key/log
-  handling.
+- [`docs/tools.md`](docs/tools.md) — coach tools, limits, evidence, conversation
+  history, safety, and how to add a tool.
+- [`docs/testing.md`](docs/testing.md) — test commands and the manual device
+  matrix, including backup/restore and conversation history.
+- [`docs/privacy.md`](docs/privacy.md) — what leaves the device, key/log
+  handling, backups, and data deletion.
+- [`docs/HANDOFF.md`](docs/HANDOFF.md) — protocol findings and chronological
+  implementation notes.
+- [`docs/PLAN.md`](docs/PLAN.md) — layering, milestones, and remaining work.
 - [`BACKLOG.md`](BACKLOG.md) — epics, stories, status, and open questions.
 
 ## Architecture
@@ -90,12 +97,13 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
                                           │  │ FIT parser + Room DB │  │
                                           │  └──────────────────────┘  │
                                           │  ┌──────────────────────┐  │
-                                          │  │ Compose dashboard UI │  │
+                                          │  │ Compose UI + coach   │  │
                                           │  └──────────────────────┘  │
                                           └────────────────────────────┘
-                                                    │ files only
-                                                    ▼
-                                            local storage / export
+                                              │                 │
+                              local DB/files  │                 │ optional HTTPS
+                              + ZIP backup     ▼                 ▼
+                                        on-device storage   configured LLM endpoint
 ```
 
 ## Modules
@@ -103,7 +111,7 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
 | Module | Type | Purpose |
 |---|---|---|
 | `protocol` | Kotlin/JVM library | Wire protocol: GFDI framing, CRC-16, COBS, Multi-Link handles, handshake. No Android deps → fully unit-testable. |
-| `app` | Android app | BLE I/O, sync engine, FIT ingestion, Room database, Compose UI, provider/client/tool/chat layer. |
+| `app` | Android app | BLE I/O, sync engine, FIT ingestion, Room database, Compose UI, provider/client/tool/chat layer, conversation history, and database backup/restore. |
 
 ## Build
 

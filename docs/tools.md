@@ -17,7 +17,8 @@ against the app's Room data and returns compact JSON.
   per side.
 - **Rows/points:** `list_activities` returns at most 50; heart-rate samples at
   most 168; daily summary at most 366 rows; chart series at most 5 activities ×
-  120 points. Charts per answer: at most 3.
+  120 points. The renderer accepts at most 3 charts per answer; the system
+  prompt asks for at most 2.
 - **Chat turn:** the loop allows at most 4 rounds and 8 tool calls.
 - **Time:** tool execution is local and fast; the HTTP call has its own
   timeouts. A tool failure is returned to the model as an error object.
@@ -27,8 +28,9 @@ against the app's Room data and returns compact JSON.
 ### `get_daily_summary(from?, to?)`
 Daily wellness totals/averages: steps, distance, active minutes/calories,
 resting/avg/max HR, stress, SpO2, respiration. Missing metrics are omitted and
-listed under `unavailable` (currently `sleep`, `hrv`, `floors`). Reports
-`daysRequested` vs `daysWithData`; missing days are **not** zero-filled.
+listed under `unavailable` (`sleep`/`hrv` when no data exists for the range, and
+`floors`, which is not ingested). Reports `daysRequested` vs `daysWithData`;
+missing days are **not** zero-filled.
 
 ### `get_steps(from?, to?, granularity?)`
 `granularity` = `day` or `week`. Returns total, average, `daysWithData`, and
@@ -39,8 +41,10 @@ Resting/avg/max HR per available day. `include_samples=true` adds up to 168
 intraday samples, evenly downsampled.
 
 ### `get_sleep(from?, to?)`
-Returns `available: false` and a reason because sleep files are not ingested
-yet. It never infers sleep from activity or HR data.
+Sleep duration, stages, score, and overnight HRV per day, from the SLEEP_DATA/
+HRV/Firstbeat fields the watch exposes. Returns `available: false` and a reason
+when no sleep/HRV rows exist for the range. It never infers sleep from activity
+or HR data.
 
 ### `list_activities(from?, to?, type?, limit?, offset?)`
 Compact workout rows: id, date, sport/category, distance, duration, HR,
@@ -69,7 +73,7 @@ effect, and (only when `max_heart_rate` is 100–250) time in five zones.
 ### `compare_periods(metric, range_a_*, range_b_*)`
 Metrics: steps, resting_hr, active_minutes, calories, sleep, hrv. Uses daily
 averages, reports sample counts, absolute delta, and percent change. Sleep/HRV
-return insufficient data until those files are ingested.
+return `insufficientData: true` when no rows exist in either range.
 
 ### `render_chart(source, metric, ...)`
 Builds a chart from stored data and attaches it to the answer. The model never
@@ -103,6 +107,16 @@ The no-tool fallback labels the snapshot sections it included.
 
 Evidence labels are generated in code, not by the model, so the model cannot
 invent a source.
+
+## Conversation history
+
+The coach stores up to 50 conversations locally (200 messages each) in private
+SharedPreferences JSON. Each message keeps its role, text, status, evidence
+labels, and chart specs, so reopening an old conversation restores its "Data
+used" chips and inline charts. The most recent conversation is reopened on app
+start; all saved conversations are included in a backup ZIP. History is local
+only and is not sent to the provider except as the recent-message window for the
+active conversation.
 
 ## No-tool fallback
 

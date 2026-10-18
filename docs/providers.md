@@ -105,3 +105,12 @@ bounded timeouts (10–15 s in the settings action) and can be retried.
 | "plain HTTP" warning | expected for local HTTP; prefer HTTPS or a trusted LAN |
 | Empty/garbled answers | model may not support streaming; try another model or endpoint |
 | Tool calls never happen | model/endpoint may not support tools; the app falls back to a snapshot |
+
+## Conversation history and backups
+
+Up to 50 conversations are stored locally in private app preferences. Reopening
+one restores its messages, evidence chips, and inline charts; the most recent
+conversation reopens on launch. Deleting a conversation is confirmed in the
+History dialog. History is included as `chat.json` in the database backup ZIP
+(see `docs/privacy.md`); provider configuration and API keys are not included in
+that backup.
