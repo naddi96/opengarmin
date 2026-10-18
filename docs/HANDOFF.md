@@ -14,7 +14,7 @@ Decisions already made with the user:
 - Target: Forerunner 245/255/955/965 → GFDI v2 / Multi-Link.
 - Android app, built from scratch (not a Gadgetbridge fork).
 - v1 scope: sync watch → local storage + dashboard; no cloud.
-- Repo: <https://github.com/naddi96/garmin-connect-reverse>, branch `main`.
+- Repo: <https://github.com/naddi96/opengarmin>, branch `main`.
 - License: AGPL-3.0 (see `docs/LICENSING.md`).
 
 ## Repo state
