@@ -361,13 +361,16 @@ interface ActivityDao {
         SleepStageEntity::class,
         ImportedWellnessFileEntity::class,
     ],
-    version = 7,
+    version = AppDatabase.SCHEMA_VERSION,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun activityDao(): ActivityDao
 
     companion object {
+        const val DB_NAME = "opengarmin.db"
+        const val SCHEMA_VERSION = 7
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -542,12 +545,52 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_6_7,
                 ).build().also { instance = it }
             }
+
+        /**
+         * Replaces the live database with [source] and reopens it, running any
+         * required migrations. The previous database is kept until the new one
+         * opens successfully, then removed. Callers must stop observing flows
+         * before calling this and restart them afterwards.
+         */
+        fun replaceDatabase(context: Context, source: File) {
+            synchronized(this) {
+                val dbFile = context.getDatabasePath(DB_NAME)
+                dbFile.parentFile?.mkdirs()
+                instance?.close()
+                instance = null
+
+                val safety = File(dbFile.path + ".restore")
+                if (dbFile.exists()) dbFile.copyTo(safety, overwrite = true)
+                try {
+                    File(dbFile.path + "-wal").delete()
+                    File(dbFile.path + "-shm").delete()
+                    source.copyTo(dbFile, overwrite = true)
+                    // Force Room to open the file now, so migrations and the
+                    // schema identity are validated before the old file is gone.
+                    get(context).openHelper.writableDatabase
+                } catch (t: Throwable) {
+                    runCatching { instance?.close() }
+                    instance = null
+                    if (safety.exists()) {
+                        runCatching { safety.copyTo(dbFile, overwrite = true) }
+                        File(dbFile.path + "-wal").delete()
+                        File(dbFile.path + "-shm").delete()
+                        runCatching { get(context) }
+                    }
+                    throw t
+                } finally {
+                    safety.delete()
+                }
+            }
+        }
     }
 }
 
-class ActivityRepository(private val dao: ActivityDao) {
-    val activities: Flow<List<ActivityEntity>> = dao.observeAll()
-    val wellnessDays: Flow<List<WellnessDayEntity>> = dao.observeWellnessDays()
+class ActivityRepository(private val database: () -> AppDatabase) {
+    private val dao: ActivityDao get() = database().activityDao()
+
+    val activities: Flow<List<ActivityEntity>> get() = dao.observeAll()
+    val wellnessDays: Flow<List<WellnessDayEntity>> get() = dao.observeWellnessDays()
 
     suspend fun records(activityId: Long): List<RecordEntity> = dao.records(activityId)
 

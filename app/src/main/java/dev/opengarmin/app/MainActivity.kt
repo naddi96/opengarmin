@@ -70,6 +70,7 @@ import dev.opengarmin.app.coach.tools.ToolRegistry
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.ActivityRepository
 import dev.opengarmin.app.data.AppDatabase
+import dev.opengarmin.app.data.BackupManager
 import dev.opengarmin.app.data.FitMessageEntity
 import dev.opengarmin.app.data.LapEntity
 import dev.opengarmin.app.data.RecordEntity
@@ -86,6 +87,7 @@ import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseTheme
 import dev.opengarmin.protocol.Hex
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -116,7 +118,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var settings: PulseSettings
     private lateinit var providerStore: ProviderStore
     private lateinit var coachController: CoachController
+    private lateinit var chatStore: ChatStore
     private lateinit var healthDataSource: RepositoryHealthDataSource
+    private val dataJobs = mutableListOf<Job>()
 
     private val devices = mutableStateListOf<DeviceEntry>()
     private val logs = mutableStateListOf<String>()
@@ -140,6 +144,8 @@ class MainActivity : ComponentActivity() {
     private var importing by mutableStateOf(false)
     private var activityProgress by mutableStateOf<ActivitySyncProgress?>(null)
     private var lastImportedLabel by mutableStateOf<String?>(null)
+    private var backupStatus by mutableStateOf<String?>(null)
+    private var backupBusy by mutableStateOf(false)
     private var importedThisSync = 0
     private var syncNotificationActive = false
     private var knownWellnessUids: Set<String> = emptySet()
@@ -169,42 +175,19 @@ class MainActivity : ComponentActivity() {
             osmdroidTileCache = File(osmdroidBasePath, "tiles")
         }
 
-        repository = ActivityRepository(AppDatabase.get(this).activityDao())
+        repository = ActivityRepository { AppDatabase.get(this) }
         settings = PulseSettings(this)
         providerStore = ProviderStore(this)
+        chatStore = ChatStore(this)
         healthDataSource = RepositoryHealthDataSource(repository)
         coachController = CoachController(
             scope = lifecycleScope,
             providerStore = providerStore,
             tools = ToolRegistry(healthDataSource),
-            chatStore = ChatStore(this),
+            chatStore = chatStore,
             settings = settings,
         )
-        lifecycleScope.launch {
-            repository.activities.collect { list ->
-                activities.clear()
-                activities.addAll(list)
-                val rows = withContext(Dispatchers.IO) { runCatching { repository.trainingRows() }.getOrDefault(emptyList()) }
-                trainingSummary = dev.opengarmin.app.data.TrainingMetrics.build(list, rows)
-            }
-        }
-        lifecycleScope.launch {
-            repository.wellnessDays.collect { list ->
-                wellnessDays.clear()
-                wellnessDays.addAll(list)
-                val latest = dev.opengarmin.app.data.WellnessMetrics.latestDay(list)
-                if (latest != null) {
-                    val (samples, stages) = withContext(Dispatchers.IO) {
-                        repository.wellnessSamples(latest.id) to repository.sleepStages(latest.date)
-                    }
-                    latestHrSamples = samples
-                    latestSleepStages = stages
-                } else {
-                    latestHrSamples = emptyList()
-                    latestSleepStages = emptyList()
-                }
-            }
-        }
+        observeDatabase()
         lifecycleScope.launch(Dispatchers.IO) {
             knownWellnessUids = runCatching { repository.importedWellnessFileIds() }
                 .getOrDefault(emptySet())
@@ -382,6 +365,10 @@ class MainActivity : ComponentActivity() {
                     onExploreData = { openDataExplorer(it) },
                     onCloseData = { closeDataExplorer() },
                     onImportFit = { uri -> importFitFromUri(uri) },
+                    backupStatus = backupStatus,
+                    backupBusy = backupBusy,
+                    onExportBackup = { uri -> exportBackup(uri) },
+                    onImportBackup = { uri -> importBackup(uri) },
                 )
             }
         }
@@ -399,6 +386,104 @@ class MainActivity : ComponentActivity() {
                 } else {
                     log("no bonded Garmin watch found")
                 }
+            }
+        }
+    }
+
+    /** Starts (or restarts) the Room flow collectors after the database is reopened. */
+    private fun observeDatabase() {
+        dataJobs.forEach { it.cancel() }
+        dataJobs.clear()
+        dataJobs += lifecycleScope.launch {
+            repository.activities.collect { list ->
+                activities.clear()
+                activities.addAll(list)
+                val rows = withContext(Dispatchers.IO) {
+                    runCatching { repository.trainingRows() }.getOrDefault(emptyList())
+                }
+                trainingSummary = dev.opengarmin.app.data.TrainingMetrics.build(list, rows)
+            }
+        }
+        dataJobs += lifecycleScope.launch {
+            repository.wellnessDays.collect { list ->
+                wellnessDays.clear()
+                wellnessDays.addAll(list)
+                val latest = dev.opengarmin.app.data.WellnessMetrics.latestDay(list)
+                if (latest != null) {
+                    val (samples, stages) = withContext(Dispatchers.IO) {
+                        repository.wellnessSamples(latest.id) to repository.sleepStages(latest.date)
+                    }
+                    latestHrSamples = samples
+                    latestSleepStages = stages
+                } else {
+                    latestHrSamples = emptyList()
+                    latestSleepStages = emptyList()
+                }
+            }
+        }
+    }
+
+    private fun exportBackup(uri: Uri) {
+        if (backupBusy) return
+        backupBusy = true
+        backupStatus = "Creating backup…"
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { BackupManager.export(this@MainActivity, uri, chatStore) }
+            }
+            backupBusy = false
+            backupStatus = result.fold(
+                onSuccess = { "Backup saved. It contains the database and coach conversations." },
+                onFailure = { it.message ?: "Could not create the backup." },
+            )
+            log("BACKUP export: ${result.fold({ "ok" }, { it.message ?: "failed" })}")
+        }
+    }
+
+    private fun importBackup(uri: Uri) {
+        if (backupBusy) return
+        if (state == "syncing" || state == "importing") {
+            backupStatus = "Wait for the current sync to finish before restoring."
+            return
+        }
+        backupBusy = true
+        backupStatus = "Restoring backup…"
+        dataJobs.forEach { it.cancel() }
+        dataJobs.clear()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { BackupManager.import(this@MainActivity, uri, chatStore) }
+            }
+            backupBusy = false
+            result.onSuccess { imported ->
+                selectedActivity = null
+                selectedRecords = emptyList()
+                selectedLaps = emptyList()
+                selectedDynamics = null
+                selectedGps = null
+                closeDataExplorer()
+                selectedWellnessDay = null
+                wellnessSamples = emptyList()
+                latestHrSamples = emptyList()
+                latestSleepStages = emptyList()
+                lastImportedLabel = null
+                activities.clear()
+                wellnessDays.clear()
+                knownWellnessUids = withContext(Dispatchers.IO) {
+                    runCatching { repository.importedWellnessFileIds() }.getOrDefault(emptySet())
+                }
+                observeDatabase()
+                coachController.reloadAfterRestore()
+                backupStatus = if (imported.chatRestored) {
+                    "Backup restored. Activities, wellness data and conversations were replaced."
+                } else {
+                    "Database restored. Conversations were left unchanged (the backup has none)."
+                }
+                log("BACKUP restore: ok")
+            }.onFailure { error ->
+                observeDatabase()
+                backupStatus = error.message ?: "Could not restore the backup."
+                log("BACKUP restore failed: ${error.message}")
             }
         }
     }

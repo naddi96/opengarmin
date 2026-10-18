@@ -46,6 +46,10 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
   daily/weekly/monthly buckets with partial-history labels (never zero-filled).
   Reachable from the Health header.
 - **Recovery:** Settings → **Import FIT file** imports a local FIT activity that the watch no longer exposes, without using Garmin Connect or any API.
+- **Backup:** Settings → **Export backup** writes a single ZIP with a consistent
+  snapshot of the local database (activities, records, laps, FIT messages and
+  wellness data) plus the coach conversation history. **Import backup** validates
+  the file and restores it, replacing the local data.
 - **Activities:** weekly summary, sport filters (Run, Ride, Cardio, Strength,
   Walk, and an Other bucket for every remaining sport), row-to-featured
   selection, real GPS/HR trace, heart-rate zone bar, full activity detail with
@@ -54,7 +58,8 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
   Ollama, LM Studio, vLLM, Custom), encrypted API keys, model management,
   connection test, streaming Markdown chat with cancel, typed read-only health
   tools, code-generated evidence chips, and inline trend/activity charts
-  (including overlaid multi-workout comparisons).
+  (including overlaid multi-workout comparisons). Conversation history keeps up
+  to 50 chats locally; reopen or delete old conversations from the Coach header.
 - **Local-first:** no account, backend, telemetry, or cloud copy.
 
 ## Documentation

@@ -93,6 +93,10 @@ fun PulseApp(
     onExploreData: (ActivityEntity) -> Unit,
     onCloseData: () -> Unit,
     onImportFit: (android.net.Uri) -> Unit,
+    backupStatus: String?,
+    backupBusy: Boolean,
+    onExportBackup: (android.net.Uri) -> Unit,
+    onImportBackup: (android.net.Uri) -> Unit,
 ) {
     var tabName by rememberSaveable { mutableStateOf(PulseTab.Today.name) }
     var routeName by rememberSaveable { mutableStateOf(AppRoute.Tabs.name) }
@@ -251,6 +255,10 @@ fun PulseApp(
                 onDisconnect = onDisconnect,
                 onShowLog = { routeName = AppRoute.Log.name },
                 onImportFit = onImportFit,
+                backupStatus = backupStatus,
+                backupBusy = backupBusy,
+                onExportBackup = onExportBackup,
+                onImportBackup = onImportBackup,
             )
             AppRoute.Provider -> ProviderSettingsScreen(
                 store = providerStore,

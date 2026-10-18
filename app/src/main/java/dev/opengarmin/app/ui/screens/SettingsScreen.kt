@@ -11,9 +11,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,14 +57,28 @@ fun SettingsScreen(
     onDisconnect: () -> Unit,
     onShowLog: () -> Unit,
     onImportFit: (Uri) -> Unit,
+    backupStatus: String?,
+    backupBusy: Boolean,
+    onExportBackup: (Uri) -> Unit,
+    onImportBackup: (Uri) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var goalText by remember(settings.stepGoal) { mutableStateOf(settings.stepGoal.toString()) }
     var maxHrText by remember(settings.maxHeartRate) { mutableStateOf(settings.maxHeartRate?.toString() ?: "") }
     var savedMessage by remember { mutableStateOf<String?>(null) }
+    var pendingRestore by remember { mutableStateOf<Uri?>(null) }
     val fitPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onImportFit(uri)
     }
+    val backupExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri ->
+        if (uri != null) onExportBackup(uri)
+    }
+    val backupImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) pendingRestore = uri
+    }
+    val timestamp = remember { SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()) }
 
     Column(
         modifier = modifier
@@ -229,6 +245,49 @@ fun SettingsScreen(
             }
         }
 
+        SectionLabel("Data & backup")
+        PulseCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(PulseSpacing.xl),
+                verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+            ) {
+                Text(
+                    "Export every activity, wellness sample and coach conversation to a single backup file. The file stays wherever you save it; nothing is uploaded.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PulseColors.TextMuted,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+                    PrimaryButton(
+                        if (backupBusy) "Working…" else "Export backup",
+                        onClick = { backupExporter.launch("opengarmin-backup-$timestamp.zip") },
+                        enabled = !backupBusy,
+                    )
+                    PrimaryButton(
+                        "Import backup",
+                        onClick = {
+                            backupImporter.launch(
+                                arrayOf(
+                                    "application/zip",
+                                    "application/octet-stream",
+                                    "application/x-sqlite3",
+                                    "*/*",
+                                ),
+                            )
+                        },
+                        enabled = !backupBusy,
+                    )
+                }
+                backupStatus?.let {
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = PulseColors.Teal)
+                }
+                Text(
+                    "Restoring replaces all data currently on this device. Importing a database-only backup leaves the current conversations untouched.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                )
+            }
+        }
+
         SectionLabel("About")
         PulseCard(modifier = Modifier.fillMaxWidth()) {
             Column(
@@ -249,5 +308,28 @@ fun SettingsScreen(
             }
         }
         Spacer(Modifier.padding(bottom = PulseSpacing.xl))
+    }
+
+    pendingRestore?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { pendingRestore = null },
+            title = { Text("Restore backup?") },
+            text = {
+                Text(
+                    "This replaces every activity, wellness sample and coach conversation on this device. It cannot be undone.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRestore = null
+                    onImportBackup(uri)
+                }) {
+                    Text("Restore", color = PulseColors.Coral)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRestore = null }) { Text("Cancel") }
+            },
+        )
     }
 }

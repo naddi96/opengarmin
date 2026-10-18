@@ -1,6 +1,5 @@
 package dev.opengarmin.app.coach
 
-import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -18,8 +17,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import org.json.JSONObject
-import org.json.JSONArray
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
 enum class MessageStatus { Complete, Streaming, Cancelled, Error }
@@ -32,74 +30,6 @@ data class CoachUiMessage(
     val charts: List<ChartSpec> = emptyList(),
     val status: MessageStatus = MessageStatus.Complete,
 )
-
-class ChatStore(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences("pulse_chat", Context.MODE_PRIVATE)
-
-    fun load(): List<CoachUiMessage> {
-        val raw = prefs.getString(KEY_MESSAGES, null) ?: return emptyList()
-        return runCatching {
-            val array = JSONArray(raw)
-            buildList {
-                for (i in 0 until array.length()) {
-                    val item = array.optJSONObject(i) ?: continue
-                    val role = runCatching { ChatRole.valueOf(item.optString("role")) }.getOrNull() ?: continue
-                    val status = runCatching { MessageStatus.valueOf(item.optString("status")) }
-                        .getOrDefault(MessageStatus.Complete)
-                    val evidence = mutableListOf<String>()
-                    item.optJSONArray("evidence")?.let { ev ->
-                        for (j in 0 until ev.length()) ev.optString(j).takeIf { it.isNotBlank() }?.let(evidence::add)
-                    }
-                    val charts = mutableListOf<ChartSpec>()
-                    item.optJSONArray("charts")?.let { saved ->
-                        for (j in 0 until saved.length()) {
-                            saved.optJSONObject(j)?.let { ChartSpec.fromJson(it) }?.let(charts::add)
-                        }
-                    }
-                    add(
-                        CoachUiMessage(
-                            id = item.optLong("id", i.toLong()),
-                            role = role,
-                            text = item.optString("text"),
-                            evidence = evidence,
-                            charts = charts,
-                            status = if (status == MessageStatus.Streaming) MessageStatus.Cancelled else status,
-                        ),
-                    )
-                }
-            }
-        }.getOrDefault(emptyList()).takeLast(200)
-    }
-
-    fun save(messages: List<CoachUiMessage>) {
-        val array = JSONArray()
-        messages.takeLast(200).forEach { message ->
-            array.put(
-                JSONObject().apply {
-                    put("id", message.id)
-                    put("role", message.role.name)
-                    put("text", message.text)
-                    put("status", message.status.name)
-                    put(
-                        "evidence",
-                        JSONArray().apply { message.evidence.forEach(::put) },
-                    )
-                    put(
-                        "charts",
-                        JSONArray().apply { message.charts.forEach { put(it.toJson()) } },
-                    )
-                },
-            )
-        }
-        prefs.edit().putString(KEY_MESSAGES, array.toString()).apply()
-    }
-
-    fun clear() = prefs.edit().remove(KEY_MESSAGES).apply()
-
-    companion object {
-        private const val KEY_MESSAGES = "messages"
-    }
-}
 
 /**
  * Drives the coach chat: streaming, the tool loop, cancellation, evidence and
@@ -115,6 +45,9 @@ class CoachController(
     private val toolScope: ToolScope = ToolScope(),
 ) {
     val messages = mutableStateListOf<CoachUiMessage>()
+    val conversations = mutableStateListOf<ConversationSummary>()
+    var currentConversationId by mutableStateOf<String?>(null)
+        private set
     var isStreaming by mutableStateOf(false)
         private set
     var statusText by mutableStateOf<String?>(null)
@@ -128,10 +61,19 @@ class CoachController(
 
     private var job: Job? = null
     private val ids = AtomicLong(System.currentTimeMillis())
+    private var currentTitle = ""
+    private var currentCreatedAt = System.currentTimeMillis()
+
+    /** Bumped whenever the active conversation changes, to ignore stale streams. */
+    private var generation = 0
 
     init {
-        messages.addAll(chatStore.load())
-        if (messages.isEmpty()) {
+        val stored = chatStore.loadAll()
+        conversations.addAll(chatStore.summaries())
+        val latest = stored.firstOrNull()
+        if (latest != null) {
+            restore(latest)
+        } else {
             messages.add(welcomeMessage())
         }
         refreshProvider()
@@ -149,11 +91,75 @@ class CoachController(
 
     fun startNewChat() {
         cancel()
-        chatStore.clear()
+        generation++
+        currentConversationId = null
+        currentTitle = ""
+        currentCreatedAt = System.currentTimeMillis()
         messages.clear()
         messages.add(welcomeMessage())
         lastError = null
         draft = ""
+    }
+
+    /** Opens a stored conversation and makes it the active one. */
+    fun openConversation(id: String) {
+        if (id == currentConversationId) return
+        val stored = chatStore.load(id) ?: return
+        cancel()
+        generation++
+        restore(stored)
+        lastError = null
+        draft = ""
+    }
+
+    fun deleteConversation(id: String) {
+        val wasCurrent = id == currentConversationId
+        if (wasCurrent) cancel()
+        generation++
+        chatStore.delete(id)
+        refreshConversations()
+        if (wasCurrent) {
+            currentConversationId = null
+            currentTitle = ""
+            currentCreatedAt = System.currentTimeMillis()
+            messages.clear()
+            messages.add(welcomeMessage())
+            lastError = null
+            draft = ""
+        }
+    }
+
+    /** Reloads conversations after a backup restore replaced local storage. */
+    fun reloadAfterRestore() {
+        generation++
+        job?.cancel()
+        job = null
+        isStreaming = false
+        statusText = null
+        lastError = null
+        draft = ""
+        conversations.clear()
+        val stored = chatStore.loadAll()
+        conversations.addAll(chatStore.summaries())
+        val latest = stored.firstOrNull()
+        if (latest != null) {
+            restore(latest)
+        } else {
+            currentConversationId = null
+            currentTitle = ""
+            currentCreatedAt = System.currentTimeMillis()
+            messages.clear()
+            messages.add(welcomeMessage())
+        }
+    }
+
+    private fun restore(stored: StoredConversation) {
+        currentConversationId = stored.id
+        currentTitle = stored.title
+        currentCreatedAt = stored.createdAt
+        messages.clear()
+        messages.addAll(stored.messages)
+        if (messages.isEmpty()) messages.add(welcomeMessage())
     }
 
     fun send(text: String) {
@@ -173,13 +179,15 @@ class CoachController(
         messages.add(CoachUiMessage(assistantId, ChatRole.Assistant, "", status = MessageStatus.Streaming))
         save()
         isStreaming = true
+        val turnGeneration = generation
         job = scope.launch {
-            runTurn(config, assistantId)
+            runTurn(config, assistantId, turnGeneration)
         }
     }
 
     fun cancel() {
         if (!isStreaming) return
+        generation++
         job?.cancel()
         val index = messages.indexOfFirst { it.status == MessageStatus.Streaming }
         if (index >= 0) {
@@ -190,10 +198,10 @@ class CoachController(
         save()
     }
 
-    private suspend fun runTurn(config: ProviderConfig, assistantId: Long) {
+    private suspend fun runTurn(config: ProviderConfig, assistantId: Long, turnGeneration: Int) {
         val model = config.defaultModel
         if (model == null) {
-            markError(assistantId, "No model configured.")
+            if (turnGeneration == generation) markError(assistantId, "No model configured.")
             return
         }
         val key = providerStore.apiKeyFor(config)
@@ -218,7 +226,9 @@ class CoachController(
                         it.copy(text = text, status = MessageStatus.Streaming)
                     }
                 },
-                onStatus = { statusText = it },
+                onStatus = { status ->
+                    if (turnGeneration == generation) statusText = status
+                },
                 onEvidence = { evidence ->
                     updateAssistant(assistantId) { it.copy(evidence = evidence) }
                 },
@@ -226,6 +236,7 @@ class CoachController(
                     updateAssistant(assistantId) { it.copy(charts = charts) }
                 },
             )
+            if (turnGeneration != generation) return
             updateAssistant(assistantId) {
                 it.copy(
                     text = result.text.ifBlank { "I couldn't produce an answer from the available data." },
@@ -238,21 +249,27 @@ class CoachController(
             statusText = null
             save()
         } catch (e: CancellationException) {
-            updateAssistant(assistantId) {
-                it.copy(status = MessageStatus.Cancelled)
+            if (turnGeneration == generation) {
+                updateAssistant(assistantId) {
+                    it.copy(status = MessageStatus.Cancelled)
+                }
+                isStreaming = false
+                statusText = null
+                save()
             }
-            isStreaming = false
-            statusText = null
-            save()
             throw e
         } catch (e: LlmException) {
-            markError(assistantId, e.userMessage())
-            lastError = e.userMessage()
+            if (turnGeneration == generation) {
+                markError(assistantId, e.userMessage())
+                lastError = e.userMessage()
+            }
         } catch (e: Exception) {
-            markError(assistantId, "Something went wrong while answering. Try again.")
-            lastError = "Something went wrong while answering. Try again."
+            if (turnGeneration == generation) {
+                markError(assistantId, "Something went wrong while answering. Try again.")
+                lastError = "Something went wrong while answering. Try again."
+            }
         } finally {
-            if (messages.none { it.status == MessageStatus.Streaming }) {
+            if (turnGeneration == generation && messages.none { it.status == MessageStatus.Streaming }) {
                 isStreaming = false
                 statusText = null
             }
@@ -277,7 +294,28 @@ class CoachController(
     }
 
     private fun save() {
-        chatStore.save(messages.filter { it.status != MessageStatus.Streaming })
+        val persisted = messages.filter { it.status != MessageStatus.Streaming }
+        if (persisted.none { it.role == ChatRole.User }) return
+        val id = currentConversationId ?: UUID.randomUUID().toString().also {
+            currentConversationId = it
+        }
+        currentTitle = ConversationCodec.titleFor(persisted)
+        chatStore.save(
+            StoredConversation(
+                id = id,
+                title = currentTitle,
+                createdAt = currentCreatedAt,
+                updatedAt = System.currentTimeMillis(),
+                messages = persisted,
+            ),
+        )
+        refreshConversations()
+    }
+
+    private fun refreshConversations() {
+        val latest = chatStore.summaries()
+        conversations.clear()
+        conversations.addAll(latest)
     }
 
     private fun nextId(): Long = ids.incrementAndGet()
