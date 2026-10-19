@@ -1,6 +1,6 @@
 # BACKLOG — Pulse UI + AI coach
 
-_Last updated: 2026-10-18. Baseline commit: `d071f3a`. Phase 0 is complete and epics A–E are implemented; F is partially done._
+_Last updated: 2026-10-19. Baseline commit: `eebd0d4`. Phase 0 is complete, epics A–E are implemented, F is partially done, and the Garmin Connect parity analysis is tracked in [`docs/garmin-connect-gap-analysis.md`](docs/garmin-connect-gap-analysis.md)._
 
 This backlog turns the Pulse mockups and the OpenAI-compatible coach brief into
 reviewable increments. It assumes the current app is a local-first Android
@@ -12,11 +12,13 @@ history, and database backup/restore; see
 
 - **Size:** S ≈ 1–2 days, M ≈ 3–5 days, L ≈ 1–2 weeks (rough, for one developer).
 - **Status:** Phase 0 and epics A–E are done to the level recorded below; F is
-  partially done. Individual checkboxes are kept as the original acceptance
-  criteria rather than rewritten retroactively.
-- **Order:** A → B → C → D → E → F. The remaining work is primarily F (tests,
-  accessibility, hardening) plus the data-coverage items listed under open
-  questions.
+  partially done and G is a planned parity/differentiation programme. Individual
+  checkboxes are kept as the original acceptance criteria rather than rewritten
+  retroactively.
+- **Order:** A → B → C → D → E → F, then the G waves (trust, daily parity,
+  differentiation). The remaining engineering work is primarily F (tests,
+  accessibility, hardening), the data-coverage items under open questions, and
+  the P0 items in the gap analysis.
 - **Definition of done for every story:** acceptance criteria met, tests added,
   loading/empty/error states handled, accessibility checked, docs updated,
   `BACKLOG.md` status updated, and a small reviewable commit/PR.
@@ -36,6 +38,7 @@ history, and database backup/restore; see
 | D. LLM data access | Typed read-only health tools + evidence + safety | ✅ Done |
 | E. Coach chat | Streaming chat with tool calls, cancel, sources, persistence, history | ✅ Done |
 | F. Quality | Tests, accessibility, performance, CI, docs, privacy audit | Partially done |
+| G. Garmin Connect parity | P0 trust/daily-usability stories defined (G1–G10) | 📋 Planned — see [Epic G](#epic-g--garmin-connect-parity-p0-trust-and-daily-usability) |
 
 ## Implementation update — 2026-10-17
 
@@ -174,6 +177,37 @@ Open items: verify the watch menu entry on device and add live HR via Broadcast
 Heart Rate (or a BLE HR strap). The watch rejects `FIT_TYPE_56` directory
 filtering on FR255, so upload success is verified from the GFDI sequence rather
 than by reading the file back.
+
+## Garmin Connect parity analysis — 2026-10-19
+
+Added [`docs/garmin-connect-gap-analysis.md`](docs/garmin-connect-gap-analysis.md),
+a baseline comparison against Garmin Connect 5.30.x and Garmin Connect+ as of
+October 2026. It inventories what the app ships today, marks each Garmin
+capability as present/partial/missing/out of scope, and separates parity work
+from deliberate non-goals.
+
+Highest-priority gaps:
+
+- **P0 — trust:** historical wellness and sleep/HRV coverage, background sync,
+  watch battery/storage and sync diagnostics, activity export (FIT/GPX/TCX/CSV),
+  encrypted backups, profile/units/goals, structured workout targets, onboarding,
+  and data-quality repair.
+- **P1 — daily parity:** transparent training readiness/status, adaptive plans
+  and daily suggested workouts, strength/yoga/mobility workouts, courses/GPX,
+  activity notes/RPE/photos/weather, PRs/gear, weight/hydration/nutrition/women's
+  health, health snapshot/reports, live HR, and Health Connect export.
+- **Non-goals:** Garmin account/cloud, social network, Garmin Pay, music,
+  notifications, Connect IQ, firmware updates, licensed coach plans, global food
+  database, weather/trails content, and proprietary black-box scores.
+
+Differentiator proposals (not present in Garmin Connect): portable encrypted
+health vault, metric provenance/data-quality center, local AI with a privacy
+ledger, automation rules, multi-source health timeline, N-of-1 experiments,
+clinician brief, offline route studio, local API/MCP bridge, private challenges,
+and a live watch mirror.
+
+The P0 items are broken into ten stories with acceptance criteria and estimates
+in [Epic G](#epic-g--garmin-connect-parity-p0-trust-and-daily-usability).
 
 ## Delivery milestones
 
@@ -907,6 +941,265 @@ epic, but this epic closes the gaps and adds CI/release gates.
 
 ---
 
+# Epic G — Garmin Connect parity: P0 trust and daily usability
+
+**Ships:** the P0 gaps from
+[`docs/garmin-connect-gap-analysis.md`](docs/garmin-connect-gap-analysis.md),
+split into ten reviewable stories. This epic deliberately does **not** chase
+full Garmin Connect parity; P1/P2 work stays in the analysis document and is not
+part of the P0 commitment.
+
+**Exit criteria:** a user can install, pair, sync reliably in the background,
+see complete and honest data coverage, export an activity, create and restore an
+encrypted backup, set profile/units/goals, schedule a targeted workout to the
+watch, and detect or repair common data gaps.
+
+**Estimates:** one developer, excluding device waiting time. S ≈ 1–2 days,
+M ≈ 3–5 days, L ≈ 1–2 weeks. Protocol discovery or a blocked watch feature can
+move an L to its upper bound. Every story follows the definition of done at the
+top of this file (tests, empty/loading/error states, accessibility, docs,
+`BACKLOG.md` update, small reviewable commit).
+
+**Recommended order:** start the G1 spike immediately because it can invalidate
+other data work; ship G5/G7 in parallel; then G2/G6/G10; then G3/G4/G9; G8 after
+the profile and workout model land. Total is roughly **9–13 developer weeks**.
+G5, G6, G7, G9, and G10 are app-only; G1, G3, G4, and G8 carry the protocol or
+new-dependency risk.
+
+| Story | Outcome | Size | Estimate | Depends on | Risk |
+|---|---|---|---|---|---|
+| G1 | Historical wellness request + gap-aware ingestion | L | 1–2 weeks | protocol notes, FR255 | High |
+| G2 | Data coverage view | S/M | 2–3 days | G1 (can start earlier) | Low |
+| G3 | Background sync + connection lifecycle | L | 1–2 weeks | WorkManager approval | Medium/High |
+| G4 | Watch status + sync diagnostics | M | 3–5 days | protocol/RE | Medium |
+| G5 | Activity export (FIT/GPX/TCX/CSV) | M | 3–4 days | existing records/laps | Low |
+| G6 | Encrypted backup + restore | M | 4–6 days | `BackupManager` | Medium |
+| G7 | Profile, units, and goals | M | 3–5 days | none | Low/Medium |
+| G8 | Structured workout targets + watch calendar | L | 1–2 weeks | G7, `FitWorkout` | Medium/High |
+| G9 | First-run onboarding + pairing | M | 3–5 days | G3/G4 preferred | Low |
+| G10 | Data quality + repair center | M | 4–6 days | G1/G2 | Medium |
+
+---
+
+## G1. Historical wellness requests and gap-aware ingestion
+
+**Size:** L · **Estimate:** 1–2 weeks (timebox the protocol spike to 3 days)
+**Depends on:** `docs/PROTOCOL.md`, `docs/HANDOFF.md`, FR255 device access
+**Risk:** High — this is reverse engineering, not UI work.
+
+**Acceptance criteria**
+- [ ] A timeboxed protocol spike records whether `CutWellnessFilesRequest`,
+      FileAccess, or another GFDI path can request days older than the current
+      delta. Findings, device/firmware, and exact blockers go in `docs/`; no raw
+      binary captures are committed.
+- [ ] If supported: the app can request and import at least 30 days (or the
+      maximum the watch exposes) of monitoring/sleep/HRV data, from first sync
+      or an explicit "Import older data" action.
+- [ ] If unsupported: the exact blocker is documented and the UI states that
+      history accumulates through repeated syncs. No history, sleep, or HRV is
+      inferred or fabricated.
+- [ ] Repeated requests are idempotent: no duplicate days, samples, sleep
+      stages, or imported-file UIDs.
+- [ ] Timezone, Garmin epoch, midnight rollover, and `0xFFFFFFFF` sentinels are
+      covered by parser tests with committed FIT fixtures.
+- [ ] Sleep/HRV file discovery is reliable; missing metrics remain explicitly
+      unavailable rather than zero.
+- [ ] Trends, Health, Today, and the coach tools read the new history and keep
+      partial-history labels.
+- [ ] The change does not regress activity pulls or the single watch transfer
+      slot; sync duration and transfer volume are recorded in `docs/testing.md`.
+
+**Notes:** If the spike says "not possible", close the implementation checklist
+with the documented blocker and keep G2/G10. Do not spend the full estimate
+fighting the protocol.
+
+## G2. Data coverage view
+
+**Size:** S/M · **Estimate:** 2–3 days
+**Depends on:** G1 for the best result; can start with current data
+**Risk:** Low.
+
+**Acceptance criteria**
+- [ ] Health or Settings has a **Data coverage** view for 7/30/90 days showing,
+      per metric, which days are present, partial, or missing.
+- [ ] The view shows last-seen dates and counts; missing days are never
+      zero-filled or drawn as a synthetic series.
+- [ ] Each gap explains the likely cause (not synced, watch did not expose the
+      file, import failed) and links to Sync or Import FIT.
+- [ ] Empty, loading, and error states are implemented and accessible.
+- [ ] Unit tests cover timezones, sparse data, duplicates, and partial days.
+- [ ] The coach's data summary states the coverage limits instead of claiming a
+      complete archive.
+
+## G3. Background sync and connection lifecycle
+
+**Size:** L · **Estimate:** 1–2 weeks
+**Depends on:** approval for WorkManager (new dependency)
+**Risk:** Medium/High — Android background limits and BLE contention.
+
+**Acceptance criteria**
+- [ ] Periodic sync is behind a setting (documented interval, e.g. 15 min–6 h)
+      with explicit battery/charging constraints; the default is documented.
+- [ ] Sync still runs on launch, on watch reconnect, and from the manual action.
+- [ ] Sync is single-flight: a worker, foreground service, and manual tap cannot
+      start concurrent transfers.
+- [ ] Transient failures (`NO_AVAILABLE_RESOURCES`, timeout, disconnect) retry
+      with backoff; permanent failures are classified and surface an action.
+- [ ] The foreground service and worker hand off cleanly; notifications show
+      progress, completion, and failure without stale states.
+- [ ] Last attempt/success, duration, and result are persisted and visible.
+- [ ] Device tests cover Doze, process death, charging, and watch out of range;
+      no ANR and no health payload in logs.
+- [ ] Scheduler/backoff/single-flight behaviour has unit tests.
+
+## G4. Watch status and sync diagnostics
+
+**Size:** M · **Estimate:** 3–5 days
+**Depends on:** protocol/RE for battery and storage
+**Risk:** Medium — fields may not be exposed on every watch.
+
+**Acceptance criteria**
+- [ ] The device card shows battery percentage and free storage when the watch
+      exposes them; otherwise it says "Unknown" with no invented value.
+- [ ] It shows product/firmware, connection state, last attempt, last success,
+      duration, files/bytes transferred, retries, and a classified error.
+- [ ] The sync view shows per-file progress and queue state, not only a spinner.
+- [ ] The device log remains local and redacted; new diagnostics do not log
+      health payloads or secrets.
+- [ ] New protocol messages/fields have tests and are verified on the FR255.
+- [ ] The card and log are reachable, readable, and accessible at large font.
+
+## G5. Activity export (FIT/GPX/TCX/CSV)
+
+**Size:** M · **Estimate:** 3–4 days
+**Depends on:** existing `activities`, `records`, and `laps`
+**Risk:** Low — app-only, no new service.
+
+**Acceptance criteria**
+- [ ] Activity detail offers **Export** with FIT, GPX, TCX, and CSV.
+- [ ] FIT exports the original watch file when it is still on disk; a missing
+      file produces a clear error, not a silently generated substitute.
+- [ ] GPX exports only valid GPS points; the option is disabled or explains why
+      when the activity has no coordinates.
+- [ ] TCX includes activity/lap timing, distance, HR, cadence, altitude, and
+      available track points.
+- [ ] CSV has documented columns, ISO-8601 UTC timestamps, elapsed seconds,
+      units, and lap index; it opens cleanly in spreadsheet software.
+- [ ] The system document picker is used; filenames are readable and include the
+      correct extension and MIME type; nothing is uploaded.
+- [ ] Tests cover XML escaping, no GPS, empty records, missing laps, invalid
+      positions, and filename generation.
+- [ ] `docs/privacy.md` and the README describe local export.
+
+## G6. Encrypted backup and restore
+
+**Size:** M · **Estimate:** 4–6 days
+**Depends on:** `BackupManager`, existing schema validation; crypto library
+approval if platform primitives are not sufficient
+**Risk:** Medium — cryptography and destructive restore.
+
+**Acceptance criteria**
+- [ ] Export can encrypt the archive with a user passphrase using a vetted AEAD
+      construction and password KDF; no home-grown crypto.
+- [ ] The archive contains a versioned manifest with KDF parameters; the
+      plaintext database and chat JSON are not present in the encrypted ZIP.
+- [ ] Restore validates the header, schema version, manifest, and authentication
+      before replacing anything; a wrong passphrase or corrupt archive leaves the
+      current data untouched.
+- [ ] Legacy unencrypted ZIP/SQLite imports still work and are clearly labelled
+      as unencrypted.
+- [ ] The passphrase is never stored or logged; the UI explains that losing it
+      makes the backup unrecoverable.
+- [ ] Provider configuration and API keys remain excluded.
+- [ ] Tests cover round-trip, wrong passphrase, tamper, wrong schema/version,
+      legacy import, and an instrumented restore.
+- [ ] Backup/restore and privacy docs are updated.
+
+## G7. Profile, units, and goals
+
+**Size:** M · **Estimate:** 3–5 days
+**Depends on:** none
+**Risk:** Low/Medium — touches many display paths.
+
+**Acceptance criteria**
+- [ ] Settings stores height, weight, birth date, sex (optional), unit system
+      (metric/imperial), step goal, active-minute goal, floors goal, sleep goal,
+      and weight goal.
+- [ ] Inputs validate ranges and show helpful errors; unset values show setup
+      prompts rather than invented defaults.
+- [ ] One profile source feeds Today, Health, Trends, activity detail, zones,
+      PacePro, and coach tools.
+- [ ] Metric/imperial conversion applies to distance, pace/speed, elevation,
+      weight, and temperature where shown; stored data is unchanged.
+- [ ] Coach tool output includes units and the available profile context.
+- [ ] Conversion/validation tests and large-font/accessibility checks pass.
+
+## G8. Structured workout targets and watch calendar
+
+**Size:** L · **Estimate:** 1–2 weeks
+**Depends on:** G7 for zones, `FitWorkout`, `SyncCoordinator`
+**Risk:** Medium/High — FIT target encoding and watch acceptance.
+
+**Acceptance criteria**
+- [ ] A workout step supports open, HR zone, HR range, pace range, power range,
+      and cadence range targets, with validation and a plain-language summary.
+- [ ] Existing timed/distance/open steps migrate without loss.
+- [ ] A workout can be scheduled by date and time and sent to the watch calendar,
+      not only stored as a local date.
+- [ ] Scheduled sessions can be edited, moved, and deleted; conflicts show a
+      clear warning.
+- [ ] Coach-created workouts can use the same targets.
+- [ ] FIT encoder tests cover every target type and invalid ranges; upload is
+      verified on the FR255.
+- [ ] `docs/testing.md` records the device matrix and any sport-specific limits.
+
+## G9. First-run onboarding and pairing
+
+**Size:** M · **Estimate:** 3–5 days
+**Depends on:** G3/G4 preferred for truthful states
+**Risk:** Low.
+
+**Acceptance criteria**
+- [ ] First launch explains local-first/privacy, permissions, scan/pair, first
+      sync, and profile setup in a short, skippable flow.
+- [ ] Existing Android bonds are detected; when none exists, the user gets
+      manual pairing instructions and a retry path.
+- [ ] Every step has a real loading/empty/error state; no fake progress and no
+      dead ends.
+- [ ] Existing users bypass onboarding; a reset action is available in Settings.
+- [ ] The flow is usable at 200% font scale and with TalkBack; UI/device tests
+      cover permission denial and watch-not-found.
+- [ ] Privacy copy matches `docs/privacy.md`.
+
+## G10. Data quality and repair center
+
+**Size:** M · **Estimate:** 4–6 days
+**Depends on:** G1/G2 for the best coverage data
+**Risk:** Medium — repair actions can delete data.
+
+**Acceptance criteria**
+- [ ] Detects duplicate activities, clock skew between watch and phone, missing
+      days, stale files, partial imports, and orphaned FIT files.
+- [ ] A Data quality screen lists issues with severity, evidence, and affected
+      dates/activities; counts are testable.
+- [ ] Repair actions (re-import, merge/delete duplicate, re-link file) require
+      confirmation and are idempotent.
+- [ ] Destructive repairs keep a safety copy or offer an export first.
+- [ ] Detector and repair tests use fixtures; an instrumented repair test runs.
+- [ ] The screen is fully local and does not upload diagnostics.
+
+---
+
+## Epic G — out of scope
+
+- P1/P2 parity items (adaptive plans, courses, device settings, social/safety,
+  weight/nutrition/women's health, custom dashboards, live HR, Health Connect)
+  are tracked in the gap analysis and are not part of this P0 commitment.
+- Garmin account/cloud, Garmin Pay, music, notifications, Connect IQ, firmware
+  updates, licensed coach content, and Garmin's proprietary black-box scores.
+
+---
+
 # Cross-cutting / deferred
 
 These are explicitly **not** in the first implementation pass, or are tracked
@@ -918,7 +1211,7 @@ elsewhere:
   iOS, medical diagnosis, medication advice, model fine-tuning, making the coach
   a clinician.
 - **Optional/approval-gated:** generic read-only SQL tool (D7), WorkManager
-  background sync (B2), OkHttp (C4), screenshot testing framework (F3),
+  background sync (G3), OkHttp (C4), screenshot testing framework (F3),
   androidx.security if we choose it over direct Keystore (C1).
 - **Not a dependency of this work:** a new UI framework, a chart library, or a
   navigation library. The current Compose stack can express the mockups.
@@ -929,10 +1222,10 @@ The handoff's immediate next steps remain valid and are mapped as follows:
 
 | Handoff item | Backlog home |
 |---|---|
-| Multi-day wellness history | B3a/B3b, B6 |
-| Sleep/HRV (not in handoff explicitly, but required by mockups) | B3a/B3b, D3 |
-| Background/periodic sync + connected state | B2 |
-| Units/axis labels + saved custom plots | Deferred |
+| Multi-day wellness history | G1 (was B3a/B3b), B6 |
+| Sleep/HRV (not in handoff explicitly, but required by mockups) | G1, D3 |
+| Background/periodic sync + connected state | G3 (was B2) |
+| Units/axis labels + saved custom plots | G7 for units; plots deferred |
 | Weather responses | Deferred |
 | Importer/migration tests | F1 |
 
@@ -941,11 +1234,12 @@ step goal and max-HR settings, provider settings, no CI, no app/UI tests, and th
 need to split `MainActivity.kt` before adding four tabs and streaming chat.
 
 `docs/PLAN.md`, `docs/architecture-notes.md`, and `docs/HANDOFF.md` were brought
-up to date on 2026-10-18: they now describe database version 7, the five-tab UI,
-the coach/provider/tool layers, conversation history, and database backup/
-restore. FIT/CSV/GPX **activity** export is still deferred; the implemented
-export is a full local database plus conversation backup. `SyncState` maps to
-B2 (Room/settings persistence is done; WorkManager background sync is not).
+up to date on 2026-10-19: they describe database version 9, the five-tab UI,
+the coach/provider/tool layers, conversation history, database backup/restore,
+the workout planner, and PacePro. FIT/CSV/GPX **activity** export is still
+deferred; the implemented export is a full local database plus conversation
+backup. `SyncState` maps to B2 (Room/settings persistence is done; WorkManager
+background sync is not).
 
 # Open questions
 

@@ -233,10 +233,11 @@ pairing port (pairing needs the 6-digit code).
 - GDI frames are ACKed per chunk (`[id][offset][ok][code]`), not per message.
 - Store `ItemReference.uid` with the activity and skip the PULL when it is
   already in Room; otherwise every connect re-downloads the same FIT.
-- Room DB is version 7: `itemUid` (1→2), `laps` (2→3), record
+- Room DB is version 9: `itemUid` (1→2), `laps` (2→3), record
   `latitude`/`longitude` (3→4), `fit_messages` (4→5), wellness tables (5→6),
-  and sleep/HRV/Body Battery columns + `sleep_stages` +
-  `imported_wellness_files` (6→7) migrations live in `AppDatabase`.
+  sleep/HRV/Body Battery columns + `sleep_stages` +
+  `imported_wellness_files` (6→7), `planned_workouts` (7→8), and `pace_plans`
+  (8→9) migrations live in `AppDatabase`.
 - Daily wellness comes from `CutWellnessFilesRequest` → `ItemAddedNotification`
   (FIT_TYPE_32). Use `cycles_16 * 2` for steps and resolve `timestamp_16`
   against the last full timestamp. The watch may ignore a re-cut within its
@@ -378,10 +379,10 @@ Data audit and ingestion changes:
   score is unavailable. Load focus is labelled as derived from the watch's
   training-effect category, not Garmin's proprietary load-focus model.
 
-Database version 7 adds the sleep/HRV/Body Battery columns, `sleep_stages`, and
-`imported_wellness_files`. Unit tests cover the wellness parser (monitoring,
-Body Battery, cross-midnight sleep, HRV) and both legacy/new training-metric
-encodings.
+Database version 7 added the sleep/HRV/Body Battery columns, `sleep_stages`, and
+`imported_wellness_files`; version 8 added `planned_workouts`; version 9 added
+`pace_plans`. Unit tests cover the wellness parser (monitoring, Body Battery,
+cross-midnight sleep, HRV) and both legacy/new training-metric encodings.
 
 ### Activity category fix (2026-10-17)
 

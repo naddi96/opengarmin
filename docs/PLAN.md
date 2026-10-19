@@ -1,6 +1,6 @@
 # Project plan
 
-_Last updated: 2026-10-18. Current baseline: `d071f3a`._
+_Last updated: 2026-10-19. Current baseline: `eebd0d4`._
 
 ## Goal & scope
 
@@ -18,7 +18,7 @@ cloud accounts, and telemetry.
 | Protocol generation | GFDI **v2 / Multi-Link** (Forerunner 245/255/955/965 and related) |
 | Transport | MLR pipe for file transfers; zlib-compressed FIT payloads |
 | Language | Kotlin; the protocol core is pure JVM and unit-testable |
-| Storage | Room 2.6.1, database **version 7**, raw FIT files kept on disk |
+| Storage | Room 2.6.1, database **version 9**, raw FIT files kept on disk |
 | Local preferences | SharedPreferences for profile/sync metadata, provider configs, and coach conversations |
 | UI | Jetpack Compose + Material 3 with the Pulse design tokens |
 | Networking | OkHttp only for the user-configured LLM endpoint; osmdroid for map tiles |
@@ -94,3 +94,6 @@ cloud accounts, and telemetry.
 5. Add Compose UI/screenshot tests for the tab shell, coach history dialog, and
    backup settings card.
 6. Consider optional encryption for exported backups.
+7. Use [`garmin-connect-gap-analysis.md`](garmin-connect-gap-analysis.md) as the
+   prioritized input for Garmin Connect parity and differentiator work; its P0
+   items come before new surface area.

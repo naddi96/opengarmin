@@ -118,6 +118,9 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
 
 - [`docs/architecture-notes.md`](docs/architecture-notes.md) — current stack,
   data model, storage, backup/restore, ingestion, and coverage gaps.
+- [`docs/garmin-connect-gap-analysis.md`](docs/garmin-connect-gap-analysis.md) —
+  comparison with Garmin Connect, prioritized missing features, deliberate
+  non-goals, and differentiator proposals.
 - [`docs/design/tokens.md`](docs/design/tokens.md) — design tokens; mockups are
   in [`docs/design/mockups/`](docs/design/mockups/).
 - [`docs/providers.md`](docs/providers.md) — provider setup, presets, env config,

@@ -1,6 +1,6 @@
 # Architecture notes
 
-_Last updated: 2026-10-19. Baseline: workout planner and direct watch upload._
+_Last updated: 2026-10-19. Baseline: workout planner, direct watch upload, and PacePro._
 
 This document describes the app as it is implemented today: a local-first Android
 companion that syncs a Garmin watch over BLE, stores health data in Room, and
@@ -16,7 +16,7 @@ live in [`BACKLOG.md`](../BACKLOG.md).
 | UI | Jetpack Compose + Material 3, Compose BOM `2024.06.00`; Pulse design tokens and reusable components |
 | Build | Gradle 8.7, AGP 8.5.2, KSP, `compileSdk 34`, `minSdk 28`, `targetSdk 34` |
 | Modules | `:protocol` (pure JVM) and `:app` (Android) |
-| Persistence | Room 2.6.1, database version 8, hand-written migrations; SharedPreferences for settings and provider configs |
+| Persistence | Room 2.6.1, database version 9, hand-written migrations; SharedPreferences for settings and provider configs |
 | Async | Kotlin coroutines + `lifecycleScope`; Room flows feed Compose state; a `Handler` watchdog guards sync timeouts |
 | Watch transport | Custom BLE/GFDI/Multi-Link implementation in `:protocol` + `GarminBleClient` |
 | Networking | OkHttp for the configured OpenAI-compatible endpoint; osmdroid/OpenStreetMap for map tiles |
@@ -106,7 +106,7 @@ a separate ViewModel layer; the Coach has its own `CoachController`.
 
 ## 4. Data model and local storage
 
-### Room entities (version 8)
+### Room entities (version 9)
 
 | Table | Purpose | Key columns |
 |---|---|---|
@@ -338,3 +338,6 @@ The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. See
 - Optional encrypted backups; today's ZIP is unencrypted.
 - FIT/CSV/GPX activity export and other planned data-ownership features remain
   deferred; the implemented export is a full local database backup.
+- A prioritized Garmin Connect comparison, missing-feature catalogue, and
+  differentiator proposals live in
+  [`garmin-connect-gap-analysis.md`](garmin-connect-gap-analysis.md).
