@@ -1,18 +1,97 @@
 {
   "v": 3,
-  "createdOnFiles": { "v": 1, "at": "2026-10-17T17:35:00Z" },
-  "title": "Pulse Fitness App",
-  "launch": { "view": "canvas" },
-  "pages": [],
+  "attachments": {},
   "boards": {
-    "Main.dc.html": { "x": 0, "y": 0, "w": 390, "h": 900, "title": "1 · Today" },
-    "Trends.dc.html": { "x": 470, "y": 0, "w": 390, "h": 900, "title": "2 · Trends", "is_interactive": true },
-    "Activities.dc.html": { "x": 940, "y": 0, "w": 390, "h": 900, "title": "3 · Activities", "is_interactive": true },
-    "Coach.dc.html": { "x": 1410, "y": 0, "w": 390, "h": 900, "title": "4 · AI Coach", "is_interactive": true }
+    "Activities.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "title": "6 · Activities",
+      "w": 390,
+      "x": 470,
+      "y": 2270
+    },
+    "ActivityDetail.dc.html": {
+      "h": 1900,
+      "is_interactive": true,
+      "title": "4 · Activity detail",
+      "w": 390,
+      "x": 1410,
+      "y": 0
+    },
+    "Coach.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "title": "7 · AI Coach",
+      "w": 390,
+      "x": 940,
+      "y": 2270
+    },
+    "Health.dc.html": {
+      "h": 2150,
+      "title": "2 · Health & wellness",
+      "w": 390,
+      "x": 470,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "h": 1120,
+      "title": "1 · Today",
+      "w": 390,
+      "x": 0,
+      "y": 0
+    },
+    "Training.dc.html": {
+      "h": 1960,
+      "title": "3 · Training & performance",
+      "w": 390,
+      "x": 940,
+      "y": 0
+    },
+    "Plan.dc.html": {
+      "h": 1500,
+      "is_interactive": true,
+      "title": "4b · Workout plan",
+      "w": 390,
+      "x": 1880,
+      "y": 0
+    },
+    "Trends.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "title": "5 · Trends",
+      "w": 390,
+      "x": 0,
+      "y": 2270
+    }
   },
-  "order": ["Main.dc.html", "Trends.dc.html", "Activities.dc.html", "Coach.dc.html"],
+  "createdOnFiles": {
+    "at": "2026-10-17T17:35:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
   "notes": {
-    "t1": { "x": 0, "y": -260, "text": "Pulse: watch-synced fitness app with an AI coach", "kind": "title1", "maxW": 1800 }
+    "t1": {
+      "kind": "title1",
+      "maxW": 1800,
+      "text": "Pulse: watch-synced fitness app with an AI coach",
+      "w": 240,
+      "x": 0,
+      "y": -260
+    }
   },
-  "designSystems": []
+  "order": [
+    "Main.dc.html",
+    "Health.dc.html",
+    "Training.dc.html",
+    "ActivityDetail.dc.html",
+    "Plan.dc.html",
+    "Trends.dc.html",
+    "Activities.dc.html",
+    "Coach.dc.html"
+  ],
+  "pages": [],
+  "title": "Pulse Fitness App"
 }

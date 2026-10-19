@@ -350,6 +350,36 @@ interface ActivityDao {
     suspend fun clear()
 }
 
+@Dao
+interface WorkoutDao {
+    @Query(
+        "SELECT * FROM planned_workouts " +
+            "ORDER BY CASE WHEN scheduledDate IS NULL THEN 1 ELSE 0 END, scheduledDate, updatedAt DESC",
+    )
+    fun observeAll(): Flow<List<PlannedWorkoutEntity>>
+
+    @Query("SELECT * FROM planned_workouts WHERE id = :id")
+    suspend fun byId(id: Long): PlannedWorkoutEntity?
+
+    @Query(
+        "SELECT * FROM planned_workouts " +
+            "ORDER BY CASE WHEN scheduledDate IS NULL THEN 1 ELSE 0 END, scheduledDate, updatedAt DESC",
+    )
+    suspend fun all(): List<PlannedWorkoutEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(workout: PlannedWorkoutEntity): Long
+
+    @Update
+    suspend fun update(workout: PlannedWorkoutEntity)
+
+    @Query("DELETE FROM planned_workouts WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("UPDATE planned_workouts SET lastSentAt = :timestamp, updatedAt = :timestamp WHERE id = :id")
+    suspend fun markSent(id: Long, timestamp: Long)
+}
+
 @Database(
     entities = [
         ActivityEntity::class,
@@ -360,16 +390,18 @@ interface ActivityDao {
         WellnessSampleEntity::class,
         SleepStageEntity::class,
         ImportedWellnessFileEntity::class,
+        PlannedWorkoutEntity::class,
     ],
     version = AppDatabase.SCHEMA_VERSION,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun activityDao(): ActivityDao
+    abstract fun workoutDao(): WorkoutDao
 
     companion object {
         const val DB_NAME = "opengarmin.db"
-        const val SCHEMA_VERSION = 7
+        const val SCHEMA_VERSION = 8
 
         @Volatile
         private var instance: AppDatabase? = null
@@ -530,6 +562,24 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `planned_workouts` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, " +
+                        "`sport` INTEGER NOT NULL, " +
+                        "`subSport` INTEGER NOT NULL, " +
+                        "`notes` TEXT NOT NULL, " +
+                        "`scheduledDate` TEXT, " +
+                        "`stepsJson` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL, " +
+                        "`lastSentAt` INTEGER)",
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -543,6 +593,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_4_5,
                     MIGRATION_5_6,
                     MIGRATION_6_7,
+                    MIGRATION_7_8,
                 ).build().also { instance = it }
             }
 
@@ -588,9 +639,11 @@ abstract class AppDatabase : RoomDatabase() {
 
 class ActivityRepository(private val database: () -> AppDatabase) {
     private val dao: ActivityDao get() = database().activityDao()
+    private val workoutDao: WorkoutDao get() = database().workoutDao()
 
     val activities: Flow<List<ActivityEntity>> get() = dao.observeAll()
     val wellnessDays: Flow<List<WellnessDayEntity>> get() = dao.observeWellnessDays()
+    val plannedWorkouts: Flow<List<PlannedWorkoutEntity>> get() = workoutDao.observeAll()
 
     suspend fun records(activityId: Long): List<RecordEntity> = dao.records(activityId)
 
@@ -641,6 +694,27 @@ class ActivityRepository(private val database: () -> AppDatabase) {
     suspend fun trainingRows(): List<TrainingRow> = dao.trainingRows()
 
     suspend fun activity(id: Long): ActivityEntity? = dao.activityById(id)
+
+    suspend fun saveWorkout(workout: PlannedWorkoutEntity): PlannedWorkoutEntity {
+        val now = System.currentTimeMillis() / 1000
+        return if (workout.id == 0L) {
+            val id = workoutDao.insert(workout.copy(createdAt = now, updatedAt = now))
+            workout.copy(id = id, createdAt = now, updatedAt = now)
+        } else {
+            workoutDao.update(workout.copy(updatedAt = now))
+            workout.copy(updatedAt = now)
+        }
+    }
+
+    suspend fun deleteWorkout(id: Long) = workoutDao.delete(id)
+
+    suspend fun markWorkoutSent(id: Long) {
+        workoutDao.markSent(id, System.currentTimeMillis() / 1000)
+    }
+
+    suspend fun workout(id: Long): PlannedWorkoutEntity? = workoutDao.byId(id)
+
+    suspend fun plannedWorkoutsOnce(): List<PlannedWorkoutEntity> = workoutDao.all()
 
     suspend fun clear() = dao.clear()
 

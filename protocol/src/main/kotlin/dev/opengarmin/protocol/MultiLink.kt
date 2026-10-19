@@ -344,6 +344,13 @@ class GarminSession(
         sink(MlControl.registerRequest(clientId, service, reliable))
     }
 
+    /** Closes one registered Multi-Link service by its assigned handle. */
+    fun closeService(service: Int, handle: Int) {
+        log("ML: closing service=0x%04x handle=%d".format(service, handle))
+        sink(MlControl.closeHandleRequest(clientId, service, handle))
+        reliableHandles.remove(handle)
+    }
+
     /**
      * Sends a phone-initiated GDI request.
      *

@@ -192,10 +192,21 @@ object Gdi {
         val compressionWindow: Int,
     )
 
+    data class PushItemResponse(
+        val result: Int,
+        val offset: Long,
+        val transport: Int,
+        val transferHandle: Int,
+        val filePath: String?,
+        val errorCode: Int,
+        val compressionWindow: Int,
+    )
+
     /** FileAccess.Service wrapper returned to callers. */
     data class FileAccessService(
         val itemListResponse: ItemListResponse? = null,
         val pullItemResponse: PullItemResponse? = null,
+        val pushItemResponse: PushItemResponse? = null,
         val itemAdded: ItemAddedNotification? = null,
     )
 
@@ -324,6 +335,27 @@ object Gdi {
         return ProtoWriter().bytes(1, body.toByteArray()).toByteArray()
     }
 
+    /**
+     * FileAccess.Service.push_item_request = 3.
+     *
+     * Used to write a file to the watch. Workouts use
+     * `gdxml_string = "FIT_TYPE_5"`. The watch returns a transfer handle which
+     * is then opened as a write-mode transport pipe.
+     */
+    fun pushItemRequest(
+        item: ItemReference,
+        priority: Int = 30,
+        compressionWindow: Int = 15,
+        transports: List<Int> = listOf(0), // MULTILINK_TRANSPORT_PIPE
+    ): ByteArray {
+        val body = ProtoWriter()
+            .bytes(1, encodeItemReference(item))
+            .uint32(2, priority)
+        for (t in transports) body.enumAlways(3, t)
+        body.uint32(4, compressionWindow)
+        return ProtoWriter().bytes(3, body.toByteArray()).toByteArray()
+    }
+
     fun modifyFlagsRequest(uid: Uuid, setFlags: List<Uuid> = emptyList(), clearFlags: List<Uuid> = emptyList()): ByteArray {
         val body = ProtoWriter().bytes(1, encodeUuid(uid))
         for (f in setFlags) body.bytes(2, encodeUuid(f))
@@ -351,6 +383,7 @@ object Gdi {
     fun parseFileAccessService(data: ByteArray): FileAccessService {
         var list: ItemListResponse? = null
         var pull: PullItemResponse? = null
+        var push: PushItemResponse? = null
         var added: ItemAddedNotification? = null
         val r = ProtoReader(data)
         while (r.hasMore()) {
@@ -363,12 +396,13 @@ object Gdi {
             }
             when (field) {
                 2 -> pull = parsePullItemResponse(r.readBytes())
+                4 -> push = parsePushItemResponse(r.readBytes())
                 10 -> list = parseItemListResponse(r.readBytes())
                 12 -> added = parseItemAddedNotification(r.readBytes())
                 else -> r.skip(2)
             }
         }
-        return FileAccessService(list, pull, added)
+        return FileAccessService(list, pull, push, added)
     }
 
     private fun parseItemAddedNotification(data: ByteArray): ItemAddedNotification {
@@ -506,6 +540,33 @@ object Gdi {
             }
         }
         return PullItemResponse(result, transport, handle, path, errorCode, window)
+    }
+
+    private fun parsePushItemResponse(data: ByteArray): PushItemResponse {
+        var result = 0
+        var offset = 0L
+        var transport = 0
+        var handle = 0
+        var path: String? = null
+        var errorCode = 0
+        var window = 0
+        val r = ProtoReader(data)
+        while (r.hasMore()) {
+            val tag = r.readVarint().toInt()
+            val field = tag ushr 3
+            val wire = tag and 7
+            when (field) {
+                1 -> result = r.readVarint().toInt()
+                2 -> offset = r.readVarint()
+                3 -> transport = r.readVarint().toInt()
+                4 -> handle = r.readVarint().toInt()
+                5 -> path = String(r.readBytes(), Charsets.UTF_8)
+                6 -> errorCode = r.readVarint().toInt()
+                8 -> window = r.readVarint().toInt()
+                else -> r.skip(wire)
+            }
+        }
+        return PushItemResponse(result, offset, transport, handle, path, errorCode, window)
     }
 
     // ---- Responses to device-initiated requests ---------------------------

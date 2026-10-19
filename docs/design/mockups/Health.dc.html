@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pulse Health</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 390px; height: 2150px; box-sizing: border-box; background: #0E1311; color: #EAF1EC; font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column; overflow: hidden">
+
+<div style="flex: 1; padding: 28px 20px 0 20px; display: flex; flex-direction: column; gap: 12px; min-height: 0">
+
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: center">
+<div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700">Health</div>
+<div style="font-size: 13px; color: #8FA096; margin-top: 2px">Saturday, 17 Oct · from your watch</div>
+</div>
+<a href="Trends.dc.html" style="display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; color: #C7F26B; background: #161D1A; border: 1px solid #2A3530; border-radius: 999px; padding: 10px 14px">Trends
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></a>
+</div>
+
+<!-- Body Battery -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px">
+<div style="display: flex; justify-content: space-between; align-items: flex-start">
+<div>
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5ED6C1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"></path></svg>Body Battery</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 40px; font-weight: 700; line-height: 1.1; margin-top: 4px; color: #5ED6C1">42 <span style="font-size: 14px; font-weight: 500; color: #8FA096">/ 100 · Medium</span></div>
+</div>
+<div style="text-align: right; font-size: 12px; color: #8FA096; line-height: 1.5">Woke up at<br><span style="color: #EAF1EC; font-weight: 700; font-size: 15px">86</span></div>
+</div>
+<svg viewBox="0 0 300 100" width="100%" height="100" style="display: block; margin-top: 10px" role="img" aria-label="Body Battery across the day, 86 on waking and 42 now">
+<line x1="0" y1="29" x2="300" y2="29" stroke="#26322D" stroke-width="1"></line>
+<line x1="0" y1="50" x2="300" y2="50" stroke="#26322D" stroke-width="1"></line>
+<line x1="0" y1="71" x2="300" y2="71" stroke="#26322D" stroke-width="1"></line>
+<polygon points="{{bbArea}}" fill="#5ED6C1" fill-opacity="0.14"></polygon>
+<polyline points="{{bbPoints}}" fill="none" stroke="#5ED6C1" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<circle cx="300" cy="56.7" r="5" fill="#5ED6C1" stroke="#161D1A" stroke-width="2"></circle>
+</svg>
+<div style="display: flex; justify-content: space-between; font-size: 11px; color: #8FA096; margin-top: 2px"><span>00:00</span><span>08:00</span><span>16:00</span><span>Now</span></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px">
+<div style="background: #1E2723; border-radius: 12px; padding: 8px 10px"><div style="font-size: 11px; color: #8FA096">Overnight</div><div style="font-weight: 700; font-size: 15px">+64</div></div>
+<div style="background: #1E2723; border-radius: 12px; padding: 8px 10px"><div style="font-size: 11px; color: #8FA096">Drained today</div><div style="font-weight: 700; font-size: 15px">−47</div></div>
+<div style="background: #1E2723; border-radius: 12px; padding: 8px 10px"><div style="font-size: 11px; color: #8FA096">Recharged</div><div style="font-weight: 700; font-size: 15px">+3</div></div>
+</div>
+</div>
+
+<!-- Stress -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px">
+<div style="display: flex; justify-content: space-between; align-items: flex-start">
+<div>
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFD166" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2 12 6 12 9 6 13 18 16 12 22 12"></polyline></svg>Stress</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 34px; font-weight: 700; line-height: 1.1; margin-top: 4px">29 <span style="font-size: 14px; font-weight: 500; color: #8FA096">avg · Low (0–100)</span></div>
+</div>
+</div>
+<div style="display: flex; height: 10px; border-radius: 999px; overflow: hidden; gap: 2px; margin-top: 12px">
+<sc-for list="{{stressDist}}" as="s" hint-placeholder-count="4">
+<div style="{{s.seg}}"></div>
+</sc-for>
+</div>
+<div style="display: flex; justify-content: space-between; margin-top: 6px">
+<sc-for list="{{stressDist}}" as="s" hint-placeholder-count="4">
+<div style="font-size: 11px; color: #8FA096; display: flex; align-items: center; gap: 4px"><span style="{{s.dot}}"></span>{{s.label}} {{s.pct}}%</div>
+</sc-for>
+</div>
+<div style="display: flex; align-items: flex-end; gap: 4px; height: 70px; margin-top: 14px">
+<sc-for list="{{stressBars}}" as="b" hint-placeholder-count="12">
+<div style="{{b.style}}"></div>
+</sc-for>
+</div>
+<div style="display: flex; justify-content: space-between; font-size: 11px; color: #8FA096; margin-top: 4px"><span>00:00</span><span>08:00</span><span>16:00</span><span>24:00</span></div>
+</div>
+
+<!-- Sleep -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8FA8FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>Sleep</div>
+<div style="display: flex; align-items: center; gap: 16px; margin-top: 10px">
+<div style="position: relative; width: 68px; height: 68px; flex: none">
+<svg width="68" height="68" viewBox="0 0 68 68" role="img" aria-label="Sleep score 82">
+<circle cx="34" cy="34" r="28" fill="none" stroke="#26322D" stroke-width="7"></circle>
+<circle cx="34" cy="34" r="28" fill="none" stroke="#8FA8FF" stroke-width="7" stroke-linecap="round" stroke-dasharray="144.3 175.9" transform="rotate(-90 34 34)"></circle>
+</svg>
+<div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700">82</div>
+</div>
+<div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; line-height: 1.1">7h 12m <span style="font-size: 14px; font-weight: 500; color: #8FA096">asleep</span></div>
+<div style="font-size: 13px; color: #8FA096; margin-top: 2px">Sleep score: Good · 23:20 – 06:54</div>
+</div>
+</div>
+<div style="display: flex; align-items: flex-end; gap: 1px; height: 84px; margin-top: 14px">
+<sc-for list="{{hyp}}" as="h" hint-placeholder-count="15">
+<div style="{{h.style}}"></div>
+</sc-for>
+</div>
+<div style="display: flex; justify-content: space-between; font-size: 11px; color: #8FA096; margin-top: 4px"><span>23:20</span><span>02:00</span><span>04:30</span><span>06:54</span></div>
+<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 12px">
+<sc-for list="{{stages}}" as="st" hint-placeholder-count="4">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 14px">
+<span style="{{st.dot}}"></span>
+<span style="flex: 1">{{st.name}}</span>
+<span style="font-weight: 700">{{st.dur}}</span>
+<span style="width: 38px; text-align: right; color: #8FA096; font-size: 12px">{{st.pct}}%</span>
+</div>
+</sc-for>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px">
+<div style="background: #1E2723; border-radius: 12px; padding: 8px 10px"><div style="font-size: 11px; color: #8FA096">Avg SpO₂</div><div style="font-weight: 700; font-size: 15px">95%</div></div>
+<div style="background: #1E2723; border-radius: 12px; padding: 8px 10px"><div style="font-size: 11px; color: #8FA096">Respiration</div><div style="font-weight: 700; font-size: 15px">14 /min</div></div>
+<div style="background: #1E2723; border-radius: 12px; padding: 8px 10px"><div style="font-size: 11px; color: #8FA096">Lowest HR</div><div style="font-weight: 700; font-size: 15px">49 bpm</div></div>
+</div>
+</div>
+
+<!-- HRV status -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px">
+<div style="display: flex; justify-content: space-between; align-items: center">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5ED6C1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2 12 6 12 9 6 13 18 16 12 22 12"></polyline></svg>HRV status</div>
+<div style="font-size: 12px; font-weight: 700; color: #0E1311; background: #5ED6C1; border-radius: 999px; padding: 4px 10px">Balanced</div>
+</div>
+<div style="display: flex; align-items: baseline; gap: 10px; margin-top: 6px">
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 700">48 <span style="font-size: 14px; font-weight: 500; color: #8FA096">ms last night</span></div>
+</div>
+<div style="font-size: 12px; color: #8FA096">7-day average 49 ms</div>
+<div style="position: relative; height: 10px; border-radius: 999px; background: #26322D; margin-top: 14px">
+<div style="position: absolute; left: 35%; width: 27.5%; top: 0; bottom: 0; background: rgba(94,214,193,0.35); border-radius: 999px"></div>
+<div style="position: absolute; left: 45%; top: -3px; width: 4px; height: 16px; border-radius: 2px; background: #EAF1EC"></div>
+</div>
+<div style="display: flex; justify-content: space-between; font-size: 11px; color: #8FA096; margin-top: 6px"><span>30 ms</span><span>Baseline 44–55 ms</span><span>70 ms</span></div>
+</div>
+
+<!-- Tiles -->
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 18px; padding: 14px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF7A66" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"></path></svg>Resting HR</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; margin-top: 6px">56 <span style="font-size: 14px; font-weight: 500; color: #8FA096">bpm</span></div>
+<div style="font-size: 12px; color: #8FA096; margin-top: 2px">7-day avg 57 bpm</div>
+</div>
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 18px; padding: 14px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6FC2FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path></svg>Pulse Ox</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; margin-top: 6px">97<span style="font-size: 14px; font-weight: 500; color: #8FA096">% SpO₂</span></div>
+<div style="font-size: 12px; color: #8FA096; margin-top: 2px">Sleep low 91%</div>
+</div>
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 18px; padding: 14px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8FA8FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h8"></path></svg>Respiration</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; margin-top: 6px">15 <span style="font-size: 14px; font-weight: 500; color: #8FA096">brpm</span></div>
+<div style="font-size: 12px; color: #8FA096; margin-top: 2px">Asleep 14 brpm</div>
+</div>
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 18px; padding: 14px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C7F26B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>Fitness age</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; margin-top: 6px">31 <span style="font-size: 14px; font-weight: 500; color: #8FA096">years</span></div>
+<div style="font-size: 12px; color: #8FA096; margin-top: 2px">4 younger than your 35</div>
+</div>
+</div>
+
+<!-- Movement -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px">
+<div style="font-size: 13px; color: #8FA096">Daily movement</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px">
+<div><div style="font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; color: #C7F26B">7,260</div><div style="font-size: 12px; color: #8FA096">steps</div></div>
+<div><div style="font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700">14</div><div style="font-size: 12px; color: #8FA096">floors climbed</div></div>
+<div><div style="font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; color: #FFB45E">2,140</div><div style="font-size: 12px; color: #8FA096">kcal total</div></div>
+</div>
+<div style="display: flex; height: 10px; border-radius: 999px; overflow: hidden; gap: 2px; margin-top: 14px">
+<div style="flex: 640 1 0; background: #FFB45E"></div>
+<div style="flex: 1500 1 0; background: #6B5A3E"></div>
+</div>
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #8FA096; margin-top: 6px"><span>Active 640 kcal</span><span>Resting 1,500 kcal</span></div>
+</div>
+
+<!-- Intensity minutes -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px">
+<div style="display: flex; justify-content: space-between; align-items: baseline">
+<div style="font-size: 13px; color: #8FA096">Intensity minutes · this week</div>
+<div style="font-size: 12px; color: #C7F26B; font-weight: 700">Goal reached</div>
+</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 700; margin-top: 2px">168 <span style="font-size: 14px; font-weight: 500; color: #8FA096">of 150 min · 112%</span></div>
+<div style="height: 10px; border-radius: 999px; background: #C7F26B; margin-top: 10px"></div>
+<div style="display: flex; align-items: flex-end; gap: 6px; height: 80px; margin-top: 14px">
+<sc-for list="{{intensity}}" as="d" hint-placeholder-count="7">
+<div style="{{d.style}}"></div>
+</sc-for>
+</div>
+<div style="display: flex; gap: 6px; margin-top: 6px">
+<sc-for list="{{intensity}}" as="d" hint-placeholder-count="7">
+<div style="flex: 1; text-align: center; font-size: 11px; color: #8FA096">{{d.label}}</div>
+</sc-for>
+</div>
+<div style="font-size: 12px; color: #8FA096; margin-top: 10px">Moderate 82 min · Vigorous 43 min counted double</div>
+</div>
+
+<!-- AI insight -->
+<div style="background: #1E2723; border: 1px solid #2F3F38; border-radius: 22px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #C7F26B">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C7F26B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path><path d="M19 17v4M17 19h4"></path></svg>Coach insight</div>
+<div style="font-size: 14px; line-height: 1.5">You recharged to 86 overnight and spent the day at low stress, so Body Battery is at a normal 42 this evening. HRV is balanced. An earlier bedtime tonight would protect tomorrow's readiness.</div>
+<a href="Coach.dc.html" style="align-self: flex-start; background: #C7F26B; color: #0E1311; font-weight: 700; font-size: 14px; border-radius: 999px; padding: 10px 16px">Ask Coach</a>
+</div>
+
+</div>
+
+<!-- Tab bar -->
+<div style="height: 84px; flex: none; box-sizing: border-box; border-top: 1px solid #2A3530; background: #0E1311; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 8px 4px 20px 4px">
+<a href="Main.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg>Today</a>
+<a href="Health.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; font-weight: 700; color: #C7F26B">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"></path></svg>Health</a>
+<a href="Training.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V10M12 21V4M19 21v-7"></path></svg>Training</a>
+<a href="Activities.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>Activities</a>
+<a href="Coach.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path><path d="M19 17v4M17 19h4"></path></svg>Coach</a>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":2150}}'>
+class Component extends DCLogic {
+renderVals() {
+const bb = [30, 52, 70, 84, 86, 74, 68, 58, 61, 47, 42];
+const pts = bb.map((v, i) => (i * 30) + ',' + (8 + 84 * (1 - v / 100)).toFixed(1));
+const bbPoints = pts.join(' ');
+const bbArea = bbPoints + ' 300,100 0,100';
+
+const SC = { rest: '#8FA8FF', low: '#5ED6C1', med: '#FFD166', high: '#FF7A66' };
+const dist = [['Rest', 41, SC.rest], ['Low', 35, SC.low], ['Medium', 19, SC.med], ['High', 5, SC.high]];
+const stressDist = dist.map((d) => ({
+label: d[0], pct: d[1],
+seg: 'flex: ' + d[1] + ' 1 0; background: ' + d[2] + ';',
+dot: 'display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: ' + d[2] + ';'
+}));
+const sv = [14, 12, 11, 22, 36, 41, 27, 22, 29, 26, 0, 0];
+const stressBars = sv.map((v) => {
+const c = v <= 25 ? SC.rest : v <= 50 ? SC.low : v <= 75 ? SC.med : SC.high;
+const h = v > 0 ? Math.max(v, 4) : 1;
+return { style: 'flex: 1; min-width: 0; height: ' + h + '%; border-radius: 4px 4px 2px 2px; background: ' + c + ';' + (v === 0 ? ' opacity: 0.3;' : '') };
+});
+
+const SG = { Deep: ['#5662E8', 25], Light: ['#9DB4FF', 50], REM: ['#D79BFF', 75], Awake: ['#FFB45E', 100] };
+const seq = [['Light', 35], ['Deep', 30], ['Light', 25], ['REM', 15], ['Light', 45], ['Deep', 25], ['Awake', 8], ['Light', 40], ['REM', 30], ['Deep', 29], ['Light', 50], ['REM', 33], ['Awake', 14], ['Light', 55], ['REM', 20]];
+const hyp = seq.map((s) => ({ style: 'flex: ' + s[1] + ' 1 0; min-width: 0; height: ' + SG[s[0]][1] + '%; background: ' + SG[s[0]][0] + '; border-radius: 3px;' }));
+const stages = [['Deep', '1h 24m', 18], ['Light', '4h 10m', 55], ['REM', '1h 38m', 22], ['Awake', '22m', 5]].map((s) => ({
+name: s[0], dur: s[1], pct: s[2],
+dot: 'display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: ' + SG[s[0]][0] + ';'
+}));
+
+const iv = [['M', 0], ['T', 28], ['W', 44], ['T', 18], ['F', 68], ['S', 10], ['S', 0]];
+const intensity = iv.map((d, i) => ({
+label: d[0],
+style: 'flex: 1; height: ' + (d[1] > 0 ? Math.max(d[1] / 70 * 100, 4) : 1.5) + '%; border-radius: 5px 5px 2px 2px; background: ' + (i === 5 ? '#C7F26B' : 'rgba(199,242,107,0.38)') + ';'
+}));
+
+return { bbPoints: bbPoints, bbArea: bbArea, stressDist: stressDist, stressBars: stressBars, hyp: hyp, stages: stages, intensity: intensity };
+}
+}
+</script>
+</body>
+</html>

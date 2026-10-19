@@ -165,6 +165,8 @@ class ChatLoop(
         "compare_periods" -> "periods"
         "get_daily_summary" -> "daily data"
         "render_chart" -> "chart"
+        "create_workout" -> "workout plan"
+        "list_planned_workouts" -> "planned workouts"
         else -> "health data"
     }
 

@@ -194,6 +194,98 @@ class ChatLoopIntegrationTest {
         assertTrue(result.evidence.any { it.contains("Chart") })
     }
 
+    @Test
+    fun `executes create_workout and returns a saved plan to the model`() = runBlocking {
+        val arguments = JSONObject()
+            .put("name", "Coach Easy Run")
+            .put("sport", "run")
+            .put(
+                "steps",
+                org.json.JSONArray()
+                    .put(JSONObject().put("role", "warmup").put("minutes", 5))
+                    .put(JSONObject().put("role", "active").put("minutes", 25))
+                    .put(JSONObject().put("role", "cooldown").put("minutes", 5)),
+            )
+            .toString()
+        val toolCall = JSONObject()
+            .put("index", 0)
+            .put("id", "call_workout")
+            .put(
+                "function",
+                JSONObject()
+                    .put("name", "create_workout")
+                    .put("arguments", arguments),
+            )
+        val firstPayload = JSONObject()
+            .put(
+                "choices",
+                org.json.JSONArray().put(
+                    JSONObject()
+                        .put("delta", JSONObject().put("tool_calls", org.json.JSONArray().put(toolCall)))
+                        .put("finish_reason", "tool_calls"),
+                ),
+            )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: $firstPayload\n\ndata: [DONE]\n\n"),
+        )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"I saved the workout in Training → Workout plan. Review it and tap Send to watch.\"},\"finish_reason\":\"stop\"}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+
+        val writer = FakeWorkoutWriter()
+        val loop = ChatLoop(
+            tools = ToolRegistry(FakeSource(today), writer) { today },
+            systemPrompt = "test prompt",
+            maxHeartRate = null,
+        )
+        val result = loop.run(
+            client = client(),
+            model = ModelConfig("m", "mock-model"),
+            history = listOf(LlmMessage("user", "Create an easy 35 minute run")),
+            scope = ToolScope(),
+        )
+
+        assertEquals(1, writer.created.size)
+        assertEquals("Coach Easy Run", writer.created.single().name)
+        assertTrue(result.text.contains("Workout plan"))
+        assertTrue(result.evidence.any { it.contains("Workout created") })
+        server.takeRequest() // first streamed tool call
+        val second = JSONObject(server.takeRequest().body.readUtf8())
+        val messages = second.getJSONArray("messages")
+        val toolMessage = (0 until messages.length())
+            .map { messages.getJSONObject(it) }
+            .last { it.optString("role") == "tool" }
+        val payload = toolMessage.getString("content")
+            .substringAfter(">").substringBeforeLast("</untrusted_data>").trim()
+        val json = JSONObject(payload)
+        assertTrue(json.getBoolean("created"))
+        assertFalse(json.getBoolean("sentToWatch"))
+        assertEquals(1L, json.getLong("id"))
+    }
+
+    private class FakeWorkoutWriter : WorkoutWriter {
+        val created = mutableListOf<dev.opengarmin.app.data.PlannedWorkoutEntity>()
+
+        override suspend fun createWorkout(
+            scope: ToolScope,
+            workout: dev.opengarmin.app.data.PlannedWorkoutEntity,
+        ): dev.opengarmin.app.data.PlannedWorkoutEntity {
+            val saved = workout.copy(id = created.size + 1L)
+            created += saved
+            return saved
+        }
+
+        override suspend fun listWorkouts(scope: ToolScope): List<dev.opengarmin.app.data.PlannedWorkoutEntity> =
+            created
+    }
+
     private class FakeSource(private val today: LocalDate) : HealthDataSource {
         override suspend fun daily(scope: ToolScope, start: LocalDate, end: LocalDate): List<DailyHealth> {
             if (scope.profileId != LOCAL_PROFILE_ID) return emptyList()

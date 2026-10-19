@@ -24,6 +24,10 @@ class TransportPipe(
     private val onComplete: () -> Unit,
     private val onError: (String) -> Unit,
     private val log: (String) -> Unit = {},
+    /** When non-null the pipe writes this payload instead of reading. */
+    private val writePayload: ByteArray? = null,
+    /** Device compression window for writes (0 = send raw bytes). */
+    private val writeCompressionWindow: Int = 0,
 ) {
     private var handle: Int = -1
     private var sendSeq = 0
@@ -34,7 +38,12 @@ class TransportPipe(
     private val receiver = MlrReceiver { _, data -> onFragment(data) }
 
     fun start() {
-        log("PIPE: registering service=0x%04x".format(serviceId))
+        log(
+            "PIPE: registering service=0x%04x (%s)".format(
+                serviceId,
+                if (writePayload != null) "write" else "read",
+            ),
+        )
         session.registerService(serviceId, reliable = true)
     }
 
@@ -49,7 +58,7 @@ class TransportPipe(
     private fun configure() {
         val payload = ByteArray(6)
         payload[0] = 0x00 // configure command
-        payload[1] = 0x00 // direction: read
+        payload[1] = if (writePayload != null) 0x01 else 0x00 // direction: write/read
         for (i in 0 until 4) payload[2 + i] = ((transferHandle ushr (8 * i)) and 0xFF).toByte()
         send(payload)
     }
@@ -84,8 +93,13 @@ class TransportPipe(
                 onError("configure failed general=$general config=$config")
                 return
             }
-            log("PIPE: configured, receiving data")
-            ack()
+            val payload = writePayload
+            if (payload != null) {
+                write(payload)
+            } else {
+                log("PIPE: configured, receiving data")
+                ack()
+            }
             return
         }
 
@@ -94,6 +108,20 @@ class TransportPipe(
             onData(data)
         }
         ack()
+    }
+
+    private fun write(payload: ByteArray) {
+        if (finished || handle < 0) return
+        val bytes = if (writeCompressionWindow > 0) deflate(payload) else payload
+        log(
+            "PIPE: writing ${bytes.size} bytes (${payload.size} raw, window=$writeCompressionWindow)",
+        )
+        send(bytes)
+        // Queue the close after the data; the BLE write queue preserves order.
+        session.closeService(serviceId, handle)
+        finished = true
+        log("PIPE: write queued, closing service 0x%04x".format(serviceId))
+        onComplete()
     }
 
     /** Called when the device closes the transport pipe service (end of transfer). */
@@ -107,5 +135,51 @@ class TransportPipe(
     private fun ack() {
         if (finished || handle < 0) return
         session.sendMlrFrame(receiver.ackFrame(handle))
+    }
+
+    private fun deflate(data: ByteArray): ByteArray = zlibStored(data, writeCompressionWindow)
+
+    companion object {
+        /**
+         * Wraps [data] in a valid zlib stream made of stored (uncompressed)
+         * deflate blocks. The official client uses a deflater with the window
+         * bits negotiated by the watch; Java's Deflater is fixed at 15 bits and
+         * a mismatched CINFO makes the watch's inflater reject the stream.
+         * Stored blocks are valid for every window size and the files are tiny.
+         */
+        internal fun zlibStored(data: ByteArray, windowBits: Int): ByteArray {
+            val wb = windowBits.coerceIn(9, 15)
+            val out = java.io.ByteArrayOutputStream(data.size + 16)
+            val cmf = ((wb - 8) shl 4) or 8
+            val flg = (31 - ((cmf shl 8) % 31)) % 31
+            out.write(cmf)
+            out.write(flg)
+            var pos = 0
+            do {
+                val length = minOf(65535, data.size - pos)
+                val last = pos + length >= data.size
+                out.write(if (last) 1 else 0)
+                out.write(length and 0xFF)
+                out.write((length ushr 8) and 0xFF)
+                val nlen = length.inv() and 0xFFFF
+                out.write(nlen and 0xFF)
+                out.write((nlen ushr 8) and 0xFF)
+                if (length > 0) out.write(data, pos, length)
+                pos += length
+            } while (pos < data.size)
+
+            var a = 1
+            var b = 0
+            for (byte in data) {
+                a = (a + (byte.toInt() and 0xFF)) % 65521
+                b = (b + a) % 65521
+            }
+            val adler = (b shl 16) or a
+            out.write((adler ushr 24) and 0xFF)
+            out.write((adler ushr 16) and 0xFF)
+            out.write((adler ushr 8) and 0xFF)
+            out.write(adler and 0xFF)
+            return out.toByteArray()
+        }
     }
 }

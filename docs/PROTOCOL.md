@@ -521,5 +521,83 @@ same path.
 APK classes: `com.garmin.device.filetransfer.mlr.MLRTransportPipe`
 (obfuscated `CT/e`, `CT/e$a`) and the low-level pipe `DT/o`.
 
+### 10.6 Uploading a workout — legacy GFDI path (VERIFIED)
 
+There are two candidate paths for writing a structured workout to a
+Forerunner 255:
 
+1. **GDI FileAccess push** — `Service.push_item_request = 3` with
+   `DataType { format: GDXML_DATA_TYPE, gdxml_string: "FIT_TYPE_5" }`.
+   On the FR255 this is answered with
+   `PushItemDataResponse { result = INVALID_PARAMS (5) }`; the firmware does
+   not accept workout pushes through the GDI FileAccess service.
+2. **Legacy GFDI chunked upload** — the path Garmin firmware and Gadgetbridge
+   use. This succeeds on the FR255 and is what OpenGarmin uses, with the GDI
+   push kept as a fallback for devices that support it.
+
+The official Garmin Connect “Send to device” button does not use either path
+directly: it puts a `workout-service*workout*FIT*<id>` item in the phone's
+download queue, and the watch pulls it over a Garmin-cloud-backed transfer.
+OpenGarmin avoids that account dependency.
+
+#### Legacy message sequence
+
+| Message | Type | Request payload |
+|---|---|---|
+| `CREATE_FILE` | 5005 | `[fileSize:u32][dataType:u8=128][subType:u8=5][fileIndex:u16=0][reserved:u8][subtypeMask:u8][numberMask:u16=0xFFFF][pathLen:u16=0][fileId:u64]` |
+| `UPLOAD_REQUEST` | 5003 | `[fileIndex:u16][size:u32][offset:u32][crcSeed:u16]` |
+| `FILE_TRANSFER_DATA` | 5004 | `[flags:u8=0][crc:u16][offset:u32][chunk]` |
+| `SYSTEM_EVENT` | 5030 | `[SYNC_COMPLETE:u8=0]` |
+
+Responses are normal GFDI `RESPONSE (5000)` frames whose payload after the
+status byte is:
+
+```
+CREATE_FILE:      [createStatus:u8][fileIndex:u16][dataType:u8][subType:u8][fileNumber:u16]
+UPLOAD_REQUEST:   [uploadStatus:u8][dataOffset:u32][maxFileSize:u32][crcSeed:u16]
+FILE_TRANSFER_DATA:[transferStatus:u8][nextOffset:u32]
+```
+
+`createStatus = 0` and `uploadStatus = 0` mean OK. The watch assigns a
+temporary `fileIndex` (observed `0xFFFB`). `fileSize` and `size` are the
+uncompressed FIT length; the transfer itself is not compressed.
+
+The chunk CRC is the running CRC-16 (same polynomial/table as GFDI framing,
+no final XOR) over all bytes sent so far, seeded with `crcSeed` from the
+upload response. Chunks observed working on the FR255 are 340 bytes
+(`maxPacketSize - 13`); the watch acknowledges each chunk with the next
+accepted offset. Send `SYNC_COMPLETE` after the last chunk.
+
+Verified on the FR255: a 367-byte workout was accepted
+(`CREATE_FILE` → `UPLOAD_REQUEST offset=0` → two data chunks → SYNC_COMPLETE),
+the watch immediately emitted
+`FileAccess.ItemAddedNotification { dataType = FIT_TYPE_5, data_size = 367 }`,
+and the same 367 bytes could be pulled back with the normal GDI read path. A
+769-byte workout containing a 4× repeat block was accepted the same way.
+
+#### Workout FIT file
+
+A workout FIT needs `file_id` (`type = 5`), `workout` (26) and one or more
+`workout_step` (27) messages. Useful wire values:
+
+| Field | Value |
+|---|---|
+| `workout_step.duration_type` | `time=0`, `distance=1`, `open=5`, `repeat_until_steps_cmplt=6` |
+| `duration_value` for time | milliseconds |
+| `duration_value` for distance | centimetres |
+| repeat block | marker step after the block: `duration_type=6`, `duration_value=first step index`, `target_type=open=2`, `target_value=#repetitions` |
+| `intensity` | active=0, rest=1, warmup=2, cooldown=3, recovery=4, interval=5, other=6 |
+
+`file_id.type` is 5 (`workout`), and FIT date/time fields use the Garmin epoch
+(`1989-12-31T00:00:00Z`), not Unix seconds. OpenGarmin implements the encoder in
+`protocol/src/main/kotlin/dev/opengarmin/protocol/FitWorkout.kt`.
+
+#### GDI push compression window quirk
+
+If the GDI push fallback is used, the watch returns
+`PushItemDataResponse.compression_window` (typically 9–15). Garmin's own client
+deflates with exactly those window bits. Java's `Deflater` is fixed at 15 bits,
+and a stream whose zlib `CINFO` is larger than the negotiated window is rejected
+by the watch (`invalid window size`). OpenGarmin writes a valid zlib stream made
+of **stored deflate blocks** with the negotiated `CINFO`; it is uncompressed on
+the wire but valid for every window size.

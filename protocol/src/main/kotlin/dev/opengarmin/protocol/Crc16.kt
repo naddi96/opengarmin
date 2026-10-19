@@ -13,8 +13,12 @@ object Crc16 {
         0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400,
     )
 
-    fun compute(data: ByteArray, offset: Int = 0, length: Int = data.size - offset): Int {
-        var crc = 0
+    fun compute(data: ByteArray, offset: Int = 0, length: Int = data.size - offset): Int =
+        continueFrom(0, data, offset, length)
+
+    /** Continues a running CRC (used by the legacy GFDI chunked file upload). */
+    fun continueFrom(initial: Int, data: ByteArray, offset: Int = 0, length: Int = data.size - offset): Int {
+        var crc = initial
         val end = offset + length
         for (i in offset until end) {
             val b = data[i].toInt() and 0xFF

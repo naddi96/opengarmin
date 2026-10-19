@@ -1,8 +1,9 @@
 # Coach tools and data access
 
 The coach never writes SQL and never sees the database directly. It can only
-call a small set of typed, read-only tools. Every tool is executed locally
-against the app's Room data and returns compact JSON.
+call a small set of typed tools. All health-data tools are read-only; one
+narrow write tool creates a locally saved workout plan. Every tool is executed
+locally against the app's Room data and returns compact JSON.
 
 ## Scope and limits
 
@@ -10,8 +11,9 @@ against the app's Room data and returns compact JSON.
   local-first; the scope parameter is enforced so a future multi-profile or
   server-backed mode cannot accidentally read another profile. Requests with an
   unknown scope are rejected before any query.
-- **Read-only:** tools use repository/DAO read methods only. There is no raw SQL
-  and no write path.
+- **Read-only health data:** every health query uses repository/DAO read methods.
+  There is no raw SQL. The only write path is `create_workout`, which inserts a
+  `planned_workouts` row after schema validation and never touches the watch.
 - **Ranges:** each date is ISO `YYYY-MM-DD`; `to` defaults to today. Maximum
   366 days, 90 days for daily-grained queries. `compare_periods` allows 90 days
   per side.
@@ -75,6 +77,30 @@ Metrics: steps, resting_hr, active_minutes, calories, sleep, hrv. Uses daily
 averages, reports sample counts, absolute delta, and percent change. Sleep/HRV
 return `insufficientData: true` when no rows exist in either range.
 
+### `list_planned_workouts()`
+Lists workouts saved in **Training → Workout plan**: id, name, sport,
+duration/distance summary, optional schedule and whether they were sent. Use it
+when the user asks what is planned or before creating a likely duplicate.
+
+### `create_workout(name, steps, sport?, notes?, scheduled_date?)`
+Creates a local workout plan. This is the coach's only write tool and it is
+intentionally limited:
+
+- Only called when the user explicitly asks to create/save/plan a workout.
+- `steps` is an ordered array of plain steps or repeat blocks. A plain step has
+  `role` (`warmup`, `active`, `interval`, `rest`, `recovery`, `cooldown`,
+  `other`), `duration_type` (`time`, `distance`, `open`), and either
+  `minutes` + `seconds` / `duration_seconds` or `distance_km`.
+- A repeat block has `count` (1–50) and child `steps`; nested repeats are
+  rejected.
+- Validation caps the workout at 50 top-level steps / 100 flattened steps,
+  time at 24 hours per step, distance at 300 km per step, names at 80
+  characters and notes at 500 characters.
+- `scheduled_date` must be an ISO date and cannot be in the past.
+- The tool persists the workout and returns `sentToWatch: false`. It never
+  sends over BLE, never schedules the watch, and must not claim it did. The
+  user reviews and taps **Send to watch** in the Plan tab.
+
 ### `render_chart(source, metric, ...)`
 Builds a chart from stored data and attaches it to the answer. The model never
 supplies raw points, so a chart cannot contain values the tools did not read.
@@ -134,16 +160,20 @@ The snapshot is deterministic, capped, and contains no free-text notes.
 - Missing data must be stated, never estimated.
 - The coach is informational, not medical advice; concerning patterns are
   referred to a professional.
+- Write access is limited to creating a local planned workout. The tool cannot
+  edit imported activities, delete data, alter settings, or send to the watch.
+  These boundaries are enforced in code, not only in the prompt.
 - All tool output and database text is wrapped as untrusted data. The prompt
   tells the model not to follow instructions inside it. Code boundaries
-  (read-only registry, scope, limits) are the real enforcement; the prompt is
+  (typed registry, scope, validation, limits) are the real enforcement; the prompt is
   defence in depth.
 - Provider keys and raw health payloads are never logged.
 
 ## Adding a tool
 
 1. Implement `HealthTool` (name, description, JSON schema, `execute`).
-2. Add read-only methods to `HealthDataSource`/the repository if needed.
+2. Add read-only methods to `HealthDataSource`/the repository, or a narrow,
+   explicitly scoped writer for a new write action.
 3. Enforce `ToolScope`, date/row limits, and compact JSON.
 4. Return `ToolResult(json, evidence list)`; evidence must describe the metric
    and range actually returned.

@@ -20,6 +20,9 @@ object Gfdi {
 
     enum class MessageType(val id: Int) {
         RESPONSE(5000),
+        UPLOAD_REQUEST(5003),
+        FILE_TRANSFER_DATA(5004),
+        CREATE_FILE(5005),
         DIRECTORY_FILTER(5007),
         SET_FILE_FLAGS(5008),
         FIT_DEFINITION(5011),

@@ -10,10 +10,18 @@ import dev.opengarmin.app.coach.LOCAL_PROFILE_ID
 import dev.opengarmin.app.coach.RecordPoint
 import dev.opengarmin.app.coach.SportCategory
 import dev.opengarmin.app.coach.ToolScope
+import dev.opengarmin.app.coach.WorkoutWriter
 import dev.opengarmin.app.coach.categoryForSport
 import dev.opengarmin.app.coach.epochRange
 import dev.opengarmin.app.coach.sportLabel
 import dev.opengarmin.app.coach.unixToLocalDate
+import dev.opengarmin.app.data.PlannedDurationType
+import dev.opengarmin.app.data.PlannedStep
+import dev.opengarmin.app.data.PlannedWorkoutEntity
+import dev.opengarmin.app.data.StepRole
+import dev.opengarmin.app.data.WorkoutPlanCodec
+import dev.opengarmin.app.data.WorkoutSport
+import dev.opengarmin.app.data.newStepId
 import dev.opengarmin.app.llm.LlmToolDefinition
 import org.json.JSONArray
 import org.json.JSONObject
@@ -39,18 +47,23 @@ interface HealthTool {
 
 class ToolRegistry(
     private val dataSource: HealthDataSource,
+    private val workoutWriter: WorkoutWriter? = null,
     private val today: () -> LocalDate = { LocalDate.now() },
 ) {
-    val tools: List<HealthTool> = listOf(
-        DailySummaryTool(dataSource, today),
-        StepsTool(dataSource, today),
-        HeartRateTool(dataSource, today),
-        SleepTool(dataSource, today),
-        ListActivitiesTool(dataSource, today),
-        ActivityTool(dataSource),
-        ComparePeriodsTool(dataSource, today),
-        RenderChartTool(dataSource, today),
-    )
+    val tools: List<HealthTool> = buildList {
+        add(DailySummaryTool(dataSource, today))
+        add(StepsTool(dataSource, today))
+        add(HeartRateTool(dataSource, today))
+        add(SleepTool(dataSource, today))
+        add(ListActivitiesTool(dataSource, today))
+        add(ActivityTool(dataSource))
+        add(ComparePeriodsTool(dataSource, today))
+        add(RenderChartTool(dataSource, today))
+        if (workoutWriter != null) {
+            add(ListPlannedWorkoutsTool(workoutWriter))
+            add(CreateWorkoutTool(workoutWriter, today))
+        }
+    }
 
     val definitions: List<LlmToolDefinition> = tools.map { it.definition }
 
@@ -1024,6 +1037,320 @@ private class RenderChartTool(
         val defaultType: ChartType,
         val value: (DailyHealth) -> Double?,
     )
+}
+
+private class ListPlannedWorkoutsTool(
+    private val writer: WorkoutWriter,
+) : HealthTool {
+    override val definition = LlmToolDefinition(
+        name = "list_planned_workouts",
+        description = "List workouts saved locally in the Plan section, with id, sport, duration/distance, schedule and whether they were sent to the watch. Use this before creating a duplicate or when the user asks what is planned.",
+        parameters = schema(required = emptyList(), props = emptyMap()),
+    )
+
+    override suspend fun execute(scope: ToolScope, args: JSONObject): ToolResult {
+        if (scope.profileId != LOCAL_PROFILE_ID) throw ToolException("Unknown profile scope")
+        val workouts = writer.listWorkouts(scope)
+        val json = JSONObject().apply {
+            put("count", workouts.size)
+            put(
+                "workouts",
+                JSONArray().apply {
+                    workouts.forEach { workout ->
+                        put(
+                            JSONObject().apply {
+                                put("id", workout.id)
+                                put("name", workout.name)
+                                put("sport", WorkoutSport.from(workout.sport, workout.subSport).label)
+                                put("summary", workout.summary())
+                                put("scheduledDate", workout.scheduledDate ?: JSONObject.NULL)
+                                put("sentToWatch", workout.lastSentAt != null)
+                            },
+                        )
+                    }
+                },
+            )
+        }
+        return ToolResult(json.toString(), listOf("Planned workouts · ${workouts.size}"))
+    }
+}
+
+private class CreateWorkoutTool(
+    private val writer: WorkoutWriter,
+    private val today: () -> LocalDate,
+) : HealthTool {
+    override val definition = LlmToolDefinition(
+        name = "create_workout",
+        description = "Create a structured workout in the local Plan section. Use this ONLY when the user explicitly asks you to create, save, or plan a workout. " +
+            "Steps can be time-based, distance-based or open (lap button), and a repeat block repeats its child steps. " +
+            "This saves the workout on the phone; it does NOT send it to the watch. Tell the user to review and send it from Training → Workout plan.",
+        parameters = schema(
+            required = listOf("name", "steps"),
+            props = mapOf(
+                "name" to JSONObject().apply {
+                    put("type", "string")
+                    put("description", "Short workout name, at most 80 characters")
+                },
+                "sport" to enumProp(
+                    "Workout sport",
+                    listOf("run", "ride", "walk", "strength", "cardio", "other"),
+                    "run",
+                ),
+                "notes" to JSONObject().apply {
+                    put("type", "string")
+                    put("description", "Optional instructions or purpose, at most 500 characters")
+                },
+                "scheduled_date" to dateProp("Optional local date for this session; must not be in the past"),
+                "steps" to JSONObject().apply {
+                    put("type", "array")
+                    put("description", "Ordered workout steps. Each item is a step or a repeat block.")
+                    put(
+                        "items",
+                        JSONObject().apply {
+                            put("type", "object")
+                            put(
+                                "properties",
+                                JSONObject().apply {
+                                    put("type", enumProp("step or repeat", listOf("step", "repeat"), "step"))
+                                    put("role", enumProp("Step role", listOf("warmup", "active", "interval", "rest", "recovery", "cooldown", "other"), "active"))
+                                    put("duration_type", enumProp("Duration type", listOf("time", "distance", "open"), "time"))
+                                    put("minutes", JSONObject().apply {
+                                        put("type", "number")
+                                        put("description", "Minutes for a time step (0-1440)")
+                                    })
+                                    put("seconds", JSONObject().apply {
+                                        put("type", "number")
+                                        put("description", "Additional seconds for a time step (0-59)")
+                                    })
+                                    put("duration_seconds", JSONObject().apply {
+                                        put("type", "integer")
+                                        put("description", "Alternative total time in seconds (1-86400)")
+                                    })
+                                    put("distance_km", JSONObject().apply {
+                                        put("type", "number")
+                                        put("description", "Distance in kilometres for a distance step (0.01-300)")
+                                    })
+                                    put("count", JSONObject().apply {
+                                        put("type", "integer")
+                                        put("description", "Repetitions for a repeat block (1-50)")
+                                    })
+                                    put("steps", JSONObject().apply {
+                                        put("type", "array")
+                                        put("description", "Child steps for a repeat block; only plain steps, no nested repeats")
+                                        put("items", JSONObject().apply { put("type", "object") })
+                                    })
+                                },
+                            )
+                            put("additionalProperties", false)
+                        },
+                    )
+                },
+            ),
+        ),
+    )
+
+    override suspend fun execute(scope: ToolScope, args: JSONObject): ToolResult {
+        if (scope.profileId != LOCAL_PROFILE_ID) throw ToolException("Unknown profile scope")
+        val name = (if (args.isNull("name")) "" else args.optString("name")).trim().take(80)
+        if (name.isBlank()) throw ToolException("name is required")
+        val sport = if (args.isNull("sport") || args.optString("sport").isBlank()) {
+            WorkoutSport.RUN
+        } else {
+            parseWorkoutSport(args.optString("sport"))
+        }
+        val notes = (if (args.isNull("notes")) "" else args.optString("notes")).trim().take(500)
+        val scheduledRaw = if (args.isNull("scheduled_date")) "" else args.optString("scheduled_date").trim()
+        val scheduledDate = scheduledRaw.takeIf { it.isNotEmpty() }?.let { raw ->
+            val date = runCatching { LocalDate.parse(raw) }
+                .getOrElse { throw ToolException("scheduled_date must be an ISO date (YYYY-MM-DD)") }
+            if (date.isBefore(today())) throw ToolException("scheduled_date cannot be in the past")
+            date.toString()
+        }
+        val stepsArray = args.optJSONArray("steps")
+            ?: throw ToolException("steps must be a non-empty array")
+        val steps = parseWorkoutSteps(stepsArray)
+        val flattened = steps.sumOf { step ->
+            if (step is PlannedStep.Repeat) step.children.size + 1 else 1
+        }
+        if (flattened > 100) throw ToolException("Workout has too many steps (maximum 100 including repeat markers)")
+
+        val now = System.currentTimeMillis() / 1000
+        val entity = PlannedWorkoutEntity(
+            id = 0,
+            name = name,
+            sport = sport.sport,
+            subSport = sport.subSport,
+            notes = notes,
+            scheduledDate = scheduledDate,
+            stepsJson = WorkoutPlanCodec.encode(steps),
+            createdAt = now,
+            updatedAt = now,
+            lastSentAt = null,
+        )
+        val saved = writer.createWorkout(scope, entity)
+        val json = JSONObject().apply {
+            put("created", true)
+            put("id", saved.id)
+            put("name", saved.name)
+            put("sport", sport.label)
+            put("summary", saved.summary())
+            put("scheduledDate", saved.scheduledDate ?: JSONObject.NULL)
+            put("stepCount", flattened)
+            put("savedIn", "Training → Workout plan")
+            put("sentToWatch", false)
+            put(
+                "nextStep",
+                "The workout is saved on the phone. Review it and tap Send to watch in Training → Workout plan.",
+            )
+            put(
+                "steps",
+                JSONArray().apply {
+                    steps.forEach { put(plannedStepJson(it)) }
+                },
+            )
+        }
+        return ToolResult(json.toString(), listOf("Workout created · ${saved.name}"))
+    }
+}
+
+private fun parseWorkoutSteps(array: JSONArray): List<PlannedStep> {
+    if (array.length() == 0) throw ToolException("steps must contain at least one step")
+    if (array.length() > 50) throw ToolException("Too many top-level steps (maximum 50)")
+    return buildList {
+        for (index in 0 until array.length()) {
+            val obj = array.optJSONObject(index)
+                ?: throw ToolException("steps[$index] must be an object")
+            val rawType = if (obj.isNull("type")) "" else obj.optString("type", "step")
+            val type = if (rawType.isBlank()) "step" else normalizeToken(rawType)
+            when (type) {
+                "repeat" -> {
+                    val count = obj.optInt("count", 0)
+                    if (count !in 1..50) throw ToolException("steps[$index].count must be between 1 and 50")
+                    val childrenArray = obj.optJSONArray("steps")
+                        ?: throw ToolException("steps[$index] is a repeat block and needs a steps array")
+                    if (childrenArray.length() == 0) {
+                        throw ToolException("steps[$index] repeat block needs at least one child step")
+                    }
+                    if (childrenArray.length() > 20) {
+                        throw ToolException("steps[$index] repeat block has too many children (maximum 20)")
+                    }
+                    val children = buildList {
+                        for (childIndex in 0 until childrenArray.length()) {
+                            val child = childrenArray.optJSONObject(childIndex)
+                                ?: throw ToolException("steps[$index].steps[$childIndex] must be an object")
+                            if (normalizeToken(child.optString("type", "step")) == "repeat") {
+                                throw ToolException("Nested repeat blocks are not supported")
+                            }
+                            add(parseSingleWorkoutStep(child, "steps[$index].steps[$childIndex]"))
+                        }
+                    }
+                    add(PlannedStep.Repeat(id = newStepId(), count = count, children = children))
+                }
+
+                "step", "" -> add(parseSingleWorkoutStep(obj, "steps[$index]"))
+                else -> throw ToolException("steps[$index].type must be 'step' or 'repeat'")
+            }
+        }
+    }
+}
+
+private fun parseSingleWorkoutStep(obj: JSONObject, field: String): PlannedStep.Single {
+    val rawRole = if (obj.isNull("role")) "" else obj.optString("role")
+    val role = if (rawRole.isBlank()) StepRole.ACTIVE else parseStepRole(rawRole)
+    val rawDuration = if (obj.isNull("duration_type")) "" else obj.optString("duration_type")
+    val durationType = if (rawDuration.isBlank()) PlannedDurationType.TIME else parseDurationType(rawDuration)
+    val seconds = if (durationType == PlannedDurationType.TIME) {
+        val explicit = obj.optDouble("duration_seconds", Double.NaN)
+        val total = if (explicit.isFinite() && explicit > 0) {
+            explicit.roundToInt()
+        } else {
+            val minutes = obj.optDouble("minutes", 0.0).takeIf { it.isFinite() } ?: 0.0
+            val extraSeconds = obj.optDouble("seconds", 0.0).takeIf { it.isFinite() } ?: 0.0
+            (minutes * 60.0 + extraSeconds).roundToInt()
+        }
+        if (total !in 1..86_400) throw ToolException("$field needs a duration between 1 second and 24 hours")
+        total
+    } else {
+        300
+    }
+    val meters = if (durationType == PlannedDurationType.DISTANCE) {
+        val km = obj.optDouble("distance_km", obj.optDouble("distance", Double.NaN))
+        if (!km.isFinite() || km <= 0.0) {
+            throw ToolException("$field needs distance_km for a distance step")
+        }
+        val value = (km * 1000.0).roundToInt()
+        if (value !in 10..300_000) {
+            throw ToolException("$field distance must be between 0.01 km and 300 km")
+        }
+        value
+    } else {
+        1000
+    }
+    return PlannedStep.Single(
+        id = newStepId(),
+        role = role,
+        durationType = durationType,
+        seconds = seconds,
+        meters = meters,
+    )
+}
+
+private fun parseStepRole(raw: String): StepRole = when (normalizeToken(raw)) {
+    "warmup", "warm" -> StepRole.WARM_UP
+    "active", "run", "work", "main" -> StepRole.ACTIVE
+    "interval", "effort" -> StepRole.INTERVAL
+    "rest", "recover" -> StepRole.REST
+    "recovery", "easy" -> StepRole.RECOVERY
+    "cooldown", "cool", "cool_down" -> StepRole.COOL_DOWN
+    "other" -> StepRole.OTHER
+    else -> throw ToolException("Unknown step role: $raw")
+}
+
+private fun parseDurationType(raw: String): PlannedDurationType = when (normalizeToken(raw)) {
+    "time", "duration", "timed" -> PlannedDurationType.TIME
+    "distance", "dist" -> PlannedDurationType.DISTANCE
+    "open", "lap", "manual" -> PlannedDurationType.OPEN
+    else -> throw ToolException("Unknown duration_type: $raw")
+}
+
+private fun parseWorkoutSport(raw: String): WorkoutSport = when (normalizeToken(raw)) {
+    "run", "running" -> WorkoutSport.RUN
+    "ride", "bike", "cycling" -> WorkoutSport.RIDE
+    "walk", "walking" -> WorkoutSport.WALK
+    "strength", "weights" -> WorkoutSport.STRENGTH
+    "cardio" -> WorkoutSport.CARDIO
+    "other", "" -> WorkoutSport.OTHER
+    else -> throw ToolException("Unknown sport: $raw")
+}
+
+private fun normalizeToken(value: String): String =
+    value.lowercase(Locale.US).replace("_", "").replace(" ", "")
+
+private fun plannedStepJson(step: PlannedStep): JSONObject = when (step) {
+    is PlannedStep.Single -> JSONObject().apply {
+        put("type", "step")
+        put("role", step.role.label)
+        put("summary", step.summary())
+        put("durationType", step.durationType.label)
+    }
+
+    is PlannedStep.Repeat -> JSONObject().apply {
+        put("type", "repeat")
+        put("count", step.count)
+        put(
+            "steps",
+            JSONArray().apply {
+                step.children.forEach { child ->
+                    put(
+                        JSONObject().apply {
+                            put("role", child.role.label)
+                            put("summary", child.summary())
+                        },
+                    )
+                }
+            },
+        )
+    }
 }
 
 private data class ZoneResult(val maxHr: Int, val percentages: List<Float>)

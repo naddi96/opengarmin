@@ -9,7 +9,7 @@
 <x-dc>
 <helmet>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap" rel="stylesheet">
 <style>
 body{margin:0}
 a{color:inherit;text-decoration:none}
@@ -76,7 +76,7 @@ button{font-family:inherit}
 <div style="display: flex; justify-content: space-between; align-items: flex-start">
 <div>
 <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8FA096">
-<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF7A66" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF7A66" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"></path></svg>
 {{hrTitle}}
 </div>
 <div style="font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; margin-top: 2px">{{hrBig}}</div>
@@ -84,10 +84,10 @@ button{font-family:inherit}
 <div style="font-size: 12px; color: #8FA096; max-width: 130px; text-align: right; line-height: 1.4">{{hrNote}}</div>
 </div>
 <svg viewBox="0 0 300 80" width="100%" height="80" style="display: block; margin-top: 6px" role="img" aria-label="{{hrTitle}} chart">
-<polygon points="{{hrArea}}" fill="#FF7A66" fill-opacity="0.14"/>
-<polyline points="{{hrPoints}}" fill="none" stroke="#FF7A66" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="{{hrArea}}" fill="#FF7A66" fill-opacity="0.14"></polygon>
+<polyline points="{{hrPoints}}" fill="none" stroke="#FF7A66" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"></polyline>
 <sc-for list="{{hrDots}}" as="p" hint-placeholder-count="7">
-<circle cx="{{p.x}}" cy="{{p.y}}" r="{{p.r}}" fill="#FF7A66" stroke="#161D1A" stroke-width="2"/>
+<circle cx="{{p.x}}" cy="{{p.y}}" r="{{p.r}}" fill="#FF7A66" stroke="#161D1A" stroke-width="2"></circle>
 </sc-for>
 </svg>
 <div style="display: flex; justify-content: space-between; font-size: 11px; color: #8FA096; margin-top: 2px"><span>{{hrFirst}}</span><span>{{hrLast}}</span></div>
@@ -95,7 +95,7 @@ button{font-family:inherit}
 
 <!-- AI insight -->
 <div style="background: #1E2723; border: 1px solid #2F3F38; border-radius: 18px; padding: 12px 16px; display: flex; gap: 10px; align-items: flex-start">
-<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C7F26B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17v4M17 19h4"/></svg>
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C7F26B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path><path d="M19 17v4M17 19h4"></path></svg>
 <div style="font-size: 13px; line-height: 1.45">{{insight}}</div>
 </div>
 
@@ -104,13 +104,13 @@ button{font-family:inherit}
 <!-- Tab bar -->
 <div style="height: 84px; flex: none; box-sizing: border-box; border-top: 1px solid #2A3530; background: #0E1311; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 8px 8px 20px 8px">
 <a href="Main.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Today</a>
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg>Today</a>
 <a href="Trends.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; font-weight: 700; color: #C7F26B">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>Trends</a>
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 17 9 11 13 15 21 7"></polyline><polyline points="15 7 21 7 21 13"></polyline></svg>Trends</a>
 <a href="Activities.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Activities</a>
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>Activities</a>
 <a href="Coach.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17v4M17 19h4"/></svg>Coach</a>
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path><path d="M19 17v4M17 19h4"></path></svg>Coach</a>
 </div>
 
 </div>

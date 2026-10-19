@@ -1,6 +1,6 @@
 # Architecture notes
 
-_Last updated: 2026-10-18. Baseline commit: `d071f3a` (backup/restore + coach conversation history)._
+_Last updated: 2026-10-19. Baseline: workout planner and direct watch upload._
 
 This document describes the app as it is implemented today: a local-first Android
 companion that syncs a Garmin watch over BLE, stores health data in Room, and
@@ -16,13 +16,13 @@ live in [`BACKLOG.md`](../BACKLOG.md).
 | UI | Jetpack Compose + Material 3, Compose BOM `2024.06.00`; Pulse design tokens and reusable components |
 | Build | Gradle 8.7, AGP 8.5.2, KSP, `compileSdk 34`, `minSdk 28`, `targetSdk 34` |
 | Modules | `:protocol` (pure JVM) and `:app` (Android) |
-| Persistence | Room 2.6.1, database version 7, hand-written migrations; SharedPreferences for settings, provider configs, and conversations |
+| Persistence | Room 2.6.1, database version 8, hand-written migrations; SharedPreferences for settings and provider configs |
 | Async | Kotlin coroutines + `lifecycleScope`; Room flows feed Compose state; a `Handler` watchdog guards sync timeouts |
 | Watch transport | Custom BLE/GFDI/Multi-Link implementation in `:protocol` + `GarminBleClient` |
 | Networking | OkHttp for the configured OpenAI-compatible endpoint; osmdroid/OpenStreetMap for map tiles |
 | Auth | **None.** Local-first, single implicit local profile; no account or server |
 | Secrets | Provider keys encrypted with Android Keystore AES-GCM |
-| Tests | 44 protocol unit tests and 72 app JVM tests; one instrumented Keystore test |
+| Tests | 52 protocol unit tests and 80 app JVM tests; one instrumented Keystore test |
 | CI | GitHub Actions runs protocol tests, app unit/integration tests, and `assembleDebug` |
 | Docs | Architecture, protocol, handoff, plan, backlog, providers, tools, privacy, testing, design tokens |
 
@@ -33,7 +33,9 @@ protocol/  pure Kotlin/JVM, no Android dependencies
   Crc16, Cobs, Gfdi            GFDI framing, COBS, CRC-16, message types
   MultiLink, Mlr              Multi-Link handles and MLR transport
   Handshake, Gdi              handshake, GDI Smart/FileAccess/DataTransfer
-  TransportPipe               file transfer pipe
+  TransportPipe               file transfer pipe (read + write modes)
+  FitWorkout                  FIT workout-file encoder
+  GfdiFileUpload              legacy chunked upload (CREATE_FILE/…)
   Fit, FitProfile             FIT parser + generated profile (all messages/fields)
   Proto, Hex, Uuids           defensive protobuf, encoding helpers
 
@@ -50,6 +52,7 @@ app/src/main/java/dev/opengarmin/app/
     WellnessMetrics.kt        daily display metrics and latest-day selection
     WellnessHistory.kt        day/week/month trend buckets
     TrainingMetrics.kt        activity_metrics/user_metrics decoding
+    WorkoutPlan.kt            planned-workout model, JSON codec, FIT mapping
   coach/
     CoachController.kt        chat state, streaming, cancel, conversation switching
     ConversationStore.kt      multi-conversation persistence + JSON codec
@@ -57,12 +60,13 @@ app/src/main/java/dev/opengarmin/app/
     ChatMarkdown.kt           Markdown rendering blocks
     ChartSpec.kt              renderer-agnostic chart descriptions
     HealthDataSource.kt       read-only profile-scoped data interface
+    WorkoutWriter.kt          narrow write path for coach-created plans
     tools/HealthTools.kt      typed coach tools + evidence
   llm/                        OpenAI-compatible client and provider/model store
   settings/PulseSettings.kt   profile values and persisted sync metadata
   ui/
     PulseApp.kt               tab bar and route state
-    screens/                  Today, Health, Training, Activities, Coach,
+    screens/                  Today, Health, Training, Plan, Activities, Coach,
                               Settings, Provider settings, Trends, Activity detail
     components/               cards, tiles, chips, controls, charts, chat UI
     theme/                    colors, typography, shapes, spacing
@@ -80,8 +84,9 @@ a separate ViewModel layer; the Coach has its own `CoachController`.
   Room flows are collected into `mutableStateListOf`/`mutableStateOf` values and
   passed to Compose.
 - `PulseApp` renders five tabs (Today, Health, Training, Activities, Coach) and a
-  small route model: tabs, Trends, Activity detail, Settings, Provider settings,
-  Data explorer, and Device log. A `BackHandler` implements the back stack.
+  small route model: tabs, Trends, Plan, Activity detail, Settings, Provider
+  settings, Data explorer, and Device log. A `BackHandler` implements the back
+  stack. The Plan screen has an editor mode for creating and reordering steps.
 - Screens live under `ui/screens/`; shared cards, charts, chat bubbles, and
   controls live under `ui/components/`. Styling comes from `ui/theme/` and the
   Pulse spacing/color tokens; DM Sans and Space Grotesk are bundled.
@@ -98,7 +103,7 @@ a separate ViewModel layer; the Coach has its own `CoachController`.
 
 ## 4. Data model and local storage
 
-### Room entities (version 7)
+### Room entities (version 8)
 
 | Table | Purpose | Key columns |
 |---|---|---|
@@ -110,8 +115,9 @@ a separate ViewModel layer; the Coach has its own `CoachController`.
 | `wellness_samples` | Intraday wellness samples | `dayId`, timestamp, `kind` (`hr`, `stress`, `spo2`, `respiration`, `body_battery`, `hrv`), value |
 | `sleep_stages` | Sleep-stage transitions | `date`, `startTime`, `endTime`, `stage` |
 | `imported_wellness_files` | Imported watch file UIDs | `itemUid` primary key, `type`, `importedAt` |
+| `planned_workouts` | Locally authored workouts | name, FIT sport/subSport, notes, optional scheduled date, `stepsJson` (timed/distance/open steps + repeat blocks), timestamps, last sent |
 
-Migrations 1→7 are hand-written in `AppDatabase`; `exportSchema = false`.
+Migrations 1→8 are hand-written in `AppDatabase`; `exportSchema = false`.
 `AppDatabase.SCHEMA_VERSION` is the single version constant used by the database
 and backup validation. A new table or column requires a version bump and a
 migration test.
@@ -168,6 +174,25 @@ stored with the same care as the app's own health data.
    messages for old rows.
 6. `SyncForegroundService` (type `connectedDevice`) keeps the process alive and
    hosts the live sync notification while the app is backgrounded.
+
+### Workout upload
+
+The Plan editor stores steps as JSON (`planned_workouts`). Sending a workout:
+
+1. `FitWorkout.encode` writes a workout FIT (`file_id` type 5, `workout` 26,
+   `workout_step` 27; repeat blocks become a `repeat_until_steps_cmplt` marker
+   whose `target_value` is the repetition count).
+2. `SyncCoordinator` pauses the normal sync and uses the legacy GFDI chunked
+   upload: `CREATE_FILE (5005)` → `UPLOAD_REQUEST (5003)` →
+   `FILE_TRANSFER_DATA (5004)` chunks with a running CRC → `SYNC_COMPLETE`.
+3. The watch stores the file in its `WORKOUTS` folder and emits
+   `ItemAddedNotification { dataType = FIT_TYPE_5 }`. The app marks the local
+   workout's `lastSentAt` and resumes the normal activity/wellness sync.
+4. A GDI `PushItemDataRequest` fallback remains for watches whose FileAccess
+   service accepts `FIT_TYPE_5` writes.
+
+`FIT_TYPE_5` files are deliberately excluded from wellness queuing so the app
+does not re-download a workout it just wrote.
 
 ### Wellness ingestion
 
@@ -239,14 +264,15 @@ in the app's local Room database. This is a deliberate product property
 - The provider screen and `docs/privacy.md` explain what is sent to the endpoint.
   No request/response bodies, authorization headers, keys, or chat content are
   logged. The device log is protocol-oriented.
-- A generic SQL tool is not implemented; the coach only receives typed,
-  read-only tool results.
+- A generic SQL tool is not implemented. Health reads are typed and read-only;
+  the only coach write tool creates a local planned workout.
 
 ## 7. Testing and CI
 
-- `:protocol:test` — 44 JVM tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, and
-  FIT parsing.
-- `:app:testDebugUnitTest` — 72 JVM tests covering provider tools, FIT insights,
+- `:protocol:test` — 52 JVM tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT,
+  the workout encoder and legacy file upload.
+- `:app:testDebugUnitTest` — 80 JVM tests covering provider tools, workout-plan
+  tool parsing, FIT insights,
   OpenAI streaming/errors, the chat loop, chart specs, Markdown rendering,
   sport categories, wellness parsing/metrics/history, training metrics, and
   conversation JSON round-trips.

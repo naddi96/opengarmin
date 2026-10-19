@@ -64,6 +64,7 @@ import dev.opengarmin.app.coach.ChatStore
 import dev.opengarmin.app.coach.CoachController
 import dev.opengarmin.app.coach.GpsSummary
 import dev.opengarmin.app.coach.RepositoryHealthDataSource
+import dev.opengarmin.app.coach.RepositoryWorkoutWriter
 import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.coach.ToolScope
 import dev.opengarmin.app.coach.tools.ToolRegistry
@@ -73,9 +74,11 @@ import dev.opengarmin.app.data.AppDatabase
 import dev.opengarmin.app.data.BackupManager
 import dev.opengarmin.app.data.FitMessageEntity
 import dev.opengarmin.app.data.LapEntity
+import dev.opengarmin.app.data.PlannedWorkoutEntity
 import dev.opengarmin.app.data.RecordEntity
 import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessSampleEntity
+import dev.opengarmin.app.data.WorkoutSendStatus
 import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivitySyncProgress
@@ -86,6 +89,7 @@ import dev.opengarmin.app.ui.screens.formatFileSize
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseTheme
 import dev.opengarmin.protocol.Hex
+import dev.opengarmin.protocol.FitWorkout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -126,6 +130,9 @@ class MainActivity : ComponentActivity() {
     private val logs = mutableStateListOf<String>()
     private val activities = mutableStateListOf<ActivityEntity>()
     private val wellnessDays = mutableStateListOf<WellnessDayEntity>()
+    private val plannedWorkouts = mutableStateListOf<PlannedWorkoutEntity>()
+    private var workoutSendStatus by mutableStateOf<WorkoutSendStatus?>(null)
+    private var pendingWorkoutSend by mutableStateOf<PendingWorkoutSend?>(null)
     private var selectedActivity by mutableStateOf<ActivityEntity?>(null)
     private var selectedRecords by mutableStateOf<List<RecordEntity>>(emptyList())
     private var selectedLaps by mutableStateOf<List<LapEntity>>(emptyList())
@@ -153,6 +160,8 @@ class MainActivity : ComponentActivity() {
     data class DeviceEntry(val device: BluetoothDevice, val rssi: Int) {
         val label: String get() = "${device.name ?: "(unnamed)"}  ${device.address}  ${rssi} dBm"
     }
+
+    private data class PendingWorkoutSend(val id: Long, val name: String, val bytes: ByteArray)
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -183,7 +192,7 @@ class MainActivity : ComponentActivity() {
         coachController = CoachController(
             scope = lifecycleScope,
             providerStore = providerStore,
-            tools = ToolRegistry(healthDataSource),
+            tools = ToolRegistry(healthDataSource, RepositoryWorkoutWriter(repository)),
             chatStore = chatStore,
             settings = settings,
         )
@@ -214,6 +223,9 @@ class MainActivity : ComponentActivity() {
                     when (s) {
                         "connected" -> {
                             coordinator?.reset()
+                            pendingWorkoutSend?.let { pending ->
+                                coordinator?.enqueueWorkout(pending.id, pending.name, pending.bytes)
+                            }
                             activityProgress = null
                             ensureNotificationPermission()
                             syncNotificationActive = true
@@ -228,6 +240,17 @@ class MainActivity : ComponentActivity() {
                         }
                         "failed" -> {
                             val reason = syncFailureReason()
+                            coordinator?.clearWorkouts()
+                            pendingWorkoutSend?.let { pending ->
+                                pendingWorkoutSend = null
+                                workoutSendStatus = WorkoutSendStatus(
+                                    workoutId = pending.id,
+                                    name = pending.name,
+                                    sending = false,
+                                    success = false,
+                                    message = reason,
+                                )
+                            }
                             settings.recordSyncError(reason)
                             cancelWatchdog()
                             finishSyncNotification("Sync failed", reason)
@@ -294,6 +317,31 @@ class MainActivity : ComponentActivity() {
                     updateSyncNotification(progress = activityProgress)
                 }
             },
+            onWorkoutSent = { id, name, bytes ->
+                pendingWorkoutSend = null
+                workoutSendStatus = WorkoutSendStatus(
+                    workoutId = id,
+                    name = name,
+                    sending = false,
+                    success = true,
+                    message = "Sent to watch · ${formatFileSize(bytes.toLong())}",
+                )
+                lifecycleScope.launch(Dispatchers.IO) {
+                    runCatching { repository.markWorkoutSent(id) }
+                }
+                log("WORKOUT sent: \"$name\" ($bytes bytes)")
+            },
+            onWorkoutFailed = { id, name, message ->
+                pendingWorkoutSend = null
+                workoutSendStatus = WorkoutSendStatus(
+                    workoutId = id,
+                    name = name,
+                    sending = false,
+                    success = false,
+                    message = message,
+                )
+                log("WORKOUT send failed: \"$name\" — $message")
+            },
         )
 
         setContent {
@@ -320,6 +368,8 @@ class MainActivity : ComponentActivity() {
                     hrSamples = latestHrSamples,
                     sleepStages = latestSleepStages,
                     trainingSummary = trainingSummary,
+                    plannedWorkouts = plannedWorkouts,
+                    workoutSendStatus = workoutSendStatus,
                     selectedActivity = selectedActivity,
                     selectedRecords = selectedRecords,
                     selectedLaps = selectedLaps,
@@ -365,6 +415,9 @@ class MainActivity : ComponentActivity() {
                     onExploreData = { openDataExplorer(it) },
                     onCloseData = { closeDataExplorer() },
                     onImportFit = { uri -> importFitFromUri(uri) },
+                    onSaveWorkout = { workout -> saveWorkout(workout) },
+                    onDeleteWorkout = { id -> deleteWorkout(id) },
+                    onSendWorkout = { workout -> sendWorkout(workout) },
                     backupStatus = backupStatus,
                     backupBusy = backupBusy,
                     onExportBackup = { uri -> exportBackup(uri) },
@@ -402,6 +455,12 @@ class MainActivity : ComponentActivity() {
                     runCatching { repository.trainingRows() }.getOrDefault(emptyList())
                 }
                 trainingSummary = dev.opengarmin.app.data.TrainingMetrics.build(list, rows)
+            }
+        }
+        dataJobs += lifecycleScope.launch {
+            repository.plannedWorkouts.collect { list ->
+                plannedWorkouts.clear()
+                plannedWorkouts.addAll(list)
             }
         }
         dataJobs += lifecycleScope.launch {
@@ -752,7 +811,85 @@ class MainActivity : ComponentActivity() {
         syncNotificationActive = false
     }
 
-    private fun syncNow() {
+    private fun saveWorkout(workout: PlannedWorkoutEntity) {
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { repository.saveWorkout(workout) }
+            }
+            result.onSuccess { saved ->
+                log("PLAN saved \"${saved.name}\" (${saved.steps.size} steps)")
+            }.onFailure {
+                log("PLAN save failed: ${it.message}")
+            }
+        }
+    }
+
+    private fun deleteWorkout(id: Long) {
+        if (id == 0L) return
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) { runCatching { repository.deleteWorkout(id) } }
+            log("PLAN deleted workout id=$id")
+        }
+    }
+
+    private fun sendWorkout(workout: PlannedWorkoutEntity) {
+        if (workoutSendStatus?.sending == true) return
+        val watch = client?.findBondedWatch()
+        if (watch == null) {
+            workoutSendStatus = WorkoutSendStatus(
+                workoutId = workout.id,
+                name = workout.name,
+                sending = false,
+                success = false,
+                message = "No bonded Garmin watch found. Pair the watch first.",
+            )
+            return
+        }
+        workoutSendStatus = WorkoutSendStatus(
+            workoutId = workout.id,
+            name = workout.name,
+            sending = true,
+            message = "Preparing workout…",
+        )
+        lifecycleScope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                runCatching { repository.saveWorkout(workout) }
+            }.getOrElse { error ->
+                workoutSendStatus = WorkoutSendStatus(
+                    workoutId = workout.id,
+                    name = workout.name,
+                    sending = false,
+                    success = false,
+                    message = error.message ?: "Could not save the workout.",
+                )
+                return@launch
+            }
+            val bytes = runCatching { FitWorkout.encode(saved.toFitWorkout()) }
+                .getOrElse { error ->
+                    workoutSendStatus = WorkoutSendStatus(
+                        workoutId = saved.id,
+                        name = saved.name,
+                        sending = false,
+                        success = false,
+                        message = error.message ?: "Could not build the FIT workout.",
+                    )
+                    return@launch
+                }
+            val pending = PendingWorkoutSend(saved.id, saved.name, bytes)
+            pendingWorkoutSend = pending
+            workoutSendStatus = WorkoutSendStatus(
+                workoutId = saved.id,
+                name = saved.name,
+                sending = true,
+                message = "Connecting to ${watch.name ?: "watch"}…",
+            )
+            log("WORKOUT preparing \"${saved.name}\": ${bytes.size} FIT bytes")
+            syncNow(pending)
+        }
+    }
+
+    private fun syncNow(pendingWorkout: PendingWorkoutSend? = null) {
+        if (pendingWorkout != null) pendingWorkoutSend = pendingWorkout
         val c = client ?: return
         val watch = c.findBondedWatch()
         if (watch == null) {
@@ -767,7 +904,14 @@ class MainActivity : ComponentActivity() {
         ensureNotificationPermission()
         syncNotificationActive = true
         SyncNotifications.start(this)
-        updateSyncNotification(status = "Connecting to ${watch.name}…", progress = null)
+        updateSyncNotification(
+            status = if (pendingWorkoutSend != null) {
+                "Connecting to ${watch.name} to send a workout…"
+            } else {
+                "Connecting to ${watch.name}…"
+            },
+            progress = null,
+        )
         settings.updateWatchName(watch.name ?: "")
         coordinator?.reset()
         c.connect(watch)

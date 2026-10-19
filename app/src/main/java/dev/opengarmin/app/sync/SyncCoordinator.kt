@@ -3,14 +3,18 @@ package dev.opengarmin.app.sync
 import android.os.Handler
 import android.os.SystemClock
 import dev.opengarmin.protocol.GarminSession
+import dev.opengarmin.protocol.Crc16
 import dev.opengarmin.protocol.Gdi
 import dev.opengarmin.protocol.GdiClient
+import dev.opengarmin.protocol.Gfdi
+import dev.opengarmin.protocol.GfdiFileUpload
 import dev.opengarmin.protocol.Handshake
 import dev.opengarmin.protocol.Hex
 import dev.opengarmin.protocol.TransportPipe
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.util.UUID
 import java.util.zip.Inflater
 import java.util.zip.InflaterInputStream
 
@@ -34,9 +38,35 @@ class SyncCoordinator(
     private val onWellnessFile: (decoded: File, type: String, itemUid: String) -> Unit,
     private val onUpToDate: () -> Unit,
     private val onActivityProgress: (ActivitySyncProgress) -> Unit = {},
+    private val onWorkoutSent: (id: Long, name: String, bytes: Int) -> Unit = { _, _, _ -> },
+    private val onWorkoutFailed: (id: Long, name: String, message: String) -> Unit = { _, _, _ -> },
 ) {
+    /** A user-requested workout upload, queued until the GDI session is ready. */
+    data class PendingWorkout(
+        val id: Long,
+        val name: String,
+        val bytes: ByteArray,
+        var attempts: Int = 0,
+        var triedGdi: Boolean = false,
+    )
+
     private val gdi = GdiClient(session) { log(it) }
     private val gdxmlLookup = Gdi.GdxmlLookup()
+    private val workoutQueue = ArrayDeque<PendingWorkout>()
+    private var pendingWorkout: PendingWorkout? = null
+    private var workoutRequested = false
+    private var workoutPipe: TransportPipe? = null
+    private var legacyUpload: LegacyUpload? = null
+    private var legacyGeneration = 0
+
+    private class LegacyUpload(val pending: PendingWorkout) {
+        var fileIndex: Int = 0
+        var offset: Int = 0
+        var crc: Int = 0
+        var stage: Stage = Stage.CREATE
+    }
+
+    private enum class Stage { CREATE, UPLOAD, DATA }
     private val wellnessQueue = ArrayDeque<Gdi.ItemReference>()
     private var wellnessTransfer = false
     private var pulledWellnessType = ""
@@ -75,12 +105,26 @@ class SyncCoordinator(
         gdi.onSmart = { smart -> handler.post { handleSmart(smart) } }
         gdi.onRequest = { id, smart -> handler.post { handleDeviceRequest(id, smart) } }
         session.onServiceRegistered = { svc, h, _ ->
-            if (svc == PIPE_SERVICE) pipe?.onRegistered(h)
+            if (svc == PIPE_SERVICE) {
+                pipe?.onRegistered(h)
+                workoutPipe?.onRegistered(h)
+            }
         }
         session.onServiceClosed = { svc ->
-            if (svc == PIPE_SERVICE) pipe?.finish()
+            if (svc == PIPE_SERVICE) {
+                pipe?.finish()
+                workoutPipe?.finish()
+            }
         }
-        session.onMlrFrame = { frame -> pipe?.onFrame(frame) }
+        session.onMlrFrame = { frame ->
+            pipe?.onFrame(frame)
+            workoutPipe?.onFrame(frame)
+        }
+        val previousGfdiHandler = session.onGfdiMessage
+        session.onGfdiMessage = { frame ->
+            previousGfdiHandler?.invoke(frame)
+            handler.post { handleLegacyUploadResponse(frame) }
+        }
         session.onReady = {
             val g = generation
             handler.postDelayed({
@@ -128,6 +172,10 @@ class SyncCoordinator(
         generation++
         closeOutput()
         pipe = null
+        workoutPipe = null
+        legacyUpload = null
+        legacyGeneration++
+        workoutRequested = false
         capabilitiesRequested = false
         capabilitiesReceived = false
         listRequested = false
@@ -175,7 +223,35 @@ class SyncCoordinator(
         started && !capabilitiesReceived && !listReceived && !done
 
     /** True while a file is being pulled through the transport pipe. */
-    fun isTransferring(): Boolean = pipe != null || wellnessTransfer
+    fun isTransferring(): Boolean =
+        pipe != null || wellnessTransfer || workoutPipe != null || legacyUpload != null
+
+    /**
+     * Queues a prepared FIT workout for upload. The upload starts as soon as
+     * the GDI capability exchange is complete and the transfer slot is free.
+     */
+    fun enqueueWorkout(id: Long, name: String, bytes: ByteArray) {
+        if (bytes.isEmpty()) {
+            onWorkoutFailed(id, name, "The workout file is empty.")
+            return
+        }
+        if (pendingWorkout?.id == id || workoutQueue.any { it.id == id }) {
+            log("WORKOUT already queued id=$id")
+            return
+        }
+        workoutQueue.addLast(PendingWorkout(id, name, bytes))
+        log("WORKOUT queued id=$id name=\"$name\" bytes=${bytes.size}")
+        if (capabilitiesReceived && pipe == null && !wellnessTransfer) sendNextWorkout()
+    }
+
+    /** Drops queued/uploads after a connection failure so a later sync does not send them. */
+    fun clearWorkouts() {
+        workoutQueue.clear()
+        pendingWorkout = null
+        workoutRequested = false
+        legacyUpload = null
+        legacyGeneration++
+    }
 
     private fun reportActivityProgress() {
         onActivityProgress(
@@ -273,9 +349,11 @@ class SyncCoordinator(
         val svc = Gdi.parseFileAccessService(fa)
         val list = svc.itemListResponse
         val pull = svc.pullItemResponse
+        val push = svc.pushItemResponse
         svc.itemAdded?.let { handleItemAdded(it) }
         if (list != null) handleItemList(list)
         if (pull != null) handlePullResponse(pull)
+        if (push != null) handlePushResponse(push)
     }
 
     private fun handleItemAdded(notification: Gdi.ItemAddedNotification) {
@@ -293,8 +371,10 @@ class SyncCoordinator(
             val immutable = type in IMMUTABLE_HEALTH_FILE_TYPES
             // SETTINGS_CHANGE carries no health samples and costs the watch a
             // full transfer slot; skipping it makes the subsequent directory
-            // request much faster.
+            // request much faster. Workout files (FIT_TYPE_5) are written by
+            // us and are not health data either.
             type != "FIT_TYPE_41" &&
+                type != "FIT_TYPE_5" &&
                 uid.isNotEmpty() && uid !in queuedUids &&
                 !(immutable && isWellnessItemKnown(uid))
         }
@@ -362,7 +442,13 @@ class SyncCoordinator(
         if (capabilitiesReceived) return
         capabilitiesReceived = true
         log("GDI: capabilities received")
-        sendCutWellnessThenList()
+        if (pendingWorkout != null || workoutQueue.isNotEmpty()) {
+            // A user asked to send a workout. Use the transfer slot for that
+            // first; the normal activity/wellness sync resumes afterwards.
+            sendNextWorkout()
+        } else {
+            sendCutWellnessThenList()
+        }
     }
 
     private fun sendCutWellnessThenList() {
@@ -808,6 +894,264 @@ class SyncCoordinator(
         p.start()
     }
 
+    private fun handlePushResponse(pr: Gdi.PushItemResponse) {
+        log(
+            "WORKOUT push response result=${pr.result} transport=${pr.transport} " +
+                "handle=${pr.transferHandle} offset=${pr.offset} window=${pr.compressionWindow}",
+        )
+        val pending = pendingWorkout
+        if (pr.result != 0 || pr.transferHandle == 0) {
+            workoutRequested = false
+            val message = "Watch rejected the workout: ${pullResultName(pr.result)} (${pr.result})"
+            if (pending != null && pr.result == RESULT_NO_RESOURCES && pending.attempts < MAX_PULL_RETRIES) {
+                log("WORKOUT retry after NO_AVAILABLE_RESOURCES")
+                pending.attempts++
+                handler.postDelayed({ startGdiPushWorkout(pending) }, RETRY_DELAY_MS)
+            } else {
+                failWorkout(message)
+            }
+            return
+        }
+        if (pending == null) {
+            log("WORKOUT push response without a pending workout")
+            return
+        }
+        workoutRequested = false
+        val p = TransportPipe(
+            session = session,
+            serviceId = PIPE_SERVICE,
+            transferHandle = pr.transferHandle,
+            expectedSize = pending.bytes.size.toLong(),
+            onData = {},
+            onComplete = { handler.post { completeWorkout() } },
+            onError = { msg -> handler.post { failWorkout(msg) } },
+            log = { log(it) },
+            writePayload = pending.bytes,
+            writeCompressionWindow = pr.compressionWindow,
+        )
+        workoutPipe = p
+        p.start()
+    }
+
+    private fun sendNextWorkout() {
+        if (workoutRequested || pipe != null || wellnessTransfer || workoutPipe != null || legacyUpload != null) return
+        if (!capabilitiesReceived || done) return
+        val pending = pendingWorkout ?: workoutQueue.removeFirstOrNull() ?: return
+        pendingWorkout = pending
+        pending.attempts++
+        workoutRequested = true
+        log(
+            "WORKOUT upload id=${pending.id} \"${pending.name}\" " +
+                "bytes=${pending.bytes.size} attempt=${pending.attempts}",
+        )
+        startLegacyWorkout(pending)
+    }
+
+    /**
+     * Legacy GFDI upload (`CREATE_FILE` / `UPLOAD_REQUEST` /
+     * `FILE_TRANSFER_DATA`). The watch's GDI push path rejects `FIT_TYPE_5`
+     * with INVALID_PARAMS, but this path is what Garmin firmware uses for FIT
+     * workout files.
+     */
+    private fun startLegacyWorkout(pending: PendingWorkout) {
+        val upload = LegacyUpload(pending)
+        legacyUpload = upload
+        log("WORKOUT legacy CREATE_FILE size=${pending.bytes.size} type=FIT/5")
+        session.sendGfdi(GfdiFileUpload.createFile(pending.bytes.size))
+        armLegacyTimeout(upload, "The watch did not answer CREATE_FILE.")
+    }
+
+    /** Fallback for watches that expose the newer GDI FileAccess push path. */
+    private fun startGdiPushWorkout(pending: PendingWorkout) {
+        val uuid = UUID.randomUUID()
+        val item = Gdi.ItemReference(
+            uid = Gdi.Uuid(uuid.mostSignificantBits, uuid.leastSignificantBits),
+            dataType = Gdi.DataTypeInfo(
+                format = 0, // GDXML_DATA_TYPE
+                gdxmlString = "FIT_TYPE_5", // workouts
+                gdxmlStringKey = 0,
+                gdxmlFileIdentifier = null,
+                softwareUpdatePath = null,
+                specialCase = 0,
+                updatePartNumber = null,
+            ),
+            dataSize = pending.bytes.size.toLong(),
+            requestedFlags = 0,
+            transactionId = 0,
+            urgency = 0,
+        )
+        workoutRequested = true
+        log("WORKOUT GDI push request id=${pending.id} bytes=${pending.bytes.size}")
+        gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.pushItemRequest(item))) { response ->
+            handler.post { handleSmart(response) }
+        }
+        handler.postDelayed({
+            if (workoutRequested && pendingWorkout === pending && workoutPipe == null) {
+                workoutRequested = false
+                failWorkout("The watch did not answer the workout upload.")
+            }
+        }, PULL_TIMEOUT_MS)
+    }
+
+    private fun handleLegacyUploadResponse(frame: dev.opengarmin.protocol.Gfdi.Frame) {
+        if (frame.type != dev.opengarmin.protocol.Gfdi.MessageType.RESPONSE.id) return
+        val response = dev.opengarmin.protocol.Gfdi.parseResponse(frame) ?: return
+        val upload = legacyUpload ?: return
+        when (response.originalType) {
+            dev.opengarmin.protocol.Gfdi.MessageType.CREATE_FILE.id -> {
+                if (upload.stage != Stage.CREATE) return
+                val data = response.data
+                if (response.status != 0 || data.size < 7) {
+                    failLegacy("CREATE_FILE rejected (status=${response.status})")
+                    return
+                }
+                val createStatus = data[0].toInt() and 0xFF
+                if (createStatus != 0) {
+                    failLegacy("Watch refused the workout file (code $createStatus)")
+                    return
+                }
+                upload.fileIndex = dev.opengarmin.protocol.Gfdi.le16(data, 1)
+                upload.stage = Stage.UPLOAD
+                log("WORKOUT legacy fileIndex=${upload.fileIndex}; UPLOAD_REQUEST")
+                session.sendGfdi(
+                    GfdiFileUpload.uploadRequest(
+                        fileIndex = upload.fileIndex,
+                        fileSize = upload.pending.bytes.size,
+                    ),
+                )
+                armLegacyTimeout(upload, "The watch did not answer UPLOAD_REQUEST.")
+            }
+
+            dev.opengarmin.protocol.Gfdi.MessageType.UPLOAD_REQUEST.id -> {
+                if (upload.stage != Stage.UPLOAD) return
+                val data = response.data
+                if (response.status != 0 || data.size < 11) {
+                    failLegacy("UPLOAD_REQUEST rejected (status=${response.status})")
+                    return
+                }
+                val uploadStatus = data[0].toInt() and 0xFF
+                if (uploadStatus != 0) {
+                    failLegacy("Watch refused the upload (code $uploadStatus)")
+                    return
+                }
+                upload.offset = GfdiFileUpload.le32(data, 1)
+                upload.stage = Stage.DATA
+                log(
+                    "WORKOUT legacy upload accepted offset=${upload.offset} " +
+                        "max=${GfdiFileUpload.le32(data, 5)} seed=${dev.opengarmin.protocol.Gfdi.le16(data, 9)}",
+                )
+                sendLegacyChunk(upload)
+            }
+
+            dev.opengarmin.protocol.Gfdi.MessageType.FILE_TRANSFER_DATA.id -> {
+                if (upload.stage != Stage.DATA) return
+                val data = response.data
+                if (response.status != 0 || data.size < 5) {
+                    failLegacy("FILE_TRANSFER_DATA rejected (status=${response.status})")
+                    return
+                }
+                val transferStatus = data[0].toInt() and 0xFF
+                if (transferStatus != 0) {
+                    failLegacy("Watch aborted the transfer (code $transferStatus)")
+                    return
+                }
+                upload.offset = GfdiFileUpload.le32(data, 1)
+                if (upload.offset >= upload.pending.bytes.size) {
+                    log("WORKOUT legacy upload complete (${upload.offset} bytes)")
+                    session.sendGfdi(GfdiFileUpload.syncComplete())
+                    legacyUpload = null
+                    legacyGeneration++
+                    pendingWorkout = null
+                    workoutRequested = false
+                    onWorkoutSent(
+                        upload.pending.id,
+                        upload.pending.name,
+                        upload.pending.bytes.size,
+                    )
+                    handler.postDelayed({
+                        if (!done) sendCutWellnessThenList()
+                    }, 800)
+                } else {
+                    sendLegacyChunk(upload)
+                }
+            }
+        }
+    }
+
+    private fun sendLegacyChunk(upload: LegacyUpload) {
+        val data = upload.pending.bytes
+        if (upload.offset >= data.size) return
+        val end = minOf(upload.offset + GfdiFileUpload.DEFAULT_CHUNK_SIZE, data.size)
+        val chunk = data.copyOfRange(upload.offset, end)
+        upload.crc = dev.opengarmin.protocol.Crc16.continueFrom(upload.crc, chunk)
+        log(
+            "WORKOUT legacy chunk offset=${upload.offset} size=${chunk.size} " +
+                "crc=0x%04x".format(upload.crc),
+        )
+        session.sendGfdi(
+            GfdiFileUpload.fileTransferData(chunk, upload.offset, upload.crc),
+        )
+        armLegacyTimeout(upload, "The watch did not acknowledge offset ${upload.offset}.")
+    }
+
+    private fun armLegacyTimeout(upload: LegacyUpload, message: String) {
+        val generation = ++legacyGeneration
+        handler.postDelayed({
+            if (legacyUpload === upload && generation == legacyGeneration) {
+                failLegacy(message)
+            }
+        }, LEGACY_UPLOAD_TIMEOUT_MS)
+    }
+
+    private fun failLegacy(message: String) {
+        val upload = legacyUpload ?: return
+        legacyUpload = null
+        legacyGeneration++
+        workoutRequested = false
+        log("WORKOUT legacy failed: $message")
+        if (!upload.pending.triedGdi) {
+            upload.pending.triedGdi = true
+            log("WORKOUT falling back to GDI push")
+            startGdiPushWorkout(upload.pending)
+            return
+        }
+        pendingWorkout = null
+        onWorkoutFailed(upload.pending.id, upload.pending.name, message)
+        if (workoutQueue.isNotEmpty()) {
+            sendNextWorkout()
+        } else if (!done) {
+            sendCutWellnessThenList()
+        }
+    }
+
+    private fun completeWorkout() {
+        workoutPipe = null
+        workoutRequested = false
+        val pending = pendingWorkout ?: return
+        pendingWorkout = null
+        log("WORKOUT sent id=${pending.id} \"${pending.name}\" bytes=${pending.bytes.size}")
+        onWorkoutSent(pending.id, pending.name, pending.bytes.size)
+        if (workoutQueue.isNotEmpty()) {
+            sendNextWorkout()
+        } else {
+            sendCutWellnessThenList()
+        }
+    }
+
+    private fun failWorkout(message: String) {
+        val pending = pendingWorkout ?: return
+        workoutPipe = null
+        workoutRequested = false
+        log("WORKOUT failed id=${pending.id}: $message")
+        pendingWorkout = null
+        onWorkoutFailed(pending.id, pending.name, message)
+        if (workoutQueue.isNotEmpty()) {
+            sendNextWorkout()
+        } else {
+            sendCutWellnessThenList()
+        }
+    }
+
     companion object {
         const val PIPE_SERVICE = 0x2018
         private const val RESULT_NO_RESOURCES = 3
@@ -817,6 +1161,7 @@ class SyncCoordinator(
         private const val READY_GRACE_MS = 800L
         private const val LIST_GRACE_MS = 400L
         private const val PULL_TIMEOUT_MS = 8_000L
+        private const val LEGACY_UPLOAD_TIMEOUT_MS = 10_000L
 
         /**
          * Immutable health history files we pull from the directory. The

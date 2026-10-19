@@ -21,11 +21,13 @@ ANDROID_SERIAL=<serial> ./tools/gradle-8.7/bin/gradle --no-daemon :app:connected
 
 Current coverage:
 
-- `:protocol:test` — 44 tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT.
-- `:app:testDebugUnitTest` — 72 JVM tests:
+- `:protocol:test` — 52 tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT, the workout encoder and legacy file upload.
+- `:app:testDebugUnitTest` — 80 JVM tests:
   - `HealthToolsTest`: scope rejection, missing-day handling, date-range caps,
     sample caps, activity filters/pages, zone calculation, comparisons,
-    unavailable sleep, snapshot budget, unknown tool/bad JSON.
+    unavailable sleep, snapshot budget, unknown tool/bad JSON, coach workout
+    creation (steps/repeats), nested-repeat and past-date rejection, and plan
+    listing.
   - `FitInsightsTest`: GPS summary/route sampling, running-dynamics parsing
     (cadence, ground contact, vertical oscillation/ratio, stride length,
     training effect), record-average fallback, and lap dynamics.
@@ -41,6 +43,8 @@ Current coverage:
   - `WellnessParserTest`, `WellnessMetricsTest`, `WellnessHistoryTest`,
     `TrainingMetricsTest`: monitoring/sleep/HRV parsing, daily metrics and
     trend bucketing, and legacy/new training-metric encodings.
+  - `WorkoutPlanCodecTest`: plan JSON round-trip, repeat totals, FIT entry
+    mapping and malformed input.
 - `:app:connectedDebugAndroidTest` — `SecretStoreTest` verifies the Android
   Keystore round-trip and that the plaintext key is not present in preferences.
 
@@ -73,6 +77,14 @@ Manual matrix used for the UI/coach pass:
 - Today: real steps ring, HR chart, sleep/HRV empty states, insight.
 - Trends: Day/Week/Month, partial-history labels, goal line, resting HR.
 - Activities: filters, row selection, featured card, route trace, zones setup.
+- Coach creates a workout: ask "create an easy 20 minute run with 5 minute warm-up and cool-down".
+  Confirm the answer says it is saved locally (not sent), the Plan tab gains a draft, and the
+  evidence chip reads `Workout created · …`.
+- Plan: create timed, distance and open steps; add a repeat block; save,
+  reopen, delete, and schedule a workout. `Send to watch` must show
+  `Sent to watch · N B`, and `logcat` must show the legacy
+  `CREATE_FILE` → `UPLOAD_REQUEST` → `FILE_TRANSFER_DATA` → `SYNC_COMPLETE`
+  sequence plus `FileAccess.ItemAddedNotification { FIT_TYPE_5 }`.
 - Sync regression: activity must download and import even when a wellness
   transfer is active (watch returns `NO_AVAILABLE_RESOURCES` if overlapped);
   a second sync must skip the known activity and finish wellness.

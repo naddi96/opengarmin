@@ -15,6 +15,11 @@ import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.coach.ToolScope
 import dev.opengarmin.app.coach.WorkoutDetail
 import dev.opengarmin.app.coach.WorkoutSummary
+import dev.opengarmin.app.coach.WorkoutWriter
+import dev.opengarmin.app.data.PlannedStep
+import dev.opengarmin.app.data.PlannedWorkoutEntity
+import dev.opengarmin.app.data.StepRole
+import dev.opengarmin.app.data.WorkoutPlanCodec
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -320,6 +325,119 @@ class HealthToolsTest {
             )
         }.exceptionOrNull()
         assertTrue(error is ToolException)
+    }
+
+    @Test
+    fun `create workout parses steps and repeat blocks`() = runBlocking {
+        val writer = FakeWorkoutWriter()
+        val workoutRegistry = ToolRegistry(source, writer) { today }
+
+        val result = workoutRegistry.execute(
+            "create_workout",
+            """
+            {
+              "name": "Tempo Intervals",
+              "sport": "run",
+              "scheduled_date": "2026-10-18",
+              "notes": "Keep it controlled",
+              "steps": [
+                {"type": "step", "role": "warmup", "minutes": 10},
+                {"type": "repeat", "count": 4, "steps": [
+                  {"role": "interval", "duration_type": "distance", "distance_km": 1.0},
+                  {"role": "recovery", "minutes": 2}
+                ]},
+                {"type": "step", "role": "cooldown", "duration_type": "open"}
+              ]
+            }
+            """.trimIndent(),
+            ToolScope(),
+        )
+
+        val json = JSONObject(result.json)
+        assertTrue(json.getBoolean("created"))
+        assertEquals(1L, json.getLong("id"))
+        assertEquals("Run", json.getString("sport"))
+        assertEquals(5, json.getInt("stepCount"))
+        assertEquals(false, json.getBoolean("sentToWatch"))
+        assertTrue(result.evidence.single().contains("Workout created"))
+
+        val saved = writer.created.single()
+        assertEquals("Tempo Intervals", saved.name)
+        assertEquals("2026-10-18", saved.scheduledDate)
+        val steps = WorkoutPlanCodec.decode(saved.stepsJson)
+        assertEquals(3, steps.size)
+        assertEquals(StepRole.WARM_UP, (steps[0] as PlannedStep.Single).role)
+        val repeat = steps[1] as PlannedStep.Repeat
+        assertEquals(4, repeat.count)
+        assertEquals(2, repeat.children.size)
+        assertEquals(1000, repeat.children[0].meters)
+        assertEquals(StepRole.RECOVERY, repeat.children[1].role)
+        assertEquals("Open", (steps[2] as PlannedStep.Single).summary())
+    }
+
+    @Test
+    fun `create workout rejects nested repeats and past dates`() = runBlocking {
+        val writer = FakeWorkoutWriter()
+        val workoutRegistry = ToolRegistry(source, writer) { today }
+
+        val nested = runCatching {
+            workoutRegistry.execute(
+                "create_workout",
+                """{"name":"Bad","steps":[{"type":"repeat","count":2,"steps":[{"type":"repeat","count":2,"steps":[{"role":"active","minutes":1}]}]}]}""",
+                ToolScope(),
+            )
+        }.exceptionOrNull()
+        assertTrue(nested is ToolException)
+        assertTrue(nested?.message?.contains("Nested repeat") == true)
+
+        val past = runCatching {
+            workoutRegistry.execute(
+                "create_workout",
+                """{"name":"Old","scheduled_date":"2026-10-16","steps":[{"role":"active","minutes":5}]}""",
+                ToolScope(),
+            )
+        }.exceptionOrNull()
+        assertTrue(past is ToolException)
+        assertTrue(past?.message?.contains("past") == true)
+        assertTrue(writer.created.isEmpty())
+    }
+
+    @Test
+    fun `list planned workouts reports saved sessions`() = runBlocking {
+        val writer = FakeWorkoutWriter()
+        val workoutRegistry = ToolRegistry(source, writer) { today }
+        workoutRegistry.execute(
+            "create_workout",
+            """{"name":"Easy Run","sport":"run","steps":[{"role":"active","minutes":30}]}""",
+            ToolScope(),
+        )
+
+        val result = workoutRegistry.execute("list_planned_workouts", "{}", ToolScope())
+        val json = JSONObject(result.json)
+        assertEquals(1, json.getInt("count"))
+        val workout = json.getJSONArray("workouts").getJSONObject(0)
+        assertEquals("Easy Run", workout.getString("name"))
+        assertFalse(workout.getBoolean("sentToWatch"))
+    }
+
+    private class FakeWorkoutWriter : WorkoutWriter {
+        val created = mutableListOf<PlannedWorkoutEntity>()
+        private var nextId = 1L
+
+        override suspend fun createWorkout(
+            scope: ToolScope,
+            workout: PlannedWorkoutEntity,
+        ): PlannedWorkoutEntity {
+            if (scope.profileId != LOCAL_PROFILE_ID) throw IllegalArgumentException("scope")
+            val saved = workout.copy(id = nextId++)
+            created += saved
+            return saved
+        }
+
+        override suspend fun listWorkouts(scope: ToolScope): List<PlannedWorkoutEntity> {
+            if (scope.profileId != LOCAL_PROFILE_ID) throw IllegalArgumentException("scope")
+            return created
+        }
     }
 
     private fun day(date: String, steps: Int, resting: Int) = DailyHealth(

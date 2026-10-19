@@ -511,3 +511,55 @@ Verified on a **Pixel 10a / Android 17** against a Forerunner 255 on 2026-10-18:
 New tests: `ConversationCodecTest` (round-trip, title inference, streaming →
 cancelled recovery, invalid JSON). Backup file swapping and Room reopen still
 need an instrumented test; see `docs/testing.md`.
+
+## 2026-10-19 — Workout planner + direct watch upload
+
+Added a five-step workout builder under **Training → Workout plan**:
+timed, distance and open steps; repeat blocks; sport and schedule metadata;
+local persistence in `planned_workouts` (Room v8); send-to-watch status.
+
+Reverse-engineering result: the Forerunner 255 **rejects** the GDI
+`FileAccess.PushItemDataRequest` path for `FIT_TYPE_5` with
+`INVALID_PARAMS (5)`. The firmware still supports the **legacy GFDI chunked
+upload** (the path Gadgetbridge uses):
+
+1. `CREATE_FILE (5005)` with `dataType=128`, `subType=5` (FIT/Workouts).
+2. `UPLOAD_REQUEST (5003)` for the assigned index.
+3. `FILE_TRANSFER_DATA (5004)` chunks with a running CRC-16; each response
+   carries the next accepted offset.
+4. `SYSTEM_EVENT (5030)` `SYNC_COMPLETE`.
+
+Verified on the FR255: a 367-byte single-step FIT and a 769-byte FIT with a
+4× repeat block were both accepted. The watch immediately sent
+`ItemAddedNotification { dataType = FIT_TYPE_5, data_size = … }`, and the
+file could be pulled back through the normal GDI read path. The new
+`FIT_TYPE_5` item is deliberately not pulled as wellness data.
+
+Workout FIT encoding lives in `protocol/FitWorkout.kt`; upload state is in
+`SyncCoordinator` (`startLegacyWorkout` / `handleLegacyUploadResponse`).
+`FitWorkoutTest`, `GfdiFileUploadTest` and `WorkoutPlanCodecTest` cover the
+encoder, message layouts and plan JSON.
+
+### Coach-created workouts (2026-10-19)
+
+The coach can now author a workout and save it to the Plan tab through
+`create_workout` (and inspect existing plans with `list_planned_workouts`).
+The tool parses an ordered step array (time, distance, open, repeat blocks),
+validates role/sport/duration/date, and writes a `planned_workouts` row via
+`RepositoryWorkoutWriter`. It deliberately has no BLE access: the model is
+instructed to say the workout is saved locally and must not claim it was sent
+to the watch. The user still reviews and taps **Send to watch** in the Plan
+screen.
+
+System-prompt guardrails: only create when the user explicitly asks, ask a
+short clarification when the request is ambiguous, and never invent a
+completed/uploaded status. Tests cover step parsing, repeats, nested-repeat
+and past-date rejection, listing, and the existing read-only tools.
+
+Verified end-to-end on the Pixel 10a with the configured DeepSeek provider: the
+coach accepted an explicit "create an easy 20 minute run" request, called
+`create_workout`, and two test drafts appeared in Training → Workout plan with
+the correct 5/10/5-minute structure and tomorrow's date. The answer correctly
+said the workout was saved only on the phone and told the user to tap **Send to
+watch**; it did not claim a watch upload. The test drafts were deleted after
+verification.

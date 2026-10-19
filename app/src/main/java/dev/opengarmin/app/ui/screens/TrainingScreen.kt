@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DirectionsRun
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -59,6 +60,8 @@ fun TrainingScreen(
     latestDay: WellnessDayEntity?,
     onOpenActivity: (ActivityEntity) -> Unit,
     onAskCoach: () -> Unit,
+    onOpenPlan: () -> Unit = {},
+    plannedWorkoutsSummary: String = "",
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -267,6 +270,42 @@ fun TrainingScreen(
                         modifier = Modifier.size(20.dp),
                     )
                 }
+            }
+        }
+
+        PulseCard(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onOpenPlan,
+        ) {
+            Row(
+                modifier = Modifier.padding(PulseSpacing.lgPlus),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Outlined.CalendarMonth,
+                    contentDescription = null,
+                    tint = PulseColors.Accent,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(PulseSpacing.md))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Workout plan",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                    )
+                    Text(
+                        plannedWorkoutsSummary.ifBlank { "Build a session and send it to the watch" },
+                        style = MaterialTheme.typography.titleSmall,
+                        color = PulseColors.Text,
+                    )
+                }
+                Icon(
+                    Icons.Outlined.ChevronRight,
+                    contentDescription = "Open workout plan",
+                    tint = PulseColors.Accent,
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
 

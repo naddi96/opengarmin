@@ -52,10 +52,10 @@ the archive.
 
 ## Screens
 
-| Today | Coach | Data & backup |
-|:---:|:---:|:---:|
-| ![Today dashboard with steps, heart rate, sleep and HRV](docs/screenshots/today.png) | ![Coach chat with suggestions and data access summary](docs/screenshots/coach.png) | ![Data and backup settings](docs/screenshots/backup-settings.png) |
-| Steps, heart rate, sleep/HRV, Body Battery and daily insight | Streaming coach with typed local-health tools and conversation history | Export or restore the database and coach conversations |
+| Today | Plan | Coach | Data & backup |
+|:---:|:---:|:---:|:---:|
+| ![Today dashboard with steps, heart rate, sleep and HRV](docs/screenshots/today.png) | ![Workout plan builder with steps, repeats and send-to-watch](docs/screenshots/plan.png) | ![Coach chat with suggestions and data access summary](docs/screenshots/coach.png) | ![Data and backup settings](docs/screenshots/backup-settings.png) |
+| Steps, heart rate, sleep/HRV, Body Battery and daily insight | Timed/distance steps, repeat blocks and direct watch upload | Streaming coach with typed local-health tools and conversation history | Export or restore the database and coach conversations |
 
 ## Target devices
 
@@ -75,6 +75,10 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
   load focus, lactate threshold, performance condition, and the latest training
   effect, all decoded from the watch's `activity_metrics`/`user_metrics` FIT
   messages.
+- **Plan:** build workouts from timed, distance or open steps and repeat blocks,
+  save drafts, schedule sessions, or ask the coach to create one; push the
+  generated FIT workout directly to the watch's Workouts menu over BLE. No
+  Garmin account or workout-service round trip is involved.
 - **Trends:** selectable 7-day, 30-day, 90-day, 1-year, all-time or custom
   date ranges; per-metric charts and averages for steps, sleep, HRV, resting
   HR, active minutes, calories, stress, SpO₂, respiration and Body Battery;
@@ -94,9 +98,10 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
 - **Coach:** OpenAI-compatible provider presets (OpenAI, DeepSeek, OpenRouter,
   Ollama, LM Studio, vLLM, Custom), encrypted API keys, model management,
   connection test, streaming Markdown chat with cancel, typed read-only health
-  tools, code-generated evidence chips, and inline trend/activity charts
-  (including overlaid multi-workout comparisons). Conversation history keeps up
-  to 50 chats locally; reopen or delete old conversations from the Coach header.
+  tools, coach-authored workout plans saved to the Plan tab, code-generated
+  evidence chips, and inline trend/activity charts (including overlaid
+  multi-workout comparisons). Conversation history keeps up to 50 chats locally;
+  reopen or delete old conversations from the Coach header.
 - **Local-first:** no account, backend, telemetry, or cloud copy.
 
 ## Documentation

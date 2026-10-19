@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pulse Workout Plan</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+button,input{font-family:inherit}
+input::placeholder{color:#8FA096}
+</style>
+</helmet>
+<div style="width: 390px; height: 1500px; box-sizing: border-box; background: #0E1311; color: #EAF1EC; font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column; overflow: hidden">
+
+<div style="flex: 1; min-height: 0; overflow-y: auto; padding: 24px 20px 16px 20px; display: flex; flex-direction: column; gap: 12px">
+
+<!-- Back + header -->
+<div>
+<a href="Training.dc.html" style="display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: #8FA096; min-height: 28px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Training</a>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; margin-top: 2px">Plan</div>
+<div style="font-size: 13px; color: #8FA096; margin-top: 2px">Build workouts and send them to your watch</div>
+</div>
+
+<!-- Builder header (mirrors Garmin: Cancel / title / Save) -->
+<div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #2A3530; border-bottom: 1px solid #2A3530; padding: 10px 2px">
+<button type="button" onClick="{{onCancel}}" style="border: none; background: transparent; color: #6FC2FF; font-size: 15px; min-height: 44px; padding: 0 4px; cursor: pointer">Cancel</button>
+<div style="font-size: 16px; font-weight: 700">Run Workout</div>
+<button type="button" onClick="{{onSave}}" style="border: none; background: transparent; color: #6FC2FF; font-size: 15px; font-weight: 700; min-height: 44px; padding: 0 4px; cursor: pointer">Save</button>
+</div>
+
+<!-- Overview -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 16px; padding: 12px 16px">
+<div style="font-size: 12px; color: #8FA096">Name</div>
+<input type="text" aria-label="Workout name" value="{{name}}" onInput="{{onName}}" style="width: 100%; box-sizing: border-box; border: none; background: transparent; color: #EAF1EC; font-size: 16px; font-weight: 700; padding: 4px 0 0 0; outline: none">
+<div style="font-size: 12px; color: #8FA096; margin-top: 10px">Notes</div>
+<div style="font-size: 14px; color: #8FA096; margin-top: 2px">Add notes</div>
+</div>
+
+<!-- Steps -->
+<div style="font-size: 13px; color: #8FA096; margin-top: 4px">Steps</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{rows}}" as="it" hint-placeholder-count="4">
+
+<sc-if value="{{it.isStep}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; align-items: stretch; gap: 10px; background: #161D1A; border: 1px solid #2A3530; border-radius: 14px; padding: 10px 10px 10px 0; min-height: 60px">
+<div style="{{it.barStyle}}"></div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center">
+<div style="font-size: 15px; font-weight: 700">{{it.title}}</div>
+<div style="font-size: 12px; color: #8FA096; margin-top: 2px">{{it.sub}}</div>
+</div>
+<div style="display: flex; align-items: center; gap: 2px">
+<button type="button" aria-label="Move step up" onClick="{{it.up}}" style="width: 32px; height: 32px; border: none; border-radius: 10px; background: #1E2723; color: #EAF1EC; cursor: pointer">↑</button>
+<button type="button" aria-label="Move step down" onClick="{{it.down}}" style="width: 32px; height: 32px; border: none; border-radius: 10px; background: #1E2723; color: #EAF1EC; cursor: pointer">↓</button>
+<button type="button" aria-label="Remove step" onClick="{{it.del}}" style="width: 32px; height: 32px; border: none; border-radius: 10px; background: transparent; color: #8FA096; cursor: pointer; font-size: 16px">✕</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{it.isRepeat}}" hint-placeholder-val="{{ false }}">
+<div style="border: 1px solid #2F3F38; border-radius: 16px; padding: 10px; display: flex; flex-direction: column; gap: 8px; background: #121A17">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 0 2px">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700">
+<button type="button" aria-label="Fewer repeats" onClick="{{it.minus}}" style="width: 30px; height: 30px; border: none; border-radius: 10px; background: #1E2723; color: #EAF1EC; cursor: pointer; font-size: 16px">−</button>
+<span>{{it.count}} Times</span>
+<button type="button" aria-label="More repeats" onClick="{{it.plus}}" style="width: 30px; height: 30px; border: none; border-radius: 10px; background: #1E2723; color: #EAF1EC; cursor: pointer; font-size: 16px">+</button>
+</div>
+<div style="display: flex; align-items: center; gap: 2px">
+<button type="button" aria-label="Move repeat up" onClick="{{it.up}}" style="width: 32px; height: 32px; border: none; border-radius: 10px; background: #1E2723; color: #EAF1EC; cursor: pointer">↑</button>
+<button type="button" aria-label="Move repeat down" onClick="{{it.down}}" style="width: 32px; height: 32px; border: none; border-radius: 10px; background: #1E2723; color: #EAF1EC; cursor: pointer">↓</button>
+<button type="button" aria-label="Remove repeat" onClick="{{it.del}}" style="width: 32px; height: 32px; border: none; border-radius: 10px; background: transparent; color: #8FA096; cursor: pointer; font-size: 16px">✕</button>
+</div>
+</div>
+<sc-for list="{{it.children}}" as="c" hint-placeholder-count="2">
+<div style="display: flex; align-items: stretch; gap: 10px; background: #161D1A; border: 1px solid #2A3530; border-radius: 12px; padding: 8px 8px 8px 0; min-height: 54px">
+<div style="{{c.barStyle}}"></div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center">
+<div style="font-size: 14px; font-weight: 700">{{c.title}}</div>
+<div style="font-size: 12px; color: #8FA096; margin-top: 2px">{{c.sub}}</div>
+</div>
+<div style="display: flex; align-items: center; gap: 2px">
+<button type="button" aria-label="Move up inside repeat" onClick="{{c.up}}" style="width: 30px; height: 30px; border: none; border-radius: 10px; background: #1E2723; color: #EAF1EC; cursor: pointer">↑</button>
+<button type="button" aria-label="Move down inside repeat" onClick="{{c.down}}" style="width: 30px; height: 30px; border: none; border-radius: 10px; background: #1E2723; color: #EAF1EC; cursor: pointer">↓</button>
+<button type="button" aria-label="Remove inside repeat" onClick="{{c.del}}" style="width: 30px; height: 30px; border: none; border-radius: 10px; background: transparent; color: #8FA096; cursor: pointer; font-size: 15px">✕</button>
+</div>
+</div>
+</sc-for>
+<button type="button" onClick="{{it.addChild}}" style="align-self: flex-start; border: 1px dashed #2F3F38; background: transparent; color: #C7F26B; font-size: 13px; font-weight: 700; border-radius: 999px; padding: 0 14px; min-height: 36px; cursor: pointer">+ Add step to repeat</button>
+</div>
+</sc-if>
+
+</sc-for>
+</div>
+
+<!-- Add buttons -->
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<button type="button" onClick="{{onAddStep}}" style="min-height: 52px; border: none; border-radius: 16px; background: #C7F26B; color: #0E1311; font-size: 15px; font-weight: 700; cursor: pointer">+ Add Step</button>
+<button type="button" onClick="{{onAddRepeat}}" style="min-height: 52px; border: 1px solid #C7F26B; border-radius: 16px; background: transparent; color: #C7F26B; font-size: 15px; font-weight: 700; cursor: pointer">↻ Add Repeat</button>
+</div>
+
+<!-- Totals + send -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 16px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<div>
+<div style="font-size: 12px; color: #8FA096">Estimated</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700">{{totals}}</div>
+</div>
+<div style="font-size: 12px; color: {{savedColor}}; text-align: right; max-width: 140px">{{savedText}}</div>
+</div>
+<button type="button" onClick="{{onSave}}" style="min-height: 52px; border: none; border-radius: 999px; background: #C7F26B; color: #0E1311; font-size: 16px; font-weight: 700; cursor: pointer">Send to watch</button>
+<div style="font-size: 12px; color: #8FA096; line-height: 1.4">Stored on your watch and in Garmin Connect. Estimates use 5:30 /km for distance steps.</div>
+
+<!-- Scheduled -->
+<div style="font-size: 13px; color: #8FA096; margin-top: 8px">Scheduled this week</div>
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 4px 16px">
+<div style="display: flex; align-items: center; gap: 12px; min-height: 60px; border-bottom: 1px solid #222C27">
+<div style="width: 40px; font-size: 12px; color: #8FA096">Tue<br><span style="color: #EAF1EC; font-weight: 700; font-size: 16px">21</span></div>
+<div style="flex: 1"><div style="font-size: 15px; font-weight: 700">Interval Run</div><div style="font-size: 12px; color: #8FA096">10 × 30 sec on / off</div></div>
+<div style="font-size: 12px; font-weight: 700; color: #0E1311; background: #C7F26B; border-radius: 999px; padding: 4px 10px">Sent</div>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; min-height: 60px; border-bottom: 1px solid #222C27">
+<div style="width: 40px; font-size: 12px; color: #8FA096">Thu<br><span style="color: #EAF1EC; font-weight: 700; font-size: 16px">23</span></div>
+<div style="flex: 1"><div style="font-size: 15px; font-weight: 700">Upper Body Strength</div><div style="font-size: 12px; color: #8FA096">6 exercises · 48 min</div></div>
+<div style="font-size: 12px; font-weight: 700; color: #EAF1EC; border: 1px solid #2A3530; border-radius: 999px; padding: 4px 10px">Draft</div>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; min-height: 60px">
+<div style="width: 40px; font-size: 12px; color: #8FA096">Sat<br><span style="color: #EAF1EC; font-weight: 700; font-size: 16px">25</span></div>
+<div style="flex: 1"><div style="font-size: 15px; font-weight: 700">Long Run</div><div style="font-size: 12px; color: #8FA096">12 km · easy zone 2</div></div>
+<div style="font-size: 12px; font-weight: 700; color: #EAF1EC; border: 1px solid #2A3530; border-radius: 999px; padding: 4px 10px">Draft</div>
+</div>
+</div>
+
+</div>
+
+<!-- Tab bar -->
+<div style="height: 84px; flex: none; box-sizing: border-box; border-top: 1px solid #2A3530; background: #0E1311; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 8px 4px 20px 4px">
+<a href="Main.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Today</a>
+<a href="Health.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>Health</a>
+<a href="Training.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; font-weight: 700; color: #C7F26B">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V10M12 21V4M19 21v-7"/></svg>Training</a>
+<a href="Activities.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Activities</a>
+<a href="Coach.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: #8FA096">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17v4M17 19h4"/></svg>Coach</a>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1500}}'>
+class Component extends DCLogic {
+initSteps() {
+return [
+{ id: 'warm', type: 'time', amount: 300, kind: 'Warm Up', color: '#FF7A66' },
+{ id: 'run1', type: 'dist', amount: 2000, kind: 'Run', color: '#6FC2FF' },
+{ id: 'rep1', type: 'repeat', count: 10, children: [
+{ id: 'ri', type: 'time', amount: 30, kind: 'Run', color: '#6FC2FF' },
+{ id: 'rr', type: 'time', amount: 30, kind: 'Rest', color: '#8FA096' }
+] },
+{ id: 'cool', type: 'dist', amount: 2000, kind: 'Cool Down', color: '#7BD389' }
+];
+}
+getSteps() { return (this.state && this.state.steps) || this.initSteps(); }
+uid() { return 'k' + Math.random().toString(36).slice(2, 8); }
+commit(steps) { this.setState({ steps: steps, saved: false }); }
+moveTop(id, dir) {
+const s = this.getSteps().slice();
+const i = s.findIndex((x) => x.id === id);
+const j = i + dir;
+if (i < 0 || j < 0 || j >= s.length) return;
+const t = s[i]; s[i] = s[j]; s[j] = t;
+this.commit(s);
+}
+removeTop(id) { this.commit(this.getSteps().filter((x) => x.id !== id)); }
+mapRep(repId, fn) { this.commit(this.getSteps().map((x) => (x.id === repId ? fn(x) : x))); }
+moveChild(repId, cid, dir) {
+this.mapRep(repId, (r) => {
+const c = r.children.slice();
+const i = c.findIndex((x) => x.id === cid);
+const j = i + dir;
+if (i < 0 || j < 0 || j >= c.length) return r;
+const t = c[i]; c[i] = c[j]; c[j] = t;
+return Object.assign({}, r, { children: c });
+});
+}
+removeChild(repId, cid) { this.mapRep(repId, (r) => Object.assign({}, r, { children: r.children.filter((x) => x.id !== cid) })); }
+addChild(repId) { this.mapRep(repId, (r) => Object.assign({}, r, { children: r.children.concat([{ id: this.uid(), type: 'time', amount: 30, kind: 'Rest', color: '#8FA096' }]) })); }
+setCount(repId, d) { this.mapRep(repId, (r) => Object.assign({}, r, { count: Math.min(20, Math.max(1, r.count + d)) })); }
+addStep() { this.commit(this.getSteps().concat([{ id: this.uid(), type: 'time', amount: 60, kind: 'Recovery', color: '#5ED6C1' }])); }
+addRepeat() {
+this.commit(this.getSteps().concat([{ id: this.uid(), type: 'repeat', count: 4, children: [
+{ id: this.uid(), type: 'time', amount: 60, kind: 'Run', color: '#6FC2FF' },
+{ id: this.uid(), type: 'time', amount: 60, kind: 'Rest', color: '#8FA096' }
+] }]));
+}
+fmt(it) {
+if (it.type === 'dist') return (it.amount / 1000) + ' km';
+return it.amount % 60 === 0 ? (it.amount / 60) + ' min' : it.amount + ' sec';
+}
+secs(it) { return it.type === 'dist' ? (it.amount / 1000) * 330 : it.amount; }
+meters(it) { return it.type === 'dist' ? it.amount : 0; }
+barStyle(color) { return 'width: 4px; align-self: stretch; border-radius: 2px; background: ' + color + ';'; }
+renderVals() {
+const steps = this.getSteps();
+const saved = !!(this.state && this.state.saved);
+let totalSec = 0;
+let totalM = 0;
+const rows = steps.map((it) => {
+if (it.type === 'repeat') {
+const cs = it.children.reduce((a, c) => a + this.secs(c), 0);
+const cm = it.children.reduce((a, c) => a + this.meters(c), 0);
+totalSec += cs * it.count;
+totalM += cm * it.count;
+return {
+isStep: false, isRepeat: true,
+count: it.count,
+up: () => this.moveTop(it.id, -1),
+down: () => this.moveTop(it.id, 1),
+del: () => this.removeTop(it.id),
+minus: () => this.setCount(it.id, -1),
+plus: () => this.setCount(it.id, 1),
+addChild: () => this.addChild(it.id),
+children: it.children.map((c) => ({
+title: c.kind,
+sub: this.fmt(c),
+barStyle: this.barStyle(c.color),
+up: () => this.moveChild(it.id, c.id, -1),
+down: () => this.moveChild(it.id, c.id, 1),
+del: () => this.removeChild(it.id, c.id)
+}))
+};
+}
+totalSec += this.secs(it);
+totalM += this.meters(it);
+return {
+isStep: true, isRepeat: false,
+title: it.kind,
+sub: this.fmt(it),
+barStyle: this.barStyle(it.color),
+up: () => this.moveTop(it.id, -1),
+down: () => this.moveTop(it.id, 1),
+del: () => this.removeTop(it.id),
+children: []
+};
+});
+const mins = Math.round(totalSec / 60);
+const km = (totalM / 1000).toFixed(1);
+return {
+rows: rows,
+name: (this.state && this.state.name) || 'Interval session',
+totals: mins + ' min · ' + km + ' km',
+savedText: saved ? 'Saved and ready to send' : 'Not sent yet',
+savedColor: saved ? '#C7F26B' : '#8FA096',
+onName: (e) => this.setState({ name: e.target.value, saved: false }),
+onAddStep: () => this.addStep(),
+onAddRepeat: () => this.addRepeat(),
+onCancel: () => this.setState({ steps: null, name: null, saved: false }),
+onSave: () => this.setState({ saved: true })
+};
+}
+}
+</script>
+</body>
+</html>

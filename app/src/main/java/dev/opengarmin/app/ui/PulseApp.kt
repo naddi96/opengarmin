@@ -31,11 +31,13 @@ import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.FitMessageEntity
 import dev.opengarmin.app.data.LapEntity
+import dev.opengarmin.app.data.PlannedWorkoutEntity
 import dev.opengarmin.app.data.RecordEntity
 import dev.opengarmin.app.data.SleepStageEntity
 import dev.opengarmin.app.data.TrainingSummary
 import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessSampleEntity
+import dev.opengarmin.app.data.WorkoutSendStatus
 import dev.opengarmin.app.llm.ProviderConfig
 import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
@@ -48,6 +50,7 @@ import dev.opengarmin.app.ui.screens.ActivitiesScreen
 import dev.opengarmin.app.ui.screens.ActivityDetailScreen
 import dev.opengarmin.app.ui.screens.CoachScreen
 import dev.opengarmin.app.ui.screens.HealthScreen
+import dev.opengarmin.app.ui.screens.PlanScreen
 import dev.opengarmin.app.ui.screens.ProviderSettingsScreen
 import dev.opengarmin.app.ui.screens.SettingsScreen
 import dev.opengarmin.app.ui.screens.TodayScreen
@@ -58,7 +61,7 @@ import dev.opengarmin.app.ui.theme.PulseSpacing
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 
-private enum class AppRoute { Tabs, Trends, Detail, Settings, Provider, Data, Log }
+private enum class AppRoute { Tabs, Trends, Detail, Plan, Settings, Provider, Data, Log }
 
 @Composable
 fun PulseApp(
@@ -67,6 +70,8 @@ fun PulseApp(
     hrSamples: List<WellnessSampleEntity>,
     sleepStages: List<SleepStageEntity>,
     trainingSummary: TrainingSummary,
+    plannedWorkouts: List<PlannedWorkoutEntity>,
+    workoutSendStatus: WorkoutSendStatus?,
     selectedActivity: ActivityEntity?,
     selectedRecords: List<RecordEntity>,
     selectedLaps: List<LapEntity>,
@@ -93,6 +98,9 @@ fun PulseApp(
     onExploreData: (ActivityEntity) -> Unit,
     onCloseData: () -> Unit,
     onImportFit: (android.net.Uri) -> Unit,
+    onSaveWorkout: (PlannedWorkoutEntity) -> Unit,
+    onDeleteWorkout: (Long) -> Unit,
+    onSendWorkout: (PlannedWorkoutEntity) -> Unit,
     backupStatus: String?,
     backupBusy: Boolean,
     onExportBackup: (android.net.Uri) -> Unit,
@@ -117,6 +125,13 @@ fun PulseApp(
         routeName = AppRoute.Provider.name
     }
 
+    val planSummary = if (plannedWorkouts.isEmpty()) {
+        "Build a session and send it to the watch"
+    } else {
+        val scheduled = plannedWorkouts.count { it.scheduledDate != null }
+        "${plannedWorkouts.size} saved · $scheduled scheduled"
+    }
+
     BackHandler(enabled = route != AppRoute.Tabs) {
         when (route) {
             AppRoute.Data -> {
@@ -124,6 +139,7 @@ fun PulseApp(
                 routeName = if (detailActivity != null) AppRoute.Detail.name else AppRoute.Tabs.name
             }
             AppRoute.Trends -> routeName = AppRoute.Tabs.name
+            AppRoute.Plan -> routeName = AppRoute.Tabs.name
             AppRoute.Detail -> {
                 onClearSelection()
                 detailId = null
@@ -178,6 +194,8 @@ fun PulseApp(
                                     routeName = AppRoute.Detail.name
                                 },
                                 onAskCoach = { tabName = PulseTab.Coach.name },
+                                onOpenPlan = { routeName = AppRoute.Plan.name },
+                                plannedWorkoutsSummary = planSummary,
                             )
                             PulseTab.Activities -> ActivitiesScreen(
                                 activities = activities,
@@ -211,6 +229,14 @@ fun PulseApp(
                 settings = settings,
                 onAskCoach = { tabName = PulseTab.Coach.name },
                 onBack = { routeName = AppRoute.Tabs.name },
+            )
+            AppRoute.Plan -> PlanScreen(
+                workouts = plannedWorkouts,
+                sendStatus = workoutSendStatus,
+                onBack = { routeName = AppRoute.Tabs.name },
+                onSave = onSaveWorkout,
+                onDelete = onDeleteWorkout,
+                onSend = onSendWorkout,
             )
             AppRoute.Detail -> {
                 if (detailActivity != null) {
