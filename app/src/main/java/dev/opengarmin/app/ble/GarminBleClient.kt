@@ -71,6 +71,15 @@ class GarminBleClient(
         }
     }
 
+    /** True when the device has a Bluetooth adapter and the user has it on. */
+    fun isBluetoothEnabled(): Boolean = try {
+        adapter?.isEnabled == true
+    } catch (_: SecurityException) {
+        false
+    }
+
+    fun hasBluetoothAdapter(): Boolean = adapter != null
+
     /** Returns the OS-bonded Garmin watch, if any (requires BLUETOOTH_CONNECT). */
     fun findBondedWatch(): BluetoothDevice? {
         val bonded = try {

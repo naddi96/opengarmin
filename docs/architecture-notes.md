@@ -17,14 +17,15 @@ live in [`BACKLOG.md`](../BACKLOG.md).
 | Build | Gradle 8.7, AGP 8.5.2, KSP, `compileSdk 34`, `minSdk 28`, `targetSdk 34` |
 | Modules | `:protocol` (pure JVM) and `:app` (Android) |
 | Persistence | Room 2.6.1, database version 9, hand-written migrations; SharedPreferences for settings and provider configs |
-| Async | Kotlin coroutines + `lifecycleScope`; Room flows feed Compose state; a `Handler` watchdog guards sync timeouts |
+| Async | Kotlin coroutines + `lifecycleScope`; Room flows feed Compose state; a `Handler` watchdog guards sync timeouts; WorkManager runs optional periodic sync |
 | Watch transport | Custom BLE/GFDI/Multi-Link implementation in `:protocol` + `GarminBleClient` |
+| Background sync | WorkManager `CoroutineWorker`, battery-not-low + optional charging constraints, 10-minute exponential backoff, process-wide `SyncGate` |
 | Networking | OkHttp for the configured OpenAI-compatible endpoint; osmdroid/OpenStreetMap for map tiles |
 | Auth | **None.** Local-first, single implicit local profile; no account or server |
 | Secrets | Provider keys encrypted with Android Keystore AES-GCM |
-| Tests | 55 protocol unit tests and 101 app JVM tests; one instrumented Keystore test |
+| Tests | 55 protocol unit tests and 112 app JVM tests; one instrumented Keystore test |
 | CI | GitHub Actions runs protocol tests, app unit/integration tests, and `assembleDebug` |
-| Docs | Architecture, protocol, handoff, plan, backlog, providers, tools, privacy, export, testing, design tokens |
+| Docs | Architecture, protocol, handoff, plan, backlog, providers, tools, privacy, export, background sync, testing, design tokens |
 
 ## 2. Module map
 
@@ -45,7 +46,8 @@ app/src/main/java/dev/opengarmin/app/
                               collectors, settings/provider/coach wiring
   ble/GarminBleClient.kt      scan/connect/reconnect, MTU, write queue
   sync/                       SyncCoordinator, foreground service, notifications,
-                              activity progress
+                              activity progress, WorkManager worker/scheduler,
+                              SyncGate and SyncPolicy
   data/
     AppDatabase.kt            Room entities/DAO/migrations + ActivityRepository
     BackupManager.kt          ZIP export/import of the database and conversations
@@ -131,7 +133,7 @@ migration test.
 
 | Storage | Contents |
 |---|---|
-| `pulse_settings` prefs | Step goal, optional max HR, last sync time/status/error, watch name |
+| `pulse_settings` prefs | Step goal, optional max HR, sync time/status/error, last attempt/duration/trigger/result, watch name, periodic sync enabled/interval/charging-only |
 | `pulse_provider` prefs | Provider preset/base URL/models and a masked key hint |
 | `pulse_secrets` prefs | Base64 IV + AES-GCM ciphertext for the API key; the encryption key stays in AndroidKeyStore |
 | `pulse_chat` prefs | Up to 50 coach conversations × 200 messages as JSON, including evidence and chart specs; the legacy single-chat value is migrated on first read |
@@ -195,6 +197,36 @@ name so they remain available for later FIT export.
    messages for old rows.
 6. `SyncForegroundService` (type `connectedDevice`) keeps the process alive and
    hosts the live sync notification while the app is backgrounded.
+
+### Background sync (G3)
+
+When the user enables periodic sync, `SyncScheduler` enqueues one unique
+WorkManager `PeriodicWorkRequest` named `watch-periodic-sync` with:
+
+- a 15 min–6 h interval (default 60 min, default disabled);
+- `setRequiresBatteryNotLow(true)` and optional `setRequiresCharging(true)`;
+- exponential backoff starting at 10 minutes;
+- no network constraint (BLE only).
+
+`WatchSyncWorker` is a `CoroutineWorker`. It sets a `connectedDevice`
+foreground notification, then runs the same `SyncCoordinator` and repository
+import path as the activity. The worker discards protocol logs and bounds the
+connect (45 s), GDI session start (45 s), and transfer (6 min) stages.
+
+`SyncGate` is a process-wide owner lease. A visible activity holds `ui` while its
+BLE client is connected; the worker can only acquire `background` after the
+activity stops, disconnects, and releases the lease. A manual sync sees a
+background lease and does not start a competing transfer; the worker sees a UI
+lease and skips that period. The activity also registers an
+`ACTION_ACL_CONNECTED` receiver to sync when the bonded watch reconnects while
+the app is visible.
+
+Transient/busy failures return `Result.retry()`; permanent setup problems
+(missing permission, no bonded watch) are recorded in Settings/Today and let the
+next periodic interval try again after the user fixes them. Last attempt,
+success, duration, trigger, kind, and user-safe error text are persisted in
+`PulseSettings`; a SharedPreferences listener refreshes the visible UI when the
+worker finishes.
 
 ### Workout upload
 
@@ -321,11 +353,12 @@ in the app's local Room database. This is a deliberate product property
 
 - `:protocol:test` — 55 JVM tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT,
   the workout encoder and legacy file upload.
-- `:app:testDebugUnitTest` — 101 JVM tests covering provider tools, workout-plan
+- `:app:testDebugUnitTest` — 112 JVM tests covering provider tools, workout-plan
   tool parsing, FIT insights,
   OpenAI streaming/errors, the chat loop, chart specs, Markdown rendering,
   sport categories, wellness parsing/metrics/history, training metrics,
-  conversation JSON round-trips, and activity export.
+  conversation JSON round-trips, activity export, background-sync policy, and
+  single-flight leases.
 - `:app:connectedDebugAndroidTest` — `SecretStoreTest` verifies the Keystore
   round-trip without plaintext in preferences.
 - `.github/workflows/android.yml` runs protocol tests, app unit/integration
@@ -349,7 +382,7 @@ The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. See
 
 - Historical wellness requests: the watch only exposes the current day's delta,
   so history depends on repeated syncs.
-- WorkManager/periodic background sync and a richer connected-device state.
+- A richer connected-device state and watch battery/storage are G4.
 - Room migration/importer tests and Compose UI tests.
 - Stricter cleartext policy for provider endpoints.
 - Optional encrypted backups; today's ZIP is unencrypted.

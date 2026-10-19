@@ -14,6 +14,7 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,10 +34,12 @@ import dev.opengarmin.app.llm.ProviderConfig
 import dev.opengarmin.app.llm.ProviderPresets
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivitySyncProgress
+import dev.opengarmin.app.sync.SyncPolicy
 import dev.opengarmin.app.ui.components.IconButtonRound
 import dev.opengarmin.app.ui.components.PrimaryButton
 import dev.opengarmin.app.ui.components.PulseCard
 import dev.opengarmin.app.ui.components.SectionLabel
+import dev.opengarmin.app.ui.components.SegmentedControl
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
 import java.text.SimpleDateFormat
@@ -61,6 +64,8 @@ fun SettingsScreen(
     backupBusy: Boolean,
     onExportBackup: (Uri) -> Unit,
     onImportBackup: (Uri) -> Unit,
+    onBackgroundSyncChanged: () -> Unit,
+    onRunBackgroundSyncNow: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var goalText by remember(settings.stepGoal) { mutableStateOf(settings.stepGoal.toString()) }
@@ -245,6 +250,110 @@ fun SettingsScreen(
             }
         }
 
+        SectionLabel("Background sync")
+        PulseCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(PulseSpacing.xl),
+                verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Periodic sync", style = MaterialTheme.typography.titleSmall, color = PulseColors.Text)
+                        Text(
+                            "Default off. When enabled, Android syncs your bonded watch even when the app is closed.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PulseColors.TextMuted,
+                        )
+                    }
+                    Switch(
+                        checked = settings.periodicSyncEnabled,
+                        onCheckedChange = { enabled ->
+                            settings.updatePeriodicSyncEnabled(enabled)
+                            onBackgroundSyncChanged()
+                        },
+                    )
+                }
+                if (settings.periodicSyncEnabled) {
+                    Text("Interval", style = MaterialTheme.typography.labelMedium, color = PulseColors.TextMuted)
+                    SegmentedControl(
+                        options = SyncPolicy.INTERVAL_LABELS,
+                        selectedIndex = SyncPolicy.optionIndex(settings.periodicSyncIntervalMinutes),
+                        onSelected = { index ->
+                            settings.updatePeriodicSyncInterval(SyncPolicy.INTERVAL_OPTIONS[index])
+                            onBackgroundSyncChanged()
+                        },
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Only while charging", style = MaterialTheme.typography.bodySmall, color = PulseColors.Text)
+                            Text(
+                                "Battery-not-low is always required. Android may delay a run to save power.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = PulseColors.TextMuted,
+                            )
+                        }
+                        Switch(
+                            checked = settings.periodicSyncChargingOnly,
+                            onCheckedChange = { only ->
+                                settings.updatePeriodicSyncChargingOnly(only)
+                                onBackgroundSyncChanged()
+                            },
+                        )
+                    }
+                    Text(
+                        "Scheduled by Android: every ${SyncPolicy.intervalLabel(settings.periodicSyncIntervalMinutes)}, " +
+                            "battery not low" +
+                            if (settings.periodicSyncChargingOnly) ", charging required." else ", charging optional.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PulseColors.TextMuted,
+                    )
+                } else {
+                    Text(
+                        "Manual sync and sync-on-launch still run. Periodic sync does not schedule anything while this is off.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+                PrimaryButton(
+                    "Run background sync now",
+                    onClick = onRunBackgroundSyncNow,
+                    enabled = settings.periodicSyncEnabled && settings.lastSyncStatus != "syncing",
+                )
+                settings.lastSyncAttemptAt?.let {
+                    Text(
+                        "Last attempt: ${SimpleDateFormat("EEE d MMM, HH:mm", Locale.getDefault()).format(Date(it))}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+                settings.lastSyncAt?.let {
+                    Text(
+                        "Last success: ${SimpleDateFormat("EEE d MMM, HH:mm", Locale.getDefault()).format(Date(it))}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+                Text(
+                    "Duration: ${SyncPolicy.formatDuration(settings.lastSyncDurationMs)} · " +
+                        "Trigger: ${SyncPolicy.triggerLabel(settings.lastSyncTrigger)} · " +
+                        "Result: ${syncResultLabel(settings.lastSyncKind, settings.lastSyncStatus)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                )
+                settings.lastSyncError.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = PulseColors.Coral)
+                }
+            }
+        }
+
         SectionLabel("Data & backup")
         PulseCard(modifier = Modifier.fillMaxWidth()) {
             Column(
@@ -332,4 +441,16 @@ fun SettingsScreen(
             },
         )
     }
+}
+
+private fun syncResultLabel(kind: String, status: String): String = when {
+    status == "syncing" -> "Syncing"
+    kind == "success" -> "Success"
+    kind == "permanent" -> "Needs setup"
+    kind == "busy" -> "Busy"
+    kind == "cancelled" -> "Stopped"
+    kind == "transient" -> "Temporary failure"
+    status == "synced" -> "Success"
+    status == "failed" -> "Failed"
+    else -> "Not recorded"
 }

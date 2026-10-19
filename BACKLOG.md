@@ -1,6 +1,6 @@
 # BACKLOG — Pulse UI + AI coach
 
-_Last updated: 2026-10-19. Baseline commit: `eebd0d4`. Phase 0 is complete, epics A–E are implemented, F is partially done, and Epic G is in progress (G5 activity export shipped). The Garmin Connect parity analysis is tracked in [`docs/garmin-connect-gap-analysis.md`](docs/garmin-connect-gap-analysis.md)._
+_Last updated: 2026-10-20. Baseline commit: `79d7996`. Phase 0 is complete, epics A–E are implemented, F is partially done, and Epic G is in progress (G5 activity export and G3 background sync shipped). The Garmin Connect parity analysis is tracked in [`docs/garmin-connect-gap-analysis.md`](docs/garmin-connect-gap-analysis.md)._
 
 This backlog turns the Pulse mockups and the OpenAI-compatible coach brief into
 reviewable increments. It assumes the current app is a local-first Android
@@ -33,12 +33,12 @@ history, and database backup/restore; see
 |---|---|---|
 | Phase 0 | Architecture, mockups, tokens, backlog | ✅ Done |
 | A. Design system | Token-based Compose primitives matching mockups | ✅ Done |
-| B. Screens | Today, Health, Training, Activities, Coach, real data + states | ✅ Done (background sync remains open) |
+| B. Screens | Today, Health, Training, Activities, Coach, real data + states | ✅ Done |
 | C. LLM provider settings | Presets, encrypted keys, models, test connection, streaming transport | ✅ Done |
 | D. LLM data access | Typed read-only health tools + evidence + safety | ✅ Done |
 | E. Coach chat | Streaming chat with tool calls, cancel, sources, persistence, history | ✅ Done |
 | F. Quality | Tests, accessibility, performance, CI, docs, privacy audit | Partially done |
-| G. Garmin Connect parity | P0 trust/daily-usability stories defined (G1–G10) | 🚧 In progress — G5 shipped; see [Epic G](#epic-g--garmin-connect-parity-p0-trust-and-daily-usability) |
+| G. Garmin Connect parity | P0 trust/daily-usability stories defined (G1–G10) | 🚧 In progress — G3/G5 shipped; see [Epic G](#epic-g--garmin-connect-parity-p0-trust-and-daily-usability) |
 
 ## Implementation update — 2026-10-17
 
@@ -78,7 +78,9 @@ Known deviations / still open:
 - B1 uses screen state holders in the activity/Compose state rather than
   ViewModels. Screens are split out of `MainActivity` and state survives tab
   changes, but process-death restoration is limited.
-- B2 persists sync state but does **not** add WorkManager background sync.
+- B2 persists sync state and now includes optional WorkManager background sync
+  (G3), single-flight leases, retry/backoff, and persisted attempt/duration/
+  result history.
 - B3a/B3b are **partially implemented**: Body Battery, sleep and HRV parsing and
   pull paths exist, but the FR255 used for development did not expose a
   SLEEP_DATA file during daytime syncs. Historical wellness is still only
@@ -178,6 +180,45 @@ Heart Rate (or a BLE HR strap). The watch rejects `FIT_TYPE_56` directory
 filtering on FR255, so upload success is verified from the GFDI sequence rather
 than by reading the file back.
 
+## Implementation update — 2026-10-20 (Epic G / G3)
+
+Shipped background and periodic sync:
+
+- **Scheduling:** optional WorkManager periodic sync behind a Settings toggle.
+  Default **off**, default interval **60 minutes**, range 15 min–6 h, battery-not-
+  low always required and charging-only optional. The unique work request uses
+  exponential backoff starting at 10 minutes and is re-enqueued when the user
+  changes the interval or constraints.
+- **Single-flight:** a process-wide `SyncGate` lease is held by the visible app
+  while its BLE client is connected and by the background worker while it runs.
+  The activity disconnects/releases on stop, so the worker can take over; a
+  worker that sees the UI lease skips that period without opening a second GATT
+  connection. A manual sync sees a background lease and does not
+  interfere.
+- **Lifecycle:** sync still runs on launch/resume (if the last success is older
+  than five minutes), from the manual action, on bonded-watch ACL reconnect
+  while visible, and from **Run background sync now**, which exercises the same
+  worker path.
+- **Retry/classification:** transient/busy failures retry with backoff; missing
+  permissions, no bonded watch, and unsupported devices are recorded as
+  permanent setup problems with an action to fix them. The worker bounds the
+  connect (45 s), GDI session start (45 s), and transfer (6 min) stages.
+- **History:** last attempt, last success, duration, trigger, result kind, and a
+  short error are persisted in `PulseSettings` and shown in Settings. The
+  visible screen refreshes through a SharedPreferences listener when a worker
+  finishes.
+- **Notifications:** the worker uses a `connectedDevice` WorkManager foreground
+  notification with progress and a separate dismissible completion/failure
+  notification. Background protocol logs are discarded; only high-level
+  lifecycle lines are logged.
+- **Tests/docs:** `SyncPolicyTest` and `SyncGateTest` cover interval clamping,
+  labels, failure classification, retry policy, single-flight/re-entrancy, and
+  lease release. Added [`docs/background-sync.md`](docs/background-sync.md) and
+  updated README, privacy, testing, architecture, plan and handoff docs.
+  Device checks confirmed scheduling, settings persistence, worker success,
+  notification/final state, and UI history refresh. Forced Doze, process death,
+  charging-only, and out-of-range cases remain.
+
 ## Implementation update — 2026-10-19 (Epic G / G5)
 
 Shipped the first Epic G story:
@@ -215,10 +256,10 @@ from deliberate non-goals.
 
 Highest-priority gaps:
 
-- **P0 — trust:** historical wellness and sleep/HRV coverage, background sync,
-  watch battery/storage and sync diagnostics, encrypted backups,
-  profile/units/goals, structured workout targets, onboarding, and data-quality
-  repair. Activity export (FIT/GPX/TCX/CSV) shipped in G5.
+- **P0 — trust:** historical wellness and sleep/HRV coverage, watch
+  battery/storage and sync diagnostics, encrypted backups, profile/units/goals,
+  structured workout targets, onboarding, and data-quality repair. Activity
+  export (FIT/GPX/TCX/CSV) shipped in G5; background/periodic sync shipped in G3.
 - **P1 — daily parity:** transparent training readiness/status, adaptive plans
   and daily suggested workouts, strength/yoga/mobility workouts, courses/GPX,
   activity notes/RPE/photos/weather, PRs/gear, weight/hydration/nutrition/women's
@@ -367,17 +408,17 @@ loading, empty, and error states. Coach is a shell until Epic E.
 
 **Size:** M · **Depends on:** B1 · **Risk:** Medium
 **Acceptance criteria**
-- [ ] Last successful sync time, last attempt/result, device name, and any error
+- [x] Last successful sync time, last attempt/result, device name, and any error
       are persisted and exposed as UI state (not only in-memory `state`).
-- [ ] Today shows a truthful "Synced N min ago" / "Never synced" status and a
+- [x] Today shows a truthful "Synced N min ago" / "Never synced" status and a
       clear sync action; it does not show a battery percentage unless real
       battery data exists.
-- [ ] Optional periodic/background sync (WorkManager) is behind a setting and
+- [x] Optional periodic/background sync (WorkManager) is behind a setting and
       respects battery/network constraints; manual sync still works.
-- [ ] Failed/up-to-date/transferring states are distinguishable and testable.
-- [ ] No secrets or health payloads are written to logs.
+- [x] Failed/up-to-date/transferring states are distinguishable and testable.
+- [x] No secrets or health payloads are written to logs.
 
-**Risks:** WorkManager is a new dependency (needs approval). Watch battery and
+**Risks:** WorkManager was approved and added in G3. Watch battery and
 connection quality are not available today; do not fake them.
 
 ### B3a. Data-coverage spike: sleep, HRV, historical wellness
@@ -997,7 +1038,7 @@ new-dependency risk.
 |---|---|---|---|---|---|
 | G1 | Historical wellness request + gap-aware ingestion | L | 1–2 weeks | protocol notes, FR255 | High |
 | G2 | Data coverage view | S/M | 2–3 days | G1 (can start earlier) | Low |
-| G3 | Background sync + connection lifecycle | L | 1–2 weeks | WorkManager approval | Medium/High |
+| G3 | Background sync + connection lifecycle — ✅ done (Doze/process-death matrix pending) | L | 1–2 weeks | WorkManager approval | Medium/High |
 | G4 | Watch status + sync diagnostics | M | 3–5 days | protocol/RE | Medium |
 | G5 | Activity export (FIT/GPX/TCX/CSV) — ✅ done | M | 3–4 days | existing records/laps | Low |
 | G6 | Encrypted backup + restore | M | 4–6 days | `BackupManager` | Medium |
@@ -1065,19 +1106,21 @@ fighting the protocol.
 **Risk:** Medium/High — Android background limits and BLE contention.
 
 **Acceptance criteria**
-- [ ] Periodic sync is behind a setting (documented interval, e.g. 15 min–6 h)
+- [x] Periodic sync is behind a setting (documented interval, e.g. 15 min–6 h)
       with explicit battery/charging constraints; the default is documented.
-- [ ] Sync still runs on launch, on watch reconnect, and from the manual action.
-- [ ] Sync is single-flight: a worker, foreground service, and manual tap cannot
+- [x] Sync still runs on launch, on watch reconnect, and from the manual action.
+- [x] Sync is single-flight: a worker, foreground service, and manual tap cannot
       start concurrent transfers.
-- [ ] Transient failures (`NO_AVAILABLE_RESOURCES`, timeout, disconnect) retry
+- [x] Transient failures (`NO_AVAILABLE_RESOURCES`, timeout, disconnect) retry
       with backoff; permanent failures are classified and surface an action.
-- [ ] The foreground service and worker hand off cleanly; notifications show
+- [x] The foreground service and worker hand off cleanly; notifications show
       progress, completion, and failure without stale states.
-- [ ] Last attempt/success, duration, and result are persisted and visible.
+- [x] Last attempt/success, duration, and result are persisted and visible.
 - [ ] Device tests cover Doze, process death, charging, and watch out of range;
-      no ANR and no health payload in logs.
-- [ ] Scheduler/backoff/single-flight behaviour has unit tests.
+      no ANR and no health payload in logs. *(Process-death recovery, charging
+      constraints, Bluetooth-off, background success, and notifications pass on
+      the Pixel 10a + FR255; forced Doze and a real out-of-range run remain.)*
+- [x] Scheduler/backoff/single-flight behaviour has unit tests.
 
 ## G4. Watch status and sync diagnostics
 
@@ -1237,9 +1280,9 @@ elsewhere:
 - **Out of scope:** Garmin cloud/account sync, server backend, multi-user/auth,
   iOS, medical diagnosis, medication advice, model fine-tuning, making the coach
   a clinician.
-- **Optional/approval-gated:** generic read-only SQL tool (D7), WorkManager
-  background sync (G3), OkHttp (C4), screenshot testing framework (F3),
-  androidx.security if we choose it over direct Keystore (C1).
+- **Optional/approval-gated:** generic read-only SQL tool (D7), OkHttp (C4),
+  screenshot testing framework (F3), androidx.security if we choose it over
+  direct Keystore (C1). WorkManager was approved and is in use for G3.
 - **Not a dependency of this work:** a new UI framework, a chart library, or a
   navigation library. The current Compose stack can express the mockups.
 
@@ -1261,12 +1304,11 @@ step goal and max-HR settings, provider settings, no CI, no app/UI tests, and th
 need to split `MainActivity.kt` before adding four tabs and streaming chat.
 
 `docs/PLAN.md`, `docs/architecture-notes.md`, and `docs/HANDOFF.md` were brought
-up to date on 2026-10-19: they describe database version 9, the five-tab UI,
+up to date on 2026-10-20: they describe database version 9, the five-tab UI,
 the coach/provider/tool layers, conversation history, database backup/restore,
-the workout planner, and PacePro. FIT/CSV/GPX **activity** export is still
-deferred; the implemented export is a full local database plus conversation
-backup. `SyncState` maps to B2 (Room/settings persistence is done; WorkManager
-background sync is not).
+the workout planner, PacePro, activity export, and WorkManager background sync.
+`SyncState` maps to B2 (Room/settings persistence and WorkManager background
+sync are both done).
 
 # Open questions
 

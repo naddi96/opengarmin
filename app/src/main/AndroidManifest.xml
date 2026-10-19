@@ -49,5 +49,12 @@
             android:name=".sync.SyncForegroundService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- WorkManager's long-running worker uses a connectedDevice foreground service. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice"
+            tools:node="merge" />
     </application>
 </manifest>

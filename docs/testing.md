@@ -22,7 +22,7 @@ ANDROID_SERIAL=<serial> ./tools/gradle-8.7/bin/gradle --no-daemon :app:connected
 Current coverage:
 
 - `:protocol:test` — 55 tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT, the workout and pace-band encoders, and legacy file upload.
-- `:app:testDebugUnitTest` — 101 JVM tests:
+- `:app:testDebugUnitTest` — 112 JVM tests:
   - `HealthToolsTest`: scope rejection, missing-day handling, date-range caps,
     sample caps, activity filters/pages, zone calculation, comparisons,
     unavailable sleep, snapshot budget, unknown tool/bad JSON, coach workout
@@ -53,6 +53,10 @@ Current coverage:
     invalid/missing GPS positions, no-GPS GPX errors, synthetic and real lap
     handling, empty records, TCX/CSV field mapping and quoting, and
     missing/invalid FIT files.
+  - `SyncPolicyTest` and `SyncGateTest`: 15 min–6 h interval clamping and
+    labels, failure classification and retry policy, duration/trigger
+    formatting, and single-flight/re-entrancy/wrong-owner release for the
+    process-wide sync lease.
 - `:app:connectedDebugAndroidTest` — `SecretStoreTest` verifies the Android
   Keystore round-trip and that the plaintext key is not present in preferences.
 
@@ -125,6 +129,25 @@ Manual matrix used for the UI/coach pass:
   stored FIT file disabled FIT with the “no longer on this device” explanation;
   restoring the file re-enabled it. No export was uploaded and `logcat` showed
   no crash or ANR.
+- Background sync: enabling periodic sync created one unique WorkManager job
+  with `charging=false`, `batteryNotLow=true`, and the requested 15-minute
+  interval; changing the interval re-enqueued it. **Run background sync now**
+  then backgrounding the app produced a successful worker run in 34.7 s
+  (2 wellness days, no new activities), wrote `trigger=background`,
+  `result=success`, and `duration=34671 ms`, posted
+  `Background sync complete`, and refreshed Settings to
+  `Duration: 34.7 s · Trigger: Background · Result: Success`. Charging-only
+  changed the scheduled job to `charging=true` and back to `charging=false`.
+  Force-stopping the app during a worker left `syncing` persisted; reopening the
+  app converted it to a cancelled result (`The previous sync was interrupted
+  before it finished`) without a crash, and WorkManager rescheduled the periodic
+  job. With Bluetooth off, manual sync surfaced
+  `Bluetooth is off. Turn Bluetooth on, then sync again.` and the background
+  worker classified it as permanent in 65 ms without posting a repeated
+  notification. No FATAL/ANR and no background FIT/health payload logging was
+  observed. Still to exercise on hardware: a forced Doze/App Standby run, an
+  actual out-of-range watch, and the ACL-reconnect trigger. Use the commands in
+  [`background-sync.md`](background-sync.md#testing).
 - Settings: step goal, max HR, sync state, provider summary, device log,
   Import FIT file, Data & backup.
 - Provider: presets (including DeepSeek), model add/edit/delete/default,
@@ -163,3 +186,6 @@ no provider key.
   tests at the JSON-codec level only; the file swap and Room reopen are verified
   manually.
 - Live BLE sync tests (hardware-dependent; see `docs/HANDOFF.md`).
+- WorkManager stress cases: forced Doze/App Standby, process death during a
+  worker, charging-only scheduling, and watch out of range. The scheduler policy
+  and single-flight lease are unit-tested; the Android lifecycle matrix is manual.

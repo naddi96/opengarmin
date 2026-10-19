@@ -319,6 +319,9 @@ interface ActivityDao {
     @Query("SELECT * FROM activities")
     suspend fun all(): List<ActivityEntity>
 
+    @Query("SELECT itemUid FROM activities WHERE itemUid != ''")
+    suspend fun activityItemUids(): List<String>
+
     @Query(
         "SELECT a.id AS activityId, a.startTime AS startTime, " +
             "f.messageName AS messageName, f.fieldsJson AS fieldsJson " +
@@ -715,6 +718,8 @@ class ActivityRepository(private val database: () -> AppDatabase) {
     suspend fun sleepStages(date: String): List<SleepStageEntity> = dao.sleepStages(date)
 
     suspend fun importedWellnessFileIds(): Set<String> = dao.importedWellnessFileIds().toHashSet()
+
+    suspend fun activityItemUids(): Set<String> = dao.activityItemUids().toHashSet()
 
     suspend fun wellnessDaysBetween(start: String, end: String): List<WellnessDayEntity> =
         dao.wellnessDaysBetween(start, end)

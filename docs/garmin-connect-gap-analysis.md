@@ -13,9 +13,11 @@ The short version:
   Forerunner-style watch: BLE sync, activities, wellness, training metrics,
   activity analysis, a raw FIT explorer, workout/PacePro upload, and an
   optional private coach.
-- It is **not a Garmin Connect replacement**. The largest gaps are historical
-  wellness coverage, background sync, device management, structured training
-  plans, maps/courses, social/safety, and data portability.
+- It is **not a Garmin Connect replacement**. The largest remaining gaps are
+  historical wellness coverage, device management, structured training plans,
+  maps/courses, social/safety, and data portability. Background/periodic sync
+  and per-activity export now ship locally; the cloud/service-backed features
+  remain out of scope.
 - Chasing full parity would destroy the product's advantage. The defensible
   strategy is: **fix the trust gaps, add the few parity features that make the
   app usable every day, and win on local ownership, provenance, automation and
@@ -56,7 +58,7 @@ parsed into `fit_messages` but has no screen, tool, or action is marked partial.
 
 | Surface | Shipped behaviour | Important limits |
 |---|---|---|
-| **Transport and sync** | BLE GFDI v2 / Multi-Link, scan/connect/reconnect, auto-connect to a bonded watch on launch, manual sync, foreground `connectedDevice` service, incremental UID dedupe, activity/wellness pulls, workout and pace-band upload | No periodic/background sync, no WorkManager, no watch battery/storage, no sync history, one watch, no onboarding flow |
+| **Transport and sync** | BLE GFDI v2 / Multi-Link, scan/connect/reconnect, auto-connect to a bonded watch on launch, manual sync, foreground `connectedDevice` service, optional WorkManager periodic sync, incremental UID dedupe, activity/wellness pulls, workout and pace-band upload | No watch battery/storage yet, sync diagnostics are basic, one watch, no onboarding flow |
 | **Today** | Steps ring and goal, distance, active minutes/calories, current/resting HR, intraday HR chart, sleep/HRV tiles, local deterministic insight, sync status/progress/error | Fixed layout; no floors, live HR, hydration, nutrition, weight, or configurable cards |
 | **Health** | Body Battery, stress average/distribution/chart, sleep score/stages/SpO₂/respiration/lowest HR, HRV status/baseline/weekly average, resting HR, SpO₂, respiration, VO₂ max, daily movement, weekly active minutes | Sleep and HRV appear only when the watch exposes the relevant files; no sleep coach, naps, skin temperature, health status/snapshot, fitness age, or real readiness score |
 | **Training** | Recovery time, VO₂ max and six-week trend, 7-day acute load, chronic load, load focus, lactate threshold, performance condition, latest training effect, race predictor, readiness factors | Readiness shows factors, not a score; no training status, FTP, power analysis, endurance/hill score, heat/altitude acclimation, daily suggested workouts, or adaptive plans |
@@ -221,8 +223,8 @@ funds**. The app should not pretend to have them.
 | Guided pairing/onboarding | Yes | Android bond + auto-connect | 🟡 | P0 | A |
 | Device settings | Full | No | ❌ | P1 | P |
 | Watch battery and storage | Yes | No | ❌ | P0 | P |
-| Sync diagnostics and history | Yes | Last status + device log | 🟡 | P0 | A |
-| Periodic/background sync | Yes | No | ❌ | P0 | A |
+| Sync diagnostics and history | Yes | Last attempt/success, duration, trigger, result, and device log | 🟡 | P0 | A |
+| Periodic/background sync | Yes | Optional WorkManager periodic sync (15 min–6 h) | ✅ | — | A |
 | Multi-device support | Yes | No | ❌ | P2 | A |
 | Firmware updates | Yes | No | ⛔ | P3 | O |
 | Connect IQ store/apps/watch faces | Yes | No | ⛔ | P3 | O/C |
@@ -273,7 +275,8 @@ with acceptance criteria and estimates.
    Garmin syncs continuously in the background; OpenGarmin syncs on launch or
    when the user taps Sync. Add WorkManager/periodic sync, sync on charger or
    watch reconnect, a clear connected/disconnected state, and retry/backoff.
-   _Feasibility: A._
+   _Feasibility: A. Periodic sync, retry/backoff, watch-reconnect sync, and
+   persisted history shipped in G3; richer connection/device state remains G4._
 
 3. **Watch battery, storage, and sync diagnostics**
    Show battery percentage, storage/free space, last successful sync, last
@@ -554,6 +557,7 @@ An open companion that outlives a watch upgrade is a strong retention story.
 
 - Historical wellness requests + data coverage view.
 - Background/periodic sync + connection state + watch battery/storage.
+  *(Periodic sync and retry/history shipped in G3; connection/battery detail is G4.)*
 - Activity export (FIT/GPX/TCX/CSV) + encrypted backup.
 - Profile/units/goals.
 - Onboarding/pairing.

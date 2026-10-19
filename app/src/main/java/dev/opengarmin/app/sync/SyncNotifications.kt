@@ -64,15 +64,21 @@ object SyncNotifications {
         )
     }
 
+    /** Leaves a dismissible completion notification without touching the foreground service. */
+    fun notifyFinal(context: Context, title: String, status: String, detail: String?) {
+        ensureChannel(context)
+        NotificationManagerCompat.from(context).notify(
+            FINAL_NOTIFICATION_ID,
+            build(context, title, status, detail, progress = null, ongoing = false),
+        )
+    }
+
     /** Leaves a dismissible completion notification and stops the foreground service. */
     fun finish(context: Context, title: String, status: String, detail: String?) {
         ensureChannel(context)
         // Use a separate id so stopping the foreground service cannot remove the
         // final summary together with its progress notification.
-        NotificationManagerCompat.from(context).notify(
-            FINAL_NOTIFICATION_ID,
-            build(context, title, status, detail, progress = null, ongoing = false),
-        )
+        notifyFinal(context, title, status, detail)
         context.stopService(Intent(context, SyncForegroundService::class.java))
         NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
     }

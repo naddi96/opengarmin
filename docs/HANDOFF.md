@@ -127,7 +127,7 @@ docs/                      PROTOCOL, PLAN, LICENSING, architecture, providers,
 tools/                     parse_btsnoop.py, extract_protos.py, setup scripts
 ```
 
-Tests: **55 protocol tests** (`:protocol:test`) and **91 app JVM tests**
+Tests: **55 protocol tests** (`:protocol:test`) and **112 app JVM tests**
 (`:app:testDebugUnitTest`) pass, plus the instrumented `SecretStoreTest`. Build:
 `:app:assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk`.
 
@@ -625,3 +625,51 @@ byte-identical to the stored `download_76.dec` (SHA-256 match), GPX and TCX
 parsed as well-formed XML, CSV parsed with ISO-8601 timestamps and 1-based lap
 indexes, and the GPX/FIT controls disabled with explanations for a no-GPS
 activity and a temporarily missing FIT file.
+
+## 2026-10-20 — Epic G / G3 background sync
+
+Implemented optional AndroidX WorkManager background sync without moving the BLE
+stack out of the app process:
+
+- `sync/SyncScheduler.kt` owns the unique periodic request
+  (`watch-periodic-sync`) and a one-time `watch-sync-once` request used by
+  **Run background sync now**. Periodic defaults are **off**, **60 min**,
+  battery-not-low always, charging-only optional. Requests use a 10-minute
+  initial exponential backoff and are re-enqueued when settings change.
+- `sync/WatchSyncWorker.kt` is a `CoroutineWorker` that runs a
+  `connectedDevice` foreground notification, then reuses `SyncCoordinator` and
+  `ActivityRepository` to pull activities/wellness. It preloads known activity
+  and wellness UIDs, imports on IO, waits for pending imports before reporting
+  success, and discards protocol logs (only high-level `OpenGarminBg`
+  lifecycle lines are emitted).
+- `sync/SyncGate.kt` is a process-wide owner lease. The visible activity holds
+  `ui` while its BLE client is connected; the worker acquires `background` only
+  after `onStop` disconnects and releases. A worker that sees the UI lease
+  returns success for that period; a manual sync sees the background lease and
+  does not contend.
+- `MainActivity` now acquires/releases the lease, persists trigger/duration/
+  result, disconnects on stop, syncs on launch/resume when the last success is
+  older than five minutes, and syncs on `ACTION_ACL_CONNECTED` for the bonded
+  watch while visible.
+- Failure handling bounds connect at 45 s, GDI session start at 45 s, and the
+  transfer at 6 min. Transient/busy failures retry with WorkManager backoff;
+  missing permission/no bonded watch are permanent setup errors recorded in
+  Settings/Today.
+- Settings shows enable/interval/charging controls, last attempt/success,
+  duration, trigger, result, and the manual worker trigger. A SharedPreferences
+  listener refreshes the visible UI when a worker finishes in the same process.
+- `app/build.gradle.kts` adds `androidx.work:work-runtime-ktx:2.9.1`; the
+  manifest merges WorkManager's `SystemForegroundService` with
+  `foregroundServiceType="connectedDevice"`.
+
+Tests: `SyncPolicyTest` (interval clamp/labels, failure classification,
+retry policy, duration/trigger labels) and `SyncGateTest` (single-flight,
+re-entrancy, wrong-owner release, reuse). Device pass on Pixel 10a / Android 17
++ FR255 confirmed WorkManager scheduling with the right constraints, interval
+changes re-enqueueing, a successful background worker after the app was
+backgrounded (34.7 s, 2 wellness days, `trigger=background`,
+`result=success`, final notification), charging-only constraint changes,
+process-death recovery from a persisted `syncing` state, and a permanent
+Bluetooth-off failure without notification spam. Forced Doze/App Standby, a
+real out-of-range watch, and the ACL-reconnect trigger still need a dedicated
+device pass.

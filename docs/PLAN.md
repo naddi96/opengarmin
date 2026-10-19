@@ -22,6 +22,7 @@ cloud accounts, and telemetry.
 | Local preferences | SharedPreferences for profile/sync metadata, provider configs, and coach conversations |
 | UI | Jetpack Compose + Material 3 with the Pulse design tokens |
 | Networking | OkHttp only for the user-configured LLM endpoint; osmdroid for map tiles |
+| Background scheduling | AndroidX WorkManager for optional periodic BLE sync with battery/charging constraints and exponential backoff |
 | Secrets | Android Keystore AES-GCM for provider API keys |
 | Data ownership | Local database + FIT files; user-initiated ZIP backup/restore of the database and conversations; per-activity FIT/GPX/TCX/CSV export |
 
@@ -60,6 +61,7 @@ cloud accounts, and telemetry.
 | **M8** | Pulse UI + coach | ✅ five-tab UI, settings, provider/model management, streaming tool-calling coach, evidence, charts |
 | **M9** | Local data ownership | ✅ multi-conversation history and full database backup/restore (2026-10-18) |
 | **M10** | Activity export | ✅ local FIT/GPX/TCX/CSV export from activity detail (Epic G / G5, 2026-10-19) |
+| **M11** | Background sync | ✅ optional WorkManager periodic sync, single-flight gate, retry/backoff, persisted history and settings (Epic G / G3, 2026-10-20) |
 
 ## Testing strategy
 
@@ -70,7 +72,8 @@ cloud accounts, and telemetry.
   unit/integration tests, and `assembleDebug`.
 - **Device checks** on a real watch/phone cover BLE sync, wellness import,
   notifications, charts, provider configuration, coach streaming, backup/restore,
-  activity export, and conversation history. See [`testing.md`](testing.md).
+  activity export, background sync, and conversation history. See
+  [`testing.md`](testing.md).
 - **Live capture** (developer-only): `adb logcat` for BLE frames and, where
   available, HCI snoop logs for comparison with Garmin Connect.
 
@@ -90,7 +93,7 @@ cloud accounts, and telemetry.
 1. Add Room migration/importer tests and an instrumented end-to-end backup test.
 2. Decide whether to request historical wellness days; until then, accumulate
    history by syncing repeatedly.
-3. Add WorkManager/periodic background sync and richer connected-device state.
+3. Add richer connected-device state and watch battery/storage (G4).
 4. Tighten cleartext handling for non-local provider endpoints.
 5. Add Compose UI/screenshot tests for the tab shell, coach history dialog, and
    backup settings card.

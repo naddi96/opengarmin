@@ -2,16 +2,22 @@ package dev.opengarmin.app
 
 import android.Manifest
 import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.DocumentsContract
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -89,7 +95,10 @@ import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivitySyncProgress
 import dev.opengarmin.app.sync.SyncCoordinator
+import dev.opengarmin.app.sync.SyncGate
 import dev.opengarmin.app.sync.SyncNotifications
+import dev.opengarmin.app.sync.SyncPolicy
+import dev.opengarmin.app.sync.SyncScheduler
 import dev.opengarmin.app.ui.PulseApp
 import dev.opengarmin.app.ui.screens.formatFileSize
 import dev.opengarmin.app.ui.theme.PulseColors
@@ -99,6 +108,7 @@ import dev.opengarmin.protocol.FitPaceBand
 import dev.opengarmin.protocol.FitWorkout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -167,6 +177,28 @@ class MainActivity : ComponentActivity() {
     private var importedThisSync = 0
     private var syncNotificationActive = false
     private var knownWellnessUids: Set<String> = emptySet()
+    private var syncInProgress = false
+    private var syncTrigger = "manual"
+    private var syncStartedAt = 0L
+    private var appVisible = false
+    private var disconnectWhenSyncFinishes = false
+    private var importErrorThisSync: String? = null
+    private var aclReceiverRegistered = false
+
+    private val watchReconnectReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != BluetoothDevice.ACTION_ACL_CONNECTED) return
+            val device = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE) ?: return
+            main.post {
+                if (!appVisible || syncInProgress) return@post
+                if (SyncGate.owner() == SyncGate.OWNER_BACKGROUND) return@post
+                val watch = client?.findBondedWatch() ?: return@post
+                if (watch.address != device.address) return@post
+                log("watch reconnected; starting sync")
+                syncNow(trigger = "reconnect")
+            }
+        }
+    }
 
     data class DeviceEntry(val device: BluetoothDevice, val rssi: Int) {
         val label: String get() = "${device.name ?: "(unnamed)"}  ${device.address}  ${rssi} dBm"
@@ -204,6 +236,7 @@ class MainActivity : ComponentActivity() {
 
         repository = ActivityRepository { AppDatabase.get(this) }
         settings = PulseSettings(this)
+        runCatching { SyncScheduler.apply(this, settings) }
         providerStore = ProviderStore(this)
         chatStore = ChatStore(this)
         healthDataSource = RepositoryHealthDataSource(repository)
@@ -263,7 +296,6 @@ class MainActivity : ComponentActivity() {
                                 status = "Connected · reading activity list…",
                                 progress = null,
                             )
-                            settings.recordSyncStarted()
                             client?.findBondedWatch()?.name?.let { settings.updateWatchName(it) }
                             armWatchdog()
                         }
@@ -289,9 +321,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             }
-                            settings.recordSyncError(reason)
-                            cancelWatchdog()
-                            finishSyncNotification("Sync failed", reason)
+                            finishSync(success = false, error = reason)
                         }
                         "reconnecting" -> {
                             cancelWatchdog()
@@ -304,9 +334,14 @@ class MainActivity : ComponentActivity() {
                         }
                         "disconnected" -> {
                             cancelWatchdog()
-                            if (syncNotificationActive) {
-                                finishSyncNotification("Sync stopped", "Watch disconnected")
+                            if (syncInProgress) {
+                                finishSync(
+                                    success = false,
+                                    error = "Watch disconnected before the sync finished.",
+                                )
+                            } else {
                                 activityProgress = null
+                                SyncGate.release(SyncGate.OWNER_UI)
                             }
                         }
                     }
@@ -314,6 +349,15 @@ class MainActivity : ComponentActivity() {
             },
         )
         client = c
+        runCatching {
+            ContextCompat.registerReceiver(
+                this,
+                watchReconnectReceiver,
+                IntentFilter(BluetoothDevice.ACTION_ACL_CONNECTED),
+                ContextCompat.RECEIVER_EXPORTED,
+            )
+            aclReceiverRegistered = true
+        }
 
         c.session.onGfdiMessage = { frame ->
             main.post {
@@ -344,9 +388,8 @@ class MainActivity : ComponentActivity() {
                 cancelWatchdog()
                 activityProgress = null
                 state = "up to date"
-                settings.recordSyncSuccess()
-                finishSyncNotification("Sync complete", importedSummary())
                 log("SYNC up to date: all activity files already imported")
+                finishSync(success = true)
             },
             onActivityProgress = { progress ->
                 activityProgress = progress.takeIf { it.total > 0 && it.done < it.total }
@@ -475,13 +518,10 @@ class MainActivity : ComponentActivity() {
                             "sync attempts" to "$syncAttempts",
                         )
                     },
-                    onSync = { syncNow() },
+                    onSync = { syncNow(trigger = "manual") },
                     onScan = { startScan() },
                     onStop = { client?.stopScan() },
-                    onDisconnect = {
-                        cancelWatchdog()
-                        client?.disconnect()
-                    },
+                    onDisconnect = { disconnectWatch() },
                     onSelectActivity = { selectActivity(it) },
                     onClearSelection = {
                         selectedActivity = null
@@ -507,28 +547,94 @@ class MainActivity : ComponentActivity() {
                     backupBusy = backupBusy,
                     onExportBackup = { uri -> exportBackup(uri) },
                     onImportBackup = { uri -> importBackup(uri) },
+                    onBackgroundSyncChanged = {
+                        runCatching {
+                            SyncScheduler.apply(this, settings, replaceSchedule = true)
+                        }
+                    },
+                    onRunBackgroundSyncNow = {
+                        // Drop the visible-app BLE lease so the worker can own
+                        // the watch, then run the exact same background path.
+                        // A short pause lets the watch close the old GATT
+                        // session before the worker reconnects.
+                        lifecycleScope.launch {
+                            disconnectWatch()
+                            delay(1_500)
+                            runCatching { SyncScheduler.runOnce(this@MainActivity) }
+                        }
+                    },
                 )
-            }
-        }
-
-        if (c.hasPermissions()) {
-            main.post {
-                val watch = c.findBondedWatch()
-                if (watch != null) {
-                    syncAttempts = 0
-                    importedThisSync = 0
-                    ensureNotificationPermission()
-                    settings.updateWatchName(watch.name ?: "")
-                    log("auto-connecting to bonded ${watch.name}")
-                    c.connect(watch)
-                } else {
-                    log("no bonded Garmin watch found")
-                }
             }
         }
     }
 
-    /** Starts (or restarts) the Room flow collectors after the database is reopened. */
+    override fun onStart() {
+        super.onStart()
+        appVisible = true
+        log("APP onStart syncInProgress=$syncInProgress lease=${SyncGate.owner()}")
+        if (syncInProgress) {
+            disconnectWhenSyncFinishes = false
+            return
+        }
+        val c = client ?: return
+        if (!c.hasPermissions()) return
+        val backgroundRunning = SyncGate.owner() == SyncGate.OWNER_BACKGROUND
+        if (!backgroundRunning && settings.lastSyncStatus == "syncing") {
+            // A process death or force-stop can leave the persisted status at
+            // "syncing" even though no worker survived. Do not show a fake
+            // in-progress state indefinitely.
+            settings.recordSyncError(
+                "The previous sync was interrupted before it finished.",
+                trigger = settings.lastSyncTrigger.ifBlank { "manual" },
+                kind = "cancelled",
+            )
+        }
+        if (backgroundRunning) {
+            state = "background sync"
+            log("background sync is already running")
+            return
+        }
+        val lastSync = settings.lastSyncAt
+        val due = lastSync == null ||
+            System.currentTimeMillis() - lastSync >= AUTO_SYNC_MIN_INTERVAL_MS
+        if (due) syncNow(trigger = "launch")
+    }
+
+    override fun onStop() {
+        appVisible = false
+        log("APP onStop syncInProgress=$syncInProgress")
+        if (syncInProgress) {
+            // Let the transfer finish, then drop the BLE lease so the periodic
+            // worker can take over while the app is in the background.
+            disconnectWhenSyncFinishes = true
+        } else {
+            disconnectWatch()
+        }
+        super.onStop()
+    }
+
+    private fun disconnectWatch() {
+        cancelWatchdog()
+        if (syncInProgress) {
+            val durationMs = (SystemClock.elapsedRealtime() - syncStartedAt).coerceAtLeast(0L)
+            settings.recordSyncError(
+                "Sync stopped before it finished.",
+                durationMs = durationMs,
+                trigger = syncTrigger,
+                kind = "cancelled",
+            )
+        }
+        syncInProgress = false
+        activityProgress = null
+        client?.disconnect()
+        SyncGate.release(SyncGate.OWNER_UI)
+        log("BLE lease released (idle)")
+        if (syncNotificationActive) {
+            syncNotificationActive = false
+            SyncNotifications.cancel(this)
+        }
+    }
+
     private fun observeDatabase() {
         dataJobs.forEach { it.cancel() }
         dataJobs.clear()
@@ -691,7 +797,6 @@ class MainActivity : ComponentActivity() {
             importing = false
             state = if (activityProgress != null) "syncing" else "synced"
             result.onSuccess { entity ->
-                settings.recordSyncSuccess()
                 if (entity == null) {
                     log("FIT has no session or was already imported")
                 } else {
@@ -711,15 +816,11 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }.onFailure { e ->
-                settings.recordSyncError("FIT import failed")
+                importErrorThisSync = e.message ?: "FIT import failed"
                 log("FIT import failed: ${e.message}")
             }
             if (activityProgress != null) {
                 updateSyncNotification(progress = activityProgress)
-            } else if (result.isSuccess) {
-                finishSyncNotification("Sync complete", importedSummary())
-            } else {
-                finishSyncNotification("Sync failed", "Could not import an activity")
             }
         }
     }
@@ -898,8 +999,7 @@ class MainActivity : ComponentActivity() {
                 val reason = syncFailureReason()
                 log("sync failed after $syncAttempts attempts: $reason")
                 state = "failed"
-                settings.recordSyncError(reason)
-                finishSyncNotification("Sync failed", reason)
+                finishSync(success = false, error = reason)
             }
         }
         watchdog = r
@@ -1042,7 +1142,7 @@ class MainActivity : ComponentActivity() {
                 message = "Connecting to ${watch.name ?: "watch"}…",
             )
             log("WORKOUT preparing \"${saved.name}\": ${bytes.size} FIT bytes")
-            syncNow(pending)
+            syncNow(pending, trigger = "upload")
         }
     }
 
@@ -1107,16 +1207,46 @@ class MainActivity : ComponentActivity() {
                 message = "Connecting to ${watch.name ?: "watch"}…",
             )
             log("PACE preparing \"${saved.name}\": ${bytes.size} FIT bytes")
-            syncNow(pending)
+            syncNow(pending, trigger = "upload")
         }
     }
 
-    private fun syncNow(pendingWorkout: PendingWorkoutSend? = null) {
+    private fun syncNow(
+        pendingWorkout: PendingWorkoutSend? = null,
+        trigger: String = "manual",
+    ) {
         if (pendingWorkout != null) pendingWorkoutSend = pendingWorkout
         val c = client ?: return
+        if (syncInProgress) {
+            pendingWorkout?.let { pending ->
+                markPendingUploadFailed(pending, "A sync is already running. Try again when it finishes.")
+            }
+            return
+        }
+        if (!SyncGate.tryAcquire(SyncGate.OWNER_UI)) {
+            val message = "A background sync is running. Try again when it finishes."
+            log(message)
+            pendingWorkout?.let { markPendingUploadFailed(it, message) }
+            return
+        }
+        if (!c.hasBluetoothAdapter()) {
+            SyncGate.release(SyncGate.OWNER_UI)
+            recordPermanentSetupError("Bluetooth LE is not available on this phone.", trigger)
+            pendingWorkout?.let { markPendingUploadFailed(it, "Bluetooth LE is not available.") }
+            return
+        }
+        if (!c.isBluetoothEnabled()) {
+            SyncGate.release(SyncGate.OWNER_UI)
+            recordPermanentSetupError("Bluetooth is off. Turn Bluetooth on, then sync again.", trigger)
+            pendingWorkout?.let { markPendingUploadFailed(it, "Bluetooth is off.") }
+            return
+        }
         val watch = c.findBondedWatch()
         if (watch == null) {
-            log("no bonded Garmin watch")
+            SyncGate.release(SyncGate.OWNER_UI)
+            val message = "No bonded Garmin watch found. Pair the watch in Android Bluetooth settings."
+            recordPermanentSetupError(message, trigger)
+            pendingWorkout?.let { markPendingUploadFailed(it, message) }
             return
         }
         syncAttempts = 0
@@ -1124,6 +1254,12 @@ class MainActivity : ComponentActivity() {
         activityProgress = null
         lastImportedLabel = null
         importedThisSync = 0
+        importErrorThisSync = null
+        syncInProgress = true
+        syncTrigger = trigger
+        syncStartedAt = SystemClock.elapsedRealtime()
+        disconnectWhenSyncFinishes = false
+        settings.recordSyncStarted(trigger)
         ensureNotificationPermission()
         syncNotificationActive = true
         SyncNotifications.start(this)
@@ -1138,6 +1274,92 @@ class MainActivity : ComponentActivity() {
         settings.updateWatchName(watch.name ?: "")
         coordinator?.reset()
         c.connect(watch)
+    }
+
+    private fun markPendingUploadFailed(pending: PendingWorkoutSend, message: String) {
+        pendingWorkoutSend = null
+        when (pending.kind) {
+            UploadKind.WORKOUT -> workoutSendStatus = WorkoutSendStatus(
+                workoutId = pending.id,
+                name = pending.name,
+                sending = false,
+                success = false,
+                message = message,
+            )
+            UploadKind.PACE_PLAN -> pacePlanSendStatus = PacePlanSendStatus(
+                planId = pending.id,
+                name = pending.name,
+                sending = false,
+                success = false,
+                message = message,
+            )
+        }
+    }
+
+    private fun recordPermanentSetupError(message: String, trigger: String) {
+        log(message)
+        settings.recordSyncStarted(trigger)
+        settings.recordSyncError(
+            message,
+            durationMs = 0,
+            trigger = trigger,
+            kind = "permanent",
+        )
+    }
+
+    private fun finishSync(success: Boolean, error: String? = null) {
+        if (!syncInProgress) {
+            SyncGate.release(SyncGate.OWNER_UI)
+            return
+        }
+        syncInProgress = false
+        cancelWatchdog()
+        val durationMs = (SystemClock.elapsedRealtime() - syncStartedAt).coerceAtLeast(0L)
+        val importError = importErrorThisSync
+        if (success && importError != null) {
+            val reason = "Sync finished, but importing an activity failed: $importError"
+            val kind = SyncPolicy.FailureKind.TRANSIENT
+            settings.recordSyncError(
+                reason,
+                durationMs = durationMs,
+                trigger = syncTrigger,
+                kind = when (kind) {
+                    SyncPolicy.FailureKind.PERMANENT -> "permanent"
+                    SyncPolicy.FailureKind.BUSY -> "busy"
+                    SyncPolicy.FailureKind.TRANSIENT -> "transient"
+                },
+            )
+            state = "failed"
+            finishSyncNotification("Sync failed", reason)
+        } else if (success) {
+            settings.recordSyncSuccess(durationMs, syncTrigger)
+            state = "up to date"
+            finishSyncNotification("Sync complete", importedSummary())
+        } else {
+            val reason = error ?: "Could not finish syncing."
+            val kind = SyncPolicy.classifyFailure(
+                reason,
+                stalledBeforeCapabilities = coordinator?.stalledBeforeCapabilities() == true,
+            )
+            settings.recordSyncError(
+                reason,
+                durationMs = durationMs,
+                trigger = syncTrigger,
+                kind = when (kind) {
+                    SyncPolicy.FailureKind.PERMANENT -> "permanent"
+                    SyncPolicy.FailureKind.BUSY -> "busy"
+                    SyncPolicy.FailureKind.TRANSIENT -> "transient"
+                },
+            )
+            state = "failed"
+            finishSyncNotification("Sync failed", reason)
+        }
+        activityProgress = null
+        if (!success || importError != null || !appVisible || disconnectWhenSyncFinishes) {
+            disconnectWhenSyncFinishes = false
+            client?.disconnect()
+            SyncGate.release(SyncGate.OWNER_UI)
+        }
     }
 
     private fun startScan() {
@@ -1166,12 +1388,22 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         cancelWatchdog()
+        syncInProgress = false
         client?.disconnect()
-        syncNotificationActive = false
-        SyncNotifications.cancel(this)
+        SyncGate.release(SyncGate.OWNER_UI)
+        if (aclReceiverRegistered) {
+            runCatching { unregisterReceiver(watchReconnectReceiver) }
+            aclReceiverRegistered = false
+        }
+        if (syncNotificationActive) {
+            syncNotificationActive = false
+            SyncNotifications.cancel(this)
+        }
         super.onDestroy()
     }
 }
+
+private const val AUTO_SYNC_MIN_INTERVAL_MS = 5 * 60 * 1000L
 
 @Composable
 private fun Screen(

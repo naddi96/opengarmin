@@ -52,6 +52,23 @@ notification. It shows the current activity index/file size and the last
 imported activity's date, sport, and distance; its content is hidden on the lock
 screen unless the user changes the system notification privacy setting.
 
+## Background sync
+
+- Optional periodic sync runs through Android WorkManager and connects only to
+  the OS-bonded Garmin watch over BLE. It does not use the network or any
+  OpenGarmin/Garmin server.
+- The worker discards protocol and FIT/health payloads from logs. Only
+  high-level lifecycle lines (`BG sync started`/`finished`) are emitted for
+  diagnostics.
+- The foreground-sync and completion notifications use a low-importance,
+  private-visibility channel. Android hides their content on the lock screen in
+  its default configuration.
+- Sync settings and history (enabled, interval, charging-only, last attempt,
+  last success, duration, trigger, result, and a short error message) are stored
+  in app-private SharedPreferences.
+- Force-stopping the app in Android Settings suspends WorkManager jobs until the
+  app is opened again.
+
 ## Backups
 
 - **Settings → Data & backup → Export backup** creates a ZIP containing the full

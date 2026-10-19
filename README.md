@@ -12,10 +12,10 @@ scratch in the `protocol/` module.
 > **Status:** working local pipeline. BLE/GFDI sync, FIT + wellness ingestion,
 > the five-tab Pulse UI (Today, Health, Training, Activities, Coach), an
 > OpenAI-compatible AI coach with multi-conversation history, local database
-> backup/restore, per-activity FIT/GPX/TCX/CSV export, and PacePro strategy
-> building with on-phone run guidance are implemented. All health data comes
-> from the watch's own FIT files; no Garmin Connect account or REST API is used.
-> See
+> backup/restore, per-activity FIT/GPX/TCX/CSV export, optional WorkManager
+> background sync, and PacePro strategy building with on-phone run guidance are
+> implemented. All health data comes from the watch's own FIT files; no Garmin
+> Connect account or REST API is used. See
 > [`BACKLOG.md`](BACKLOG.md) for remaining data-coverage items and
 > [`docs/HANDOFF.md`](docs/HANDOFF.md) for the protocol notes.
 
@@ -67,6 +67,13 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
 
 ## Features
 
+- **Background sync:** optional periodic sync through Android WorkManager
+  (15 min–6 h, default 60 min and off) with battery-not-low and optional
+  charging constraints. A process-wide lease keeps the worker, foreground sync,
+  and manual taps from opening competing BLE transfers. Transient failures retry
+  with exponential backoff; permanent setup problems surface an action. Last
+  attempt/success, duration, trigger, and result are stored locally. See
+  [`docs/background-sync.md`](docs/background-sync.md).
 - **Today:** steps ring and goal, resting/current heart rate with an intraday
   chart, active time, calories, and explicit empty states for not-yet-ingested
   sleep/HRV.
@@ -135,6 +142,8 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
   matrix, including backup/restore and conversation history.
 - [`docs/export.md`](docs/export.md) — per-activity FIT/GPX/TCX/CSV export,
   filename rules, CSV columns, and local-only handling.
+- [`docs/background-sync.md`](docs/background-sync.md) — periodic sync settings,
+  constraints, single-flight, retries, notifications, and Android lifecycle.
 - [`docs/privacy.md`](docs/privacy.md) — what leaves the device, key/log
   handling, backups, exports, and data deletion.
 - [`docs/HANDOFF.md`](docs/HANDOFF.md) — protocol findings and chronological
