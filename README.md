@@ -17,6 +17,33 @@ scratch in the `protocol/` module.
 > [`BACKLOG.md`](BACKLOG.md) for remaining data-coverage items and
 > [`docs/HANDOFF.md`](docs/HANDOFF.md) for the protocol notes.
 
+## Download
+
+Installable APKs are published on the [**Releases**](https://github.com/naddi96/opengarmin/releases)
+page; the newest build is always at
+[`releases/latest`](https://github.com/naddi96/opengarmin/releases/latest). Every
+`v*` tag is built and uploaded automatically by the **Release APK** workflow,
+together with a SHA-256 checksum.
+
+The APK is signed with the project release key
+(`keystore/opengarmin-release.jks`), so newer releases install over older ones.
+Because that key is public, treat GitHub builds as a convenience and build from
+source if you need a stronger trust guarantee.
+
+```bash
+adb install -r OpenGarmin-0.1.0.apk
+```
+
+To publish a release, tag the commit and push the tag:
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+You can also run the **Release APK** workflow from the Actions tab and enter a
+version such as `v0.1.1`.
+
 ## Why
 
 The official app is a thin client for Garmin's servers; it does not keep your data

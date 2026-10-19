@@ -15,6 +15,16 @@ val envOpenAiApiKey =
 val envOpenAiModel =
     System.getenv("PULSE_OPENAI_MODEL") ?: System.getenv("OPENAI_MODEL") ?: ""
 
+// Release versioning is overridden by the release workflow from the git tag.
+val appVersionName = System.getenv("VERSION_NAME")?.trim()?.takeIf { it.isNotEmpty() } ?: "0.1.0"
+val appVersionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
+
+// The release keystore is intentionally public so CI can sign installable APKs
+// without repository secrets. Override via RELEASE_* env vars to use your own.
+val releaseKeystore = rootProject.file(
+    System.getenv("RELEASE_STORE_FILE") ?: "keystore/opengarmin-release.jks"
+)
+
 android {
     namespace = "dev.opengarmin.app"
     compileSdk = 34
@@ -23,8 +33,8 @@ android {
         applicationId = "dev.opengarmin.app"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "OPENAI_BASE_URL", buildConfigString(envOpenAiBaseUrl))
@@ -50,9 +60,19 @@ android {
         jvmTarget = "17"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = releaseKeystore
+            storePassword = System.getenv("RELEASE_STORE_PASSWORD") ?: "opengarmin-release"
+            keyAlias = System.getenv("RELEASE_KEY_ALIAS") ?: "opengarmin"
+            keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: "opengarmin-release"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
