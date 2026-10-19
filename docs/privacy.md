@@ -67,6 +67,17 @@ screen unless the user changes the system notification privacy setting.
 - A raw SQLite database backup is also accepted. Importing one replaces the
   database but leaves the current conversations untouched.
 
+## Activity exports
+
+- Activity detail → **Export** writes one activity as FIT, GPX, TCX, or CSV using
+  the system document picker. Nothing is uploaded or converted by a service.
+- FIT copies the original decoded watch file when it is still on the device.
+  GPX, TCX, and CSV are generated locally from the Room records and laps; missing
+  values are omitted rather than estimated.
+- Exported files leave the app's private storage. They are not encrypted and may
+  contain precise GPS coordinates, heart rate, and other health data. Store or
+  delete them accordingly; clearing app data does not remove them.
+
 ## Data deletion
 
 - **New conversation** leaves previous conversations in History if they have

@@ -597,3 +597,31 @@ Manual check on the Pixel 10a: opened Training → PacePro, confirmed race
 predictions (10K 47:45) came from the imported run, sent the plan, and observed
 the watch accept all chunks. The preview run screen and GPS permission flow
 still need a real outdoor run check.
+
+## 2026-10-19 — Epic G / G5 activity export
+
+Activity detail now exports one activity as FIT, GPX, TCX, or CSV through the
+system `CreateDocument` picker. The implementation is in
+`app/.../data/ActivityExport.kt` and `ui/screens/ActivityDetailScreen.kt`.
+
+- **FIT:** copies the decoded watch file named by `activities.fileName` after
+  checking the 12/14-byte FIT header and `.FIT` marker. A missing or invalid
+  file is a clear error; no substitute FIT is generated. Files imported through
+  Settings are now copied to app storage under `import-<timestamp>-…` so they
+  can be exported later.
+- **GPX:** filters out null, non-finite, out-of-range, and `(0, 0)` positions;
+  the UI disables GPX when no valid position remains.
+- **TCX:** writes activity/lap timing, distance, calories, HR, cadence,
+  altitude, and available track points. Missing laps become one synthetic
+  activity lap; every record is assigned to exactly one lap.
+- **CSV:** documented columns in `docs/export.md`, ISO-8601 UTC timestamps,
+  elapsed seconds, metre-based units, 1-based lap indexes, and RFC-style
+  quoting. A lap-only row is written when the activity has no records.
+- Nothing is uploaded; all generation runs on an IO dispatcher.
+
+`ActivityExportTest` adds 10 JVM tests for the format edge cases. Verified on
+the Pixel 10a / Android 17 against a Forerunner 255 on 2026-10-19: FIT was
+byte-identical to the stored `download_76.dec` (SHA-256 match), GPX and TCX
+parsed as well-formed XML, CSV parsed with ISO-8601 timestamps and 1-based lap
+indexes, and the GPX/FIT controls disabled with explanations for a no-GPS
+activity and a temporarily missing FIT file.

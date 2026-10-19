@@ -60,12 +60,12 @@ parsed into `fit_messages` but has no screen, tool, or action is marked partial.
 | **Today** | Steps ring and goal, distance, active minutes/calories, current/resting HR, intraday HR chart, sleep/HRV tiles, local deterministic insight, sync status/progress/error | Fixed layout; no floors, live HR, hydration, nutrition, weight, or configurable cards |
 | **Health** | Body Battery, stress average/distribution/chart, sleep score/stages/SpO₂/respiration/lowest HR, HRV status/baseline/weekly average, resting HR, SpO₂, respiration, VO₂ max, daily movement, weekly active minutes | Sleep and HRV appear only when the watch exposes the relevant files; no sleep coach, naps, skin temperature, health status/snapshot, fitness age, or real readiness score |
 | **Training** | Recovery time, VO₂ max and six-week trend, 7-day acute load, chronic load, load focus, lactate threshold, performance condition, latest training effect, race predictor, readiness factors | Readiness shows factors, not a score; no training status, FTP, power analysis, endurance/hill score, heat/altitude acclimation, daily suggested workouts, or adaptive plans |
-| **Activities** | Weekly summary, sport filters, featured card, detail stats, OSM map, HR/elevation charts, running dynamics, GPS summary, HR zones, laps, raw FIT data explorer | Generic titles ("Run", "Ride"), no notes/RPE/photos/gear/weather, no pace/power/cadence charts, no PRs/segments, no FIT/GPX/CSV export or share |
+| **Activities** | Weekly summary, sport filters, featured card, detail stats, OSM map, HR/elevation charts, running dynamics, GPS summary, HR zones, laps, raw FIT data explorer, local FIT/GPX/TCX/CSV export | Generic titles ("Run", "Ride"), no notes/RPE/photos/gear/weather, no pace/power/cadence charts, no PRs/segments, no share |
 | **Plan** | Timed, distance, and open steps; repeat blocks; save/edit/delete; local scheduled date; send a FIT workout to the watch | No HR/pace/power/cadence targets, no strength exercises or sets/reps, no templates/library, no watch calendar sync, no adaptive plan |
 | **PacePro** | 5K/10K/half/marathon/custom distance, Riegel prediction, recent-run elevation profile, split/hill sliders, saved plans, watch upload, phone-GPS preview run with manual laps | No GPX/course import, no live HR, no watch-native navigation, no weather/race-day integration |
 | **Coach** | OpenAI-compatible presets, encrypted key, model management, streaming Markdown, cancel, read-only health tools, evidence chips, inline charts, coach-created workouts, 50 conversations | Opt-in only; no proactive insights, no on-device model, no long-term memory beyond chat, no plan adaptation, only one write path (create workout) |
 | **Trends** | 7D/30D/90D/1Y/All/custom ranges, 11 metrics, averages, daily/weekly/monthly buckets, partial-history labels | Fixed metrics and chart types; no custom dashboards or cross-metric correlation |
-| **Settings and data** | Step goal, max HR, provider management, sync/scan/disconnect, device log, FIT import, ZIP database + chat backup/restore | No height/weight/age/sex/units, no goals beyond steps, no encrypted backup, no activity export, no multi-profile |
+| **Settings and data** | Step goal, max HR, provider management, sync/scan/disconnect, device log, FIT import, ZIP database + chat backup/restore, per-activity FIT/GPX/TCX/CSV export | No height/weight/age/sex/units, no goals beyond steps, no encrypted backup, no multi-profile |
 | **Quality and security** | JVM tests for protocol/app, CI, Keystore-encrypted provider key, privacy docs, no account/telemetry | No Compose UI, migration, or end-to-end backup tests; cleartext HTTP is app-wide with a warning |
 
 Coverage at a glance:
@@ -210,7 +210,7 @@ funds**. The app should not pretend to have them.
 | Gear | Yes | No | ❌ | P2 | A |
 | Multi-sport, strength, swim, golf, ski analysis | Sport-specific | Generic/raw FIT only | ❌ | P2 | A |
 | Personal records and segments | Yes | No | ❌ | P2/P3 | A/C |
-| Share, export, delete | Yes | Only full-database backup | ❌ | P1 | A |
+| Share, export, delete | Yes | Local FIT/GPX/TCX/CSV export; no share/delete | 🟡 | P1 | A |
 | Activity comparison | Yes | Coach overlay only | 🟡 | P2 | A |
 | Raw FIT explorer | No | Yes | ⭐ | — | — |
 
@@ -241,7 +241,7 @@ funds**. The app should not pretend to have them.
 | Web app, multi-user, iOS | Yes | No | ⛔ | — | O |
 | Backup/restore | Cloud + export | ZIP database + chat | 🟡 | P0 | A |
 | Encrypted backup | Cloud at rest | No | ❌ | P1 | A |
-| Activity export (FIT/GPX/TCX/CSV) | Yes | No | ❌ | P0 | A |
+| Activity export (FIT/GPX/TCX/CSV) | Yes | Local export from activity detail | ✅ | — | A |
 | Integrations (Strava, Health Connect, Apple Health, MyFitnessPal, scales) | Yes | No | ❌ | P1/P2 | A/C |
 | Bring-your-own AI provider | No (Connect+ only) | Yes | ⭐ | — | — |
 | Local-first / offline | No | Yes | ⭐ | — | — |
@@ -285,7 +285,8 @@ with acceptance criteria and estimates.
    Export a single activity as FIT, GPX, TCX, and CSV; export all data as an
    open archive; encrypt backups with a user passphrase. Garmin users expect to
    own their activities, and a local-first app should make export trivial.
-   _Feasibility: A._
+   _Feasibility: A. Activity export is shipped (G5); encrypted backups remain in
+   G6._
 
 5. **Profile, units, and goals**
    Height, weight, birth date, sex, unit system, active-minute goal, floors

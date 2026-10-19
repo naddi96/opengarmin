@@ -1,6 +1,6 @@
 # BACKLOG — Pulse UI + AI coach
 
-_Last updated: 2026-10-19. Baseline commit: `eebd0d4`. Phase 0 is complete, epics A–E are implemented, F is partially done, and the Garmin Connect parity analysis is tracked in [`docs/garmin-connect-gap-analysis.md`](docs/garmin-connect-gap-analysis.md)._
+_Last updated: 2026-10-19. Baseline commit: `eebd0d4`. Phase 0 is complete, epics A–E are implemented, F is partially done, and Epic G is in progress (G5 activity export shipped). The Garmin Connect parity analysis is tracked in [`docs/garmin-connect-gap-analysis.md`](docs/garmin-connect-gap-analysis.md)._
 
 This backlog turns the Pulse mockups and the OpenAI-compatible coach brief into
 reviewable increments. It assumes the current app is a local-first Android
@@ -38,7 +38,7 @@ history, and database backup/restore; see
 | D. LLM data access | Typed read-only health tools + evidence + safety | ✅ Done |
 | E. Coach chat | Streaming chat with tool calls, cancel, sources, persistence, history | ✅ Done |
 | F. Quality | Tests, accessibility, performance, CI, docs, privacy audit | Partially done |
-| G. Garmin Connect parity | P0 trust/daily-usability stories defined (G1–G10) | 📋 Planned — see [Epic G](#epic-g--garmin-connect-parity-p0-trust-and-daily-usability) |
+| G. Garmin Connect parity | P0 trust/daily-usability stories defined (G1–G10) | 🚧 In progress — G5 shipped; see [Epic G](#epic-g--garmin-connect-parity-p0-trust-and-daily-usability) |
 
 ## Implementation update — 2026-10-17
 
@@ -178,6 +178,33 @@ Heart Rate (or a BLE HR strap). The watch rejects `FIT_TYPE_56` directory
 filtering on FR255, so upload success is verified from the GFDI sequence rather
 than by reading the file back.
 
+## Implementation update — 2026-10-19 (Epic G / G5)
+
+Shipped the first Epic G story:
+
+- **G5 activity export:** activity detail now has an **Export** card for FIT,
+  GPX, TCX, and CSV. FIT copies the original decoded watch file (with a header
+  check) and disables the action with an explanation when the file is gone; it
+  never generates a substitute. GPX exports only finite, in-range, non-`(0,0)`
+  positions and is disabled when there are none. TCX includes activity/lap
+  timing, distance, calories, HR, cadence, altitude and available track points,
+  synthesizing one activity lap when the watch stored none. CSV documents its
+  columns, uses ISO-8601 UTC timestamps, elapsed seconds, metre-based units and
+  1-based lap indexes. All formats use the system `CreateDocument` picker and
+  never upload data. FIT files imported through Settings are now retained in app
+  storage so they can be exported later.
+- **Tests/docs:** new `ActivityExportTest` covers filenames, XML escaping,
+  invalid/missing GPS, no-GPS errors, missing laps, empty records, quoting, and
+  missing/invalid FIT files (10 tests). Added [`docs/export.md`](docs/export.md)
+  with the CSV column reference, and updated README, privacy, testing,
+  architecture notes and this backlog. Device verification on 2026-10-19
+  (Pixel 10a / Android 17, Forerunner 255) exercised all four formats: the FIT
+  export was byte-identical to the stored watch file, GPX/TCX parsed as valid
+  XML (2,816 GPS points; 7 laps/2,821 trackpoints), and CSV parsed as 2,821 rows
+  with ISO-8601 UTC timestamps and lap indexes 1–7. GPX and FIT correctly
+  disabled with explanations for a no-GPS activity and a temporarily missing
+  FIT file; no crash or ANR was logged.
+
 ## Garmin Connect parity analysis — 2026-10-19
 
 Added [`docs/garmin-connect-gap-analysis.md`](docs/garmin-connect-gap-analysis.md),
@@ -189,9 +216,9 @@ from deliberate non-goals.
 Highest-priority gaps:
 
 - **P0 — trust:** historical wellness and sleep/HRV coverage, background sync,
-  watch battery/storage and sync diagnostics, activity export (FIT/GPX/TCX/CSV),
-  encrypted backups, profile/units/goals, structured workout targets, onboarding,
-  and data-quality repair.
+  watch battery/storage and sync diagnostics, encrypted backups,
+  profile/units/goals, structured workout targets, onboarding, and data-quality
+  repair. Activity export (FIT/GPX/TCX/CSV) shipped in G5.
 - **P1 — daily parity:** transparent training readiness/status, adaptive plans
   and daily suggested workouts, strength/yoga/mobility workouts, courses/GPX,
   activity notes/RPE/photos/weather, PRs/gear, weight/hydration/nutrition/women's
@@ -972,7 +999,7 @@ new-dependency risk.
 | G2 | Data coverage view | S/M | 2–3 days | G1 (can start earlier) | Low |
 | G3 | Background sync + connection lifecycle | L | 1–2 weeks | WorkManager approval | Medium/High |
 | G4 | Watch status + sync diagnostics | M | 3–5 days | protocol/RE | Medium |
-| G5 | Activity export (FIT/GPX/TCX/CSV) | M | 3–4 days | existing records/laps | Low |
+| G5 | Activity export (FIT/GPX/TCX/CSV) — ✅ done | M | 3–4 days | existing records/laps | Low |
 | G6 | Encrypted backup + restore | M | 4–6 days | `BackupManager` | Medium |
 | G7 | Profile, units, and goals | M | 3–5 days | none | Low/Medium |
 | G8 | Structured workout targets + watch calendar | L | 1–2 weeks | G7, `FitWorkout` | Medium/High |
@@ -1076,20 +1103,20 @@ fighting the protocol.
 **Risk:** Low — app-only, no new service.
 
 **Acceptance criteria**
-- [ ] Activity detail offers **Export** with FIT, GPX, TCX, and CSV.
-- [ ] FIT exports the original watch file when it is still on disk; a missing
+- [x] Activity detail offers **Export** with FIT, GPX, TCX, and CSV.
+- [x] FIT exports the original watch file when it is still on disk; a missing
       file produces a clear error, not a silently generated substitute.
-- [ ] GPX exports only valid GPS points; the option is disabled or explains why
+- [x] GPX exports only valid GPS points; the option is disabled or explains why
       when the activity has no coordinates.
-- [ ] TCX includes activity/lap timing, distance, HR, cadence, altitude, and
+- [x] TCX includes activity/lap timing, distance, HR, cadence, altitude, and
       available track points.
-- [ ] CSV has documented columns, ISO-8601 UTC timestamps, elapsed seconds,
+- [x] CSV has documented columns, ISO-8601 UTC timestamps, elapsed seconds,
       units, and lap index; it opens cleanly in spreadsheet software.
-- [ ] The system document picker is used; filenames are readable and include the
+- [x] The system document picker is used; filenames are readable and include the
       correct extension and MIME type; nothing is uploaded.
-- [ ] Tests cover XML escaping, no GPS, empty records, missing laps, invalid
+- [x] Tests cover XML escaping, no GPS, empty records, missing laps, invalid
       positions, and filename generation.
-- [ ] `docs/privacy.md` and the README describe local export.
+- [x] `docs/privacy.md` and the README describe local export.
 
 ## G6. Encrypted backup and restore
 

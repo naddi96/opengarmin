@@ -22,7 +22,7 @@ ANDROID_SERIAL=<serial> ./tools/gradle-8.7/bin/gradle --no-daemon :app:connected
 Current coverage:
 
 - `:protocol:test` — 55 tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT, the workout and pace-band encoders, and legacy file upload.
-- `:app:testDebugUnitTest` — 91 JVM tests:
+- `:app:testDebugUnitTest` — 101 JVM tests:
   - `HealthToolsTest`: scope rejection, missing-day handling, date-range caps,
     sample caps, activity filters/pages, zone calculation, comparisons,
     unavailable sleep, snapshot budget, unknown tool/bad JSON, coach workout
@@ -49,6 +49,10 @@ Current coverage:
     even/negative/positive split totals, hill adjustments, partial final splits,
     custom-distance goal estimates, split JSON round-trip and FIT pace-band
     mapping.
+  - `ActivityExportTest`: readable filenames and extensions, XML escaping,
+    invalid/missing GPS positions, no-GPS GPX errors, synthetic and real lap
+    handling, empty records, TCX/CSV field mapping and quoting, and
+    missing/invalid FIT files.
 - `:app:connectedDebugAndroidTest` — `SecretStoreTest` verifies the Android
   Keystore round-trip and that the plaintext key is not present in preferences.
 
@@ -111,6 +115,16 @@ Manual matrix used for the UI/coach pass:
   last imported activity. Disconnect or complete the sync and confirm a separate
   dismissible `Sync stopped`/`Sync complete` notification remains.
 - Activity detail: map/HR/elevation/laps/`All data`.
+- Activity export: on 2026-10-19 the Pixel 10a / Android 17 + Forerunner 255
+  pass exported a 6.55 km run as FIT, GPX, TCX, and CSV through the system
+  picker. The FIT copy was byte-identical to the stored watch file (SHA-256
+  match); GPX and TCX parsed as well-formed XML with 2,816 GPS points and
+  7 laps/2,821 trackpoints respectively; CSV parsed as 2,821 rows with 20
+  columns, ISO-8601 UTC timestamps, and lap indexes 1–7. An indoor Cardio
+  activity disabled GPX with the explanation visible. Temporarily renaming the
+  stored FIT file disabled FIT with the “no longer on this device” explanation;
+  restoring the file re-enabled it. No export was uploaded and `logcat` showed
+  no crash or ANR.
 - Settings: step goal, max HR, sync state, provider summary, device log,
   Import FIT file, Data & backup.
 - Provider: presets (including DeepSeek), model add/edit/delete/default,

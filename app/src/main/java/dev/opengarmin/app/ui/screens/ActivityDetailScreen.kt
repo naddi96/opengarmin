@@ -1,5 +1,8 @@
 package dev.opengarmin.app.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,6 +28,8 @@ import dev.opengarmin.app.coach.GpsSummary
 import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.coach.categoryForSport
 import dev.opengarmin.app.data.ActivityEntity
+import dev.opengarmin.app.data.ActivityExport
+import dev.opengarmin.app.data.ActivityExportFormat
 import dev.opengarmin.app.data.LapEntity
 import dev.opengarmin.app.data.RecordEntity
 import dev.opengarmin.app.formatDate
@@ -48,12 +53,29 @@ fun ActivityDetailScreen(
     dynamics: RunningDynamicsSummary?,
     gps: GpsSummary?,
     maxHeartRate: Int?,
+    fitExportAvailable: Boolean,
+    exportStatus: String?,
+    exportBusy: Boolean,
+    onExport: (ActivityExportFormat, Uri) -> Unit,
     onBack: () -> Unit,
     onExploreData: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val zones = zoneSummary(records, maxHeartRate)
+    val gpsAvailable = ActivityExport.hasGps(records)
+    val fitExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(ActivityExportFormat.FIT.mimeType),
+    ) { uri -> uri?.let { onExport(ActivityExportFormat.FIT, it) } }
+    val gpxExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(ActivityExportFormat.GPX.mimeType),
+    ) { uri -> uri?.let { onExport(ActivityExportFormat.GPX, it) } }
+    val tcxExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(ActivityExportFormat.TCX.mimeType),
+    ) { uri -> uri?.let { onExport(ActivityExportFormat.TCX, it) } }
+    val csvExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(ActivityExportFormat.CSV.mimeType),
+    ) { uri -> uri?.let { onExport(ActivityExportFormat.CSV, it) } }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -94,6 +116,93 @@ fun ActivityDetailScreen(
                     TinyStat("Max HR", activity.maxHeartRate?.let { "$it bpm" } ?: "—", Modifier.weight(1f))
                     TinyStat("Ascent", activity.ascentMeters?.let { "$it m" } ?: "—", Modifier.weight(1f))
                     TinyStat("Descent", activity.descentMeters?.let { "$it m" } ?: "—", Modifier.weight(1f))
+                }
+            }
+        }
+
+        PulseCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(PulseSpacing.xl),
+                verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+            ) {
+                Text("Export", style = MaterialTheme.typography.titleSmall, color = PulseColors.Text)
+                Text(
+                    "Files are written to the location you choose with the system document picker. Nothing is uploaded.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PulseColors.TextMuted,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+                    PrimaryButton(
+                        "FIT",
+                        onClick = {
+                            fitExporter.launch(
+                                ActivityExport.fileName(activity, ActivityExportFormat.FIT),
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = fitExportAvailable && !exportBusy,
+                    )
+                    PrimaryButton(
+                        "GPX",
+                        onClick = {
+                            gpxExporter.launch(
+                                ActivityExport.fileName(activity, ActivityExportFormat.GPX),
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = gpsAvailable && !exportBusy,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+                    PrimaryButton(
+                        "TCX",
+                        onClick = {
+                            tcxExporter.launch(
+                                ActivityExport.fileName(activity, ActivityExportFormat.TCX),
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = !exportBusy,
+                    )
+                    PrimaryButton(
+                        "CSV",
+                        onClick = {
+                            csvExporter.launch(
+                                ActivityExport.fileName(activity, ActivityExportFormat.CSV),
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = !exportBusy,
+                    )
+                }
+                if (!fitExportAvailable) {
+                    Text(
+                        "The original FIT file is no longer on this device. Re-sync the activity or import its FIT file to export FIT.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+                if (!gpsAvailable) {
+                    Text(
+                        "GPX is unavailable because this activity has no valid GPS points. TCX and CSV still export the available data.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+                if (exportBusy) {
+                    Text(
+                        "Exporting…",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = PulseColors.Teal,
+                    )
+                } else {
+                    exportStatus?.let { status ->
+                        Text(
+                            status,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (status.startsWith("Could not")) PulseColors.Coral else PulseColors.Teal,
+                        )
+                    }
                 }
             }
         }

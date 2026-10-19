@@ -22,9 +22,9 @@ live in [`BACKLOG.md`](../BACKLOG.md).
 | Networking | OkHttp for the configured OpenAI-compatible endpoint; osmdroid/OpenStreetMap for map tiles |
 | Auth | **None.** Local-first, single implicit local profile; no account or server |
 | Secrets | Provider keys encrypted with Android Keystore AES-GCM |
-| Tests | 55 protocol unit tests and 91 app JVM tests; one instrumented Keystore test |
+| Tests | 55 protocol unit tests and 101 app JVM tests; one instrumented Keystore test |
 | CI | GitHub Actions runs protocol tests, app unit/integration tests, and `assembleDebug` |
-| Docs | Architecture, protocol, handoff, plan, backlog, providers, tools, privacy, testing, design tokens |
+| Docs | Architecture, protocol, handoff, plan, backlog, providers, tools, privacy, export, testing, design tokens |
 
 ## 2. Module map
 
@@ -49,6 +49,7 @@ app/src/main/java/dev/opengarmin/app/
   data/
     AppDatabase.kt            Room entities/DAO/migrations + ActivityRepository
     BackupManager.kt          ZIP export/import of the database and conversations
+    ActivityExport.kt         local FIT copy plus GPX/TCX/CSV generation
     WellnessParser.kt         monitoring/sleep/HRV FIT parsing
     WellnessMetrics.kt        daily display metrics and latest-day selection
     WellnessHistory.kt        day/week/month trend buckets
@@ -100,7 +101,7 @@ a separate ViewModel layer; the Coach has its own `CoachController`.
   lists saved conversations with title, last-used time and message count, and
   supports reopening and deleting (with confirmation).
 - The activity detail screen shows a map, HR/elevation charts, laps, running
-  dynamics, and a FIT data explorer.
+  dynamics, local FIT/GPX/TCX/CSV export, and a FIT data explorer.
 - Accessibility is handled at the component level (minimum 44 dp targets, text
   labels on icon buttons); Compose UI tests are still missing.
 
@@ -159,6 +160,22 @@ source remains valid.
 The backup is not encrypted. It contains the full local health database and
 chat text but not provider configuration or API keys, so it should still be
 stored with the same care as the app's own health data.
+
+### Activity export
+
+`data/ActivityExport.kt` implements the per-activity export used by activity
+detail. FIT export copies the decoded watch file named by
+`activities.fileName` after checking the FIT header; it never generates a
+replacement FIT file. GPX, TCX, and CSV are generated from the `records` and
+`laps` rows. GPX keeps only finite, in-range, non-`(0,0)` positions. TCX emits
+the stored laps, or one synthetic activity lap when the watch stored none, and
+assigns every record to exactly one lap. CSV documents its columns in
+[`docs/export.md`](export.md) and uses ISO-8601 UTC timestamps.
+
+Exports run on an IO dispatcher and write to the URI returned by the system
+`CreateDocument` picker. No export path uses the network. FIT files imported
+through Settings are now copied into app storage under an `import-<timestamp>-`
+name so they remain available for later FIT export.
 
 ## 5. Ingestion
 
@@ -304,11 +321,11 @@ in the app's local Room database. This is a deliberate product property
 
 - `:protocol:test` — 55 JVM tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT,
   the workout encoder and legacy file upload.
-- `:app:testDebugUnitTest` — 91 JVM tests covering provider tools, workout-plan
+- `:app:testDebugUnitTest` — 101 JVM tests covering provider tools, workout-plan
   tool parsing, FIT insights,
   OpenAI streaming/errors, the chat loop, chart specs, Markdown rendering,
-  sport categories, wellness parsing/metrics/history, training metrics, and
-  conversation JSON round-trips.
+  sport categories, wellness parsing/metrics/history, training metrics,
+  conversation JSON round-trips, and activity export.
 - `:app:connectedDebugAndroidTest` — `SecretStoreTest` verifies the Keystore
   round-trip without plaintext in preferences.
 - `.github/workflows/android.yml` runs protocol tests, app unit/integration
@@ -336,8 +353,9 @@ The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. See
 - Room migration/importer tests and Compose UI tests.
 - Stricter cleartext policy for provider endpoints.
 - Optional encrypted backups; today's ZIP is unencrypted.
-- FIT/CSV/GPX activity export and other planned data-ownership features remain
-  deferred; the implemented export is a full local database backup.
+- Other planned data-ownership features remain deferred; the implemented export
+  surfaces are the full local database backup and per-activity
+  FIT/GPX/TCX/CSV export.
 - A prioritized Garmin Connect comparison, missing-feature catalogue, and
   differentiator proposals live in
   [`garmin-connect-gap-analysis.md`](garmin-connect-gap-analysis.md).

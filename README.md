@@ -12,9 +12,10 @@ scratch in the `protocol/` module.
 > **Status:** working local pipeline. BLE/GFDI sync, FIT + wellness ingestion,
 > the five-tab Pulse UI (Today, Health, Training, Activities, Coach), an
 > OpenAI-compatible AI coach with multi-conversation history, local database
-> backup/restore, and PacePro strategy building with on-phone run guidance are
-> implemented. All health data comes from the watch's own FIT files; no Garmin
-> Connect account or REST API is used. See
+> backup/restore, per-activity FIT/GPX/TCX/CSV export, and PacePro strategy
+> building with on-phone run guidance are implemented. All health data comes
+> from the watch's own FIT files; no Garmin Connect account or REST API is used.
+> See
 > [`BACKLOG.md`](BACKLOG.md) for remaining data-coverage items and
 > [`docs/HANDOFF.md`](docs/HANDOFF.md) for the protocol notes.
 
@@ -104,7 +105,10 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
 - **Activities:** weekly summary, sport filters (Run, Ride, Cardio, Strength,
   Walk, and an Other bucket for every remaining sport), row-to-featured
   selection, real GPS/HR trace, heart-rate zone bar, full activity detail with
-  map, HR/elevation charts, laps, and the FIT data explorer.
+  map, HR/elevation charts, laps, local FIT/GPX/TCX/CSV export, and the FIT data
+  explorer. Export uses the system document picker, copies the original FIT file
+  when it is still on disk, and never uploads anything. See
+  [`docs/export.md`](docs/export.md) for the format and CSV-column reference.
 - **Coach:** OpenAI-compatible provider presets (OpenAI, DeepSeek, OpenRouter,
   Ollama, LM Studio, vLLM, Custom), encrypted API keys, model management,
   connection test, streaming Markdown chat with cancel, typed read-only health
@@ -129,8 +133,10 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
   history, safety, and how to add a tool.
 - [`docs/testing.md`](docs/testing.md) — test commands and the manual device
   matrix, including backup/restore and conversation history.
+- [`docs/export.md`](docs/export.md) — per-activity FIT/GPX/TCX/CSV export,
+  filename rules, CSV columns, and local-only handling.
 - [`docs/privacy.md`](docs/privacy.md) — what leaves the device, key/log
-  handling, backups, and data deletion.
+  handling, backups, exports, and data deletion.
 - [`docs/HANDOFF.md`](docs/HANDOFF.md) — protocol findings and chronological
   implementation notes.
 - [`docs/PLAN.md`](docs/PLAN.md) — layering, milestones, and remaining work.

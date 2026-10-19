@@ -29,6 +29,7 @@ import dev.opengarmin.app.coach.CoachController
 import dev.opengarmin.app.coach.GpsSummary
 import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.data.ActivityEntity
+import dev.opengarmin.app.data.ActivityExportFormat
 import dev.opengarmin.app.data.FitMessageEntity
 import dev.opengarmin.app.data.LapEntity
 import dev.opengarmin.app.data.PaceCourse
@@ -85,6 +86,9 @@ fun PulseApp(
     selectedLaps: List<LapEntity>,
     selectedDynamics: RunningDynamicsSummary?,
     selectedGps: GpsSummary?,
+    selectedFitExportAvailable: Boolean,
+    exportStatus: String?,
+    exportBusy: Boolean,
     dataActivity: ActivityEntity?,
     dataMessages: List<FitMessageEntity>,
     dataLoading: Boolean,
@@ -105,6 +109,7 @@ fun PulseApp(
     onClearSelection: () -> Unit,
     onExploreData: (ActivityEntity) -> Unit,
     onCloseData: () -> Unit,
+    onExportActivity: (ActivityEntity, ActivityExportFormat, android.net.Uri) -> Unit,
     onImportFit: (android.net.Uri) -> Unit,
     onSaveWorkout: (PlannedWorkoutEntity) -> Unit,
     onDeleteWorkout: (Long) -> Unit,
@@ -306,6 +311,10 @@ fun PulseApp(
                         dynamics = selectedDynamics,
                         gps = selectedGps,
                         maxHeartRate = settings.maxHeartRate,
+                        fitExportAvailable = selectedFitExportAvailable,
+                        exportStatus = exportStatus,
+                        exportBusy = exportBusy,
+                        onExport = { format, uri -> onExportActivity(detailActivity, format, uri) },
                         onBack = {
                             onClearSelection()
                             detailId = null

@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.DocumentsContract
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -69,6 +70,9 @@ import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.coach.ToolScope
 import dev.opengarmin.app.coach.tools.ToolRegistry
 import dev.opengarmin.app.data.ActivityEntity
+import dev.opengarmin.app.data.ActivityExport
+import dev.opengarmin.app.data.ActivityExportException
+import dev.opengarmin.app.data.ActivityExportFormat
 import dev.opengarmin.app.data.ActivityRepository
 import dev.opengarmin.app.data.AppDatabase
 import dev.opengarmin.app.data.BackupManager
@@ -158,6 +162,8 @@ class MainActivity : ComponentActivity() {
     private var lastImportedLabel by mutableStateOf<String?>(null)
     private var backupStatus by mutableStateOf<String?>(null)
     private var backupBusy by mutableStateOf(false)
+    private var exportStatus by mutableStateOf<String?>(null)
+    private var exportBusy by mutableStateOf(false)
     private var importedThisSync = 0
     private var syncNotificationActive = false
     private var knownWellnessUids: Set<String> = emptySet()
@@ -442,6 +448,11 @@ class MainActivity : ComponentActivity() {
                     selectedLaps = selectedLaps,
                     selectedDynamics = selectedDynamics,
                     selectedGps = selectedGps,
+                    selectedFitExportAvailable = selectedActivity?.let {
+                        File(filesDir, it.fileName).isFile
+                    } == true,
+                    exportStatus = exportStatus,
+                    exportBusy = exportBusy,
                     dataActivity = dataActivity,
                     dataMessages = dataMessages,
                     dataLoading = dataLoading,
@@ -478,9 +489,11 @@ class MainActivity : ComponentActivity() {
                         selectedLaps = emptyList()
                         selectedDynamics = null
                         selectedGps = null
+                        exportStatus = null
                     },
                     onExploreData = { openDataExplorer(it) },
                     onCloseData = { closeDataExplorer() },
+                    onExportActivity = { activity, format, uri -> exportActivity(activity, format, uri) },
                     onImportFit = { uri -> importFitFromUri(uri) },
                     onSaveWorkout = { workout -> saveWorkout(workout) },
                     onDeleteWorkout = { id -> deleteWorkout(id) },
@@ -557,6 +570,49 @@ class MainActivity : ComponentActivity() {
                     latestSleepStages = emptyList()
                 }
             }
+        }
+    }
+
+    private fun exportActivity(
+        activity: ActivityEntity,
+        format: ActivityExportFormat,
+        uri: Uri,
+    ) {
+        if (exportBusy) return
+        exportBusy = true
+        exportStatus = "Exporting ${format.name}…"
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val records = repository.records(activity.id)
+                    val laps = repository.laps(activity.id)
+                    val payload = when (format) {
+                        ActivityExportFormat.FIT -> ActivityExport.readFitFile(File(filesDir, activity.fileName))
+                        ActivityExportFormat.GPX -> ActivityExport.gpx(activity, records)
+                            .toByteArray(Charsets.UTF_8)
+                        ActivityExportFormat.TCX -> ActivityExport.tcx(activity, records, laps)
+                            .toByteArray(Charsets.UTF_8)
+                        ActivityExportFormat.CSV -> ActivityExport.csv(activity, records, laps)
+                            .toByteArray(Charsets.UTF_8)
+                    }
+                    contentResolver.openOutputStream(uri)?.use { output ->
+                        output.write(payload)
+                    } ?: throw ActivityExportException("Could not open the selected location for writing.")
+                    ActivityExport.fileName(activity, format)
+                }
+            }
+            exportBusy = false
+            exportStatus = result.fold(
+                onSuccess = { name -> "Exported $name. Nothing was uploaded." },
+                onFailure = { error ->
+                    // The picker has already created the destination document;
+                    // remove the empty/partial file so a failed export does not
+                    // leave a misleading artifact behind.
+                    runCatching { DocumentsContract.deleteDocument(contentResolver, uri) }
+                        .recoverCatching { contentResolver.delete(uri, null, null) }
+                    "Could not export: ${error.message ?: "unknown error"}"
+                },
+            )
         }
     }
 
@@ -681,11 +737,24 @@ class MainActivity : ComponentActivity() {
             }
             val name = uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
                 ?: "imported.fit"
+            // Keep the selected FIT file in app storage so Export → FIT can
+            // return the original watch file later. The timestamp prevents
+            // two imports with the same display name from colliding.
+            val stored = withContext(Dispatchers.IO) {
+                runCatching {
+                    File(filesDir, "import-${System.currentTimeMillis()}-${safeFitName(name)}").also {
+                        it.writeBytes(bytes)
+                    }
+                }.getOrNull()
+            }
             val result = withContext(Dispatchers.IO) {
-                runCatching { repository.importFit(name, bytes, itemUid = "") }
+                runCatching {
+                    repository.importFit(stored?.name ?: name, bytes, itemUid = "")
+                }
             }
             result.onSuccess { entity ->
                 if (entity == null) {
+                    stored?.delete()
                     log("FIT import: no session found or activity already exists")
                 } else {
                     importedThisSync++
@@ -701,9 +770,19 @@ class MainActivity : ComponentActivity() {
                     log("IMPORTED from file: ${entity.fileName}")
                 }
             }.onFailure { e ->
+                stored?.delete()
                 log("FIT import failed: ${e.message}")
             }
         }
+    }
+
+    private fun safeFitName(name: String): String {
+        val base = name.substringAfterLast('/').substringAfterLast('\\')
+        val cleaned = base.map { character ->
+            if (character.isLetterOrDigit() || character in "._-") character else '_'
+        }.joinToString("").take(100)
+        val safe = cleaned.ifBlank { "imported.fit" }
+        return if (safe.endsWith(".fit", ignoreCase = true)) safe else "$safe.fit"
     }
 
     private fun importWellness(file: File, type: String, itemUid: String) {
@@ -757,6 +836,7 @@ class MainActivity : ComponentActivity() {
         selectedLaps = emptyList()
         selectedDynamics = null
         selectedGps = null
+        exportStatus = null
         lifecycleScope.launch {
             val (records, laps, detail) = withContext(Dispatchers.IO) {
                 Triple(
