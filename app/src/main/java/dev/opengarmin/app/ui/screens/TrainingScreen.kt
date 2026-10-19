@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,6 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.LoadFocus
+import dev.opengarmin.app.data.PacePlanCalculator
+import dev.opengarmin.app.data.PaceRace
 import dev.opengarmin.app.data.TrainingSummary
 import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.formatDate
@@ -62,6 +65,9 @@ fun TrainingScreen(
     onAskCoach: () -> Unit,
     onOpenPlan: () -> Unit = {},
     plannedWorkoutsSummary: String = "",
+    onOpenPace: () -> Unit = {},
+    pacePlanSummary: String = "",
+    racePredictions: Map<PaceRace, Int> = emptyMap(),
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -270,6 +276,84 @@ fun TrainingScreen(
                         modifier = Modifier.size(20.dp),
                     )
                 }
+            }
+        }
+
+        if (racePredictions.isNotEmpty()) {
+            PulseCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(
+                        start = PulseSpacing.xlPlus,
+                        end = PulseSpacing.xlPlus,
+                        top = PulseSpacing.xl,
+                        bottom = PulseSpacing.md,
+                    ),
+                ) {
+                    Text("Race predictor", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
+                    PaceRace.entries.forEach { race ->
+                        val seconds = racePredictions[race] ?: return@forEach
+                        val pace = (seconds / (race.distanceMeters / 1000.0)).roundToInt()
+                        Row(
+                            modifier = Modifier.fillMaxWidth().heightIn(min = PulseSpacing.touchTarget),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                if (race == PaceRace.HALF) "Half marathon" else race.label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = PulseColors.Text,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "${formatPace(pace)} /km",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = PulseColors.TextMuted,
+                            )
+                            Text(
+                                PacePlanCalculator.formatClock(seconds),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = PulseColors.Text,
+                                modifier = Modifier.width(88.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        PulseCard(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onOpenPace,
+        ) {
+            Row(
+                modifier = Modifier.padding(PulseSpacing.lgPlus),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Outlined.DirectionsRun,
+                    contentDescription = null,
+                    tint = PulseColors.Accent,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(PulseSpacing.md))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "PacePro strategy",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                    )
+                    Text(
+                        pacePlanSummary.ifBlank { "Build a split-by-split racing plan" },
+                        style = MaterialTheme.typography.titleSmall,
+                        color = PulseColors.Text,
+                    )
+                }
+                Icon(
+                    Icons.Outlined.ChevronRight,
+                    contentDescription = "Open PacePro strategy",
+                    tint = PulseColors.Accent,
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
 

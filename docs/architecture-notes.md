@@ -22,7 +22,7 @@ live in [`BACKLOG.md`](../BACKLOG.md).
 | Networking | OkHttp for the configured OpenAI-compatible endpoint; osmdroid/OpenStreetMap for map tiles |
 | Auth | **None.** Local-first, single implicit local profile; no account or server |
 | Secrets | Provider keys encrypted with Android Keystore AES-GCM |
-| Tests | 52 protocol unit tests and 80 app JVM tests; one instrumented Keystore test |
+| Tests | 55 protocol unit tests and 91 app JVM tests; one instrumented Keystore test |
 | CI | GitHub Actions runs protocol tests, app unit/integration tests, and `assembleDebug` |
 | Docs | Architecture, protocol, handoff, plan, backlog, providers, tools, privacy, testing, design tokens |
 
@@ -35,6 +35,7 @@ protocol/  pure Kotlin/JVM, no Android dependencies
   Handshake, Gdi              handshake, GDI Smart/FileAccess/DataTransfer
   TransportPipe               file transfer pipe (read + write modes)
   FitWorkout                  FIT workout-file encoder
+  FitPaceBand                 FIT pace-band (FIT_TYPE_56) encoder
   GfdiFileUpload              legacy chunked upload (CREATE_FILE/…)
   Fit, FitProfile             FIT parser + generated profile (all messages/fields)
   Proto, Hex, Uuids           defensive protobuf, encoding helpers
@@ -53,6 +54,8 @@ app/src/main/java/dev/opengarmin/app/
     WellnessHistory.kt        day/week/month trend buckets
     TrainingMetrics.kt        activity_metrics/user_metrics decoding
     WorkoutPlan.kt            planned-workout model, JSON codec, FIT mapping
+    PacePlan.kt               PacePro strategy model, split maths, course profile,
+                              JSON codec and FIT_TYPE_56 mapping
   coach/
     CoachController.kt        chat state, streaming, cancel, conversation switching
     ConversationStore.kt      multi-conversation persistence + JSON codec
@@ -116,8 +119,9 @@ a separate ViewModel layer; the Coach has its own `CoachController`.
 | `sleep_stages` | Sleep-stage transitions | `date`, `startTime`, `endTime`, `stage` |
 | `imported_wellness_files` | Imported watch file UIDs | `itemUid` primary key, `type`, `importedAt` |
 | `planned_workouts` | Locally authored workouts | name, FIT sport/subSport, notes, optional scheduled date, `stepsJson` (timed/distance/open steps + repeat blocks), timestamps, last sent |
+| `pace_plans` | Locally authored PacePro strategies | race, distance, goal time, course name/activity id, strategy/hill sliders, alert mode, `splitsJson`, timestamps, last sent |
 
-Migrations 1→8 are hand-written in `AppDatabase`; `exportSchema = false`.
+Migrations 1→9 are hand-written in `AppDatabase`; `exportSchema = false`.
 `AppDatabase.SCHEMA_VERSION` is the single version constant used by the database
 and backup validation. A new table or column requires a version bump and a
 migration test.
@@ -194,6 +198,35 @@ The Plan editor stores steps as JSON (`planned_workouts`). Sending a workout:
 `FIT_TYPE_5` files are deliberately excluded from wellness queuing so the app
 does not re-download a workout it just wrote.
 
+### PacePro
+
+Strategy building lives in `PacePlanCalculator` (data/PacePlan.kt). It supports
+5K, 10K, half, marathon and custom-distance goals. Standard races use recent-run
+Riegel predictions (last 180 days); custom distances scale from the closest
+prediction. Optional GPS/elevation records from a recent run provide the course
+profile, and two sliders control the plan:
+
+- **Split strategy:** negative/even/positive, ±10 s/km.
+- **Hill effort:** easier/balanced/harder; climbs add
+  `gain_m * 0.4 * (1 - hill_effort)` seconds.
+
+The raw split targets are scaled so their sum is exactly the goal. The UI has
+four steps (Goal, Course, Strategy, Preview), a per-split table and elevation
+bars. Accepting a plan saves it to `pace_plans` and sends it to the watch.
+
+Sending uses the same legacy GFDI upload as workouts, with `subType = 56`:
+
+1. `FitPaceBand.encode` writes `file_id` type 56, `pace_band` (310) and one
+   `pace_band_split` (311) per split.
+2. `CREATE_FILE` → `UPLOAD_REQUEST` → `FILE_TRANSFER_DATA` → `SYNC_COMPLETE`.
+3. On success the plan's `lastSentAt` is updated. `FIT_TYPE_56` is excluded
+   from wellness queuing.
+
+The live **Preview run** screen uses phone GPS (`LocationManager`) for distance,
+current pace, split progress, ahead/behind, finish estimate and manual laps.
+It does not invent heart rate: the HR tile stays empty unless the watch exposes
+a live HR source.
+
 ### Wellness ingestion
 
 `CutWellnessFilesRequest` makes the watch emit monitoring and settings-change
@@ -269,9 +302,9 @@ in the app's local Room database. This is a deliberate product property
 
 ## 7. Testing and CI
 
-- `:protocol:test` — 52 JVM tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT,
+- `:protocol:test` — 55 JVM tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT,
   the workout encoder and legacy file upload.
-- `:app:testDebugUnitTest` — 80 JVM tests covering provider tools, workout-plan
+- `:app:testDebugUnitTest` — 91 JVM tests covering provider tools, workout-plan
   tool parsing, FIT insights,
   OpenAI streaming/errors, the chat loop, chart specs, Markdown rendering,
   sport categories, wellness parsing/metrics/history, training metrics, and

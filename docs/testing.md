@@ -21,8 +21,8 @@ ANDROID_SERIAL=<serial> ./tools/gradle-8.7/bin/gradle --no-daemon :app:connected
 
 Current coverage:
 
-- `:protocol:test` — 52 tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT, the workout encoder and legacy file upload.
-- `:app:testDebugUnitTest` — 80 JVM tests:
+- `:protocol:test` — 55 tests for COBS, CRC, GFDI, GDI, MLR, Multi-Link, FIT, the workout and pace-band encoders, and legacy file upload.
+- `:app:testDebugUnitTest` — 91 JVM tests:
   - `HealthToolsTest`: scope rejection, missing-day handling, date-range caps,
     sample caps, activity filters/pages, zone calculation, comparisons,
     unavailable sleep, snapshot budget, unknown tool/bad JSON, coach workout
@@ -45,6 +45,10 @@ Current coverage:
     trend bucketing, and legacy/new training-metric encodings.
   - `WorkoutPlanCodecTest`: plan JSON round-trip, repeat totals, FIT entry
     mapping and malformed input.
+  - `PacePlanCalculatorTest`: Riegel predictions and stale/non-run filtering,
+    even/negative/positive split totals, hill adjustments, partial final splits,
+    custom-distance goal estimates, split JSON round-trip and FIT pace-band
+    mapping.
 - `:app:connectedDebugAndroidTest` — `SecretStoreTest` verifies the Android
   Keystore round-trip and that the plaintext key is not present in preferences.
 
@@ -85,6 +89,17 @@ Manual matrix used for the UI/coach pass:
   `Sent to watch · N B`, and `logcat` must show the legacy
   `CREATE_FILE` → `UPLOAD_REQUEST` → `FILE_TRANSFER_DATA` → `SYNC_COMPLETE`
   sequence plus `FileAccess.ItemAddedNotification { FIT_TYPE_5 }`.
+- PacePro: open Training → PacePro strategy, choose a race or **Custom
+  distance**, adjust the goal, optionally pick a recent GPS run as the course,
+  move both sliders, and check that the preview split times add up to the goal.
+  `Accept and send to watch` must show `Sent to watch · N B`; `logcat` must show
+  the same legacy upload sequence with `type=FIT/56`. The plan must reappear in
+  the Training card and in **Saved strategies** after a relaunch.
+- PacePro run: from the accepted plan tap **Preview run**, grant location, and
+  start. With a GPS fix the badge changes to `GPS locked`, distance/time update,
+  `Pause`/`Resume` and `Lap` work, and `Stop PacePro` confirms before returning
+  to Training. Without location permission the screen must show `GPS off` and
+  must not fabricate distance or pace.
 - Sync regression: activity must download and import even when a wellness
   transfer is active (watch returns `NO_AVAILABLE_RESOURCES` if overlapped);
   a second sync must skip the known activity and finish wellness.

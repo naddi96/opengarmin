@@ -74,6 +74,8 @@ import dev.opengarmin.app.data.AppDatabase
 import dev.opengarmin.app.data.BackupManager
 import dev.opengarmin.app.data.FitMessageEntity
 import dev.opengarmin.app.data.LapEntity
+import dev.opengarmin.app.data.PacePlanEntity
+import dev.opengarmin.app.data.PacePlanSendStatus
 import dev.opengarmin.app.data.PlannedWorkoutEntity
 import dev.opengarmin.app.data.RecordEntity
 import dev.opengarmin.app.data.WellnessDayEntity
@@ -89,6 +91,7 @@ import dev.opengarmin.app.ui.screens.formatFileSize
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseTheme
 import dev.opengarmin.protocol.Hex
+import dev.opengarmin.protocol.FitPaceBand
 import dev.opengarmin.protocol.FitWorkout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -131,7 +134,9 @@ class MainActivity : ComponentActivity() {
     private val activities = mutableStateListOf<ActivityEntity>()
     private val wellnessDays = mutableStateListOf<WellnessDayEntity>()
     private val plannedWorkouts = mutableStateListOf<PlannedWorkoutEntity>()
+    private val pacePlans = mutableStateListOf<PacePlanEntity>()
     private var workoutSendStatus by mutableStateOf<WorkoutSendStatus?>(null)
+    private var pacePlanSendStatus by mutableStateOf<PacePlanSendStatus?>(null)
     private var pendingWorkoutSend by mutableStateOf<PendingWorkoutSend?>(null)
     private var selectedActivity by mutableStateOf<ActivityEntity?>(null)
     private var selectedRecords by mutableStateOf<List<RecordEntity>>(emptyList())
@@ -161,7 +166,14 @@ class MainActivity : ComponentActivity() {
         val label: String get() = "${device.name ?: "(unnamed)"}  ${device.address}  ${rssi} dBm"
     }
 
-    private data class PendingWorkoutSend(val id: Long, val name: String, val bytes: ByteArray)
+    private enum class UploadKind { WORKOUT, PACE_PLAN }
+
+    private data class PendingWorkoutSend(
+        val id: Long,
+        val name: String,
+        val bytes: ByteArray,
+        val kind: UploadKind = UploadKind.WORKOUT,
+    )
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -224,7 +236,18 @@ class MainActivity : ComponentActivity() {
                         "connected" -> {
                             coordinator?.reset()
                             pendingWorkoutSend?.let { pending ->
-                                coordinator?.enqueueWorkout(pending.id, pending.name, pending.bytes)
+                                when (pending.kind) {
+                                    UploadKind.WORKOUT -> coordinator?.enqueueWorkout(
+                                        pending.id,
+                                        pending.name,
+                                        pending.bytes,
+                                    )
+                                    UploadKind.PACE_PLAN -> coordinator?.enqueuePacePlan(
+                                        pending.id,
+                                        pending.name,
+                                        pending.bytes,
+                                    )
+                                }
                             }
                             activityProgress = null
                             ensureNotificationPermission()
@@ -243,13 +266,22 @@ class MainActivity : ComponentActivity() {
                             coordinator?.clearWorkouts()
                             pendingWorkoutSend?.let { pending ->
                                 pendingWorkoutSend = null
-                                workoutSendStatus = WorkoutSendStatus(
-                                    workoutId = pending.id,
-                                    name = pending.name,
-                                    sending = false,
-                                    success = false,
-                                    message = reason,
-                                )
+                                when (pending.kind) {
+                                    UploadKind.WORKOUT -> workoutSendStatus = WorkoutSendStatus(
+                                        workoutId = pending.id,
+                                        name = pending.name,
+                                        sending = false,
+                                        success = false,
+                                        message = reason,
+                                    )
+                                    UploadKind.PACE_PLAN -> pacePlanSendStatus = PacePlanSendStatus(
+                                        planId = pending.id,
+                                        name = pending.name,
+                                        sending = false,
+                                        success = false,
+                                        message = reason,
+                                    )
+                                }
                             }
                             settings.recordSyncError(reason)
                             cancelWatchdog()
@@ -318,29 +350,62 @@ class MainActivity : ComponentActivity() {
                 }
             },
             onWorkoutSent = { id, name, bytes ->
+                val kind = pendingWorkoutSend?.kind ?: UploadKind.WORKOUT
                 pendingWorkoutSend = null
-                workoutSendStatus = WorkoutSendStatus(
-                    workoutId = id,
-                    name = name,
-                    sending = false,
-                    success = true,
-                    message = "Sent to watch · ${formatFileSize(bytes.toLong())}",
-                )
-                lifecycleScope.launch(Dispatchers.IO) {
-                    runCatching { repository.markWorkoutSent(id) }
+                when (kind) {
+                    UploadKind.WORKOUT -> {
+                        workoutSendStatus = WorkoutSendStatus(
+                            workoutId = id,
+                            name = name,
+                            sending = false,
+                            success = true,
+                            message = "Sent to watch · ${formatFileSize(bytes.toLong())}",
+                        )
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            runCatching { repository.markWorkoutSent(id) }
+                        }
+                        log("WORKOUT sent: \"$name\" ($bytes bytes)")
+                    }
+                    UploadKind.PACE_PLAN -> {
+                        pacePlanSendStatus = PacePlanSendStatus(
+                            planId = id,
+                            name = name,
+                            sending = false,
+                            success = true,
+                            message = "Sent to watch · ${formatFileSize(bytes.toLong())}",
+                        )
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            runCatching { repository.markPacePlanSent(id) }
+                        }
+                        log("PACE sent: \"$name\" ($bytes bytes)")
+                    }
                 }
-                log("WORKOUT sent: \"$name\" ($bytes bytes)")
             },
             onWorkoutFailed = { id, name, message ->
+                val kind = pendingWorkoutSend?.kind ?: UploadKind.WORKOUT
                 pendingWorkoutSend = null
-                workoutSendStatus = WorkoutSendStatus(
-                    workoutId = id,
-                    name = name,
-                    sending = false,
-                    success = false,
-                    message = message,
-                )
-                log("WORKOUT send failed: \"$name\" — $message")
+                when (kind) {
+                    UploadKind.WORKOUT -> {
+                        workoutSendStatus = WorkoutSendStatus(
+                            workoutId = id,
+                            name = name,
+                            sending = false,
+                            success = false,
+                            message = message,
+                        )
+                        log("WORKOUT send failed: \"$name\" — $message")
+                    }
+                    UploadKind.PACE_PLAN -> {
+                        pacePlanSendStatus = PacePlanSendStatus(
+                            planId = id,
+                            name = name,
+                            sending = false,
+                            success = false,
+                            message = message,
+                        )
+                        log("PACE send failed: \"$name\" — $message")
+                    }
+                }
             },
         )
 
@@ -370,6 +435,8 @@ class MainActivity : ComponentActivity() {
                     trainingSummary = trainingSummary,
                     plannedWorkouts = plannedWorkouts,
                     workoutSendStatus = workoutSendStatus,
+                    pacePlans = pacePlans,
+                    pacePlanSendStatus = pacePlanSendStatus,
                     selectedActivity = selectedActivity,
                     selectedRecords = selectedRecords,
                     selectedLaps = selectedLaps,
@@ -418,6 +485,11 @@ class MainActivity : ComponentActivity() {
                     onSaveWorkout = { workout -> saveWorkout(workout) },
                     onDeleteWorkout = { id -> deleteWorkout(id) },
                     onSendWorkout = { workout -> sendWorkout(workout) },
+                    onSendPacePlan = { plan -> sendPacePlan(plan) },
+                    onDeletePacePlan = { id -> deletePacePlan(id) },
+                    loadPaceCourse = { id ->
+                        withContext(Dispatchers.IO) { repository.paceCourse(id) }
+                    },
                     backupStatus = backupStatus,
                     backupBusy = backupBusy,
                     onExportBackup = { uri -> exportBackup(uri) },
@@ -461,6 +533,12 @@ class MainActivity : ComponentActivity() {
             repository.plannedWorkouts.collect { list ->
                 plannedWorkouts.clear()
                 plannedWorkouts.addAll(list)
+            }
+        }
+        dataJobs += lifecycleScope.launch {
+            repository.pacePlans.collect { list ->
+                pacePlans.clear()
+                pacePlans.addAll(list)
             }
         }
         dataJobs += lifecycleScope.launch {
@@ -833,7 +911,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun sendWorkout(workout: PlannedWorkoutEntity) {
-        if (workoutSendStatus?.sending == true) return
+        if (workoutSendStatus?.sending == true || pacePlanSendStatus?.sending == true) return
         val watch = client?.findBondedWatch()
         if (watch == null) {
             workoutSendStatus = WorkoutSendStatus(
@@ -888,6 +966,71 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun deletePacePlan(id: Long) {
+        if (id == 0L) return
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) { runCatching { repository.deletePacePlan(id) } }
+            log("PACE deleted plan id=$id")
+        }
+    }
+
+    private fun sendPacePlan(plan: PacePlanEntity) {
+        if (pacePlanSendStatus?.sending == true || workoutSendStatus?.sending == true) return
+        val watch = client?.findBondedWatch()
+        pacePlanSendStatus = PacePlanSendStatus(
+            planId = plan.id,
+            name = plan.name,
+            sending = true,
+            message = "Preparing pace plan…",
+        )
+        lifecycleScope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                runCatching { repository.savePacePlan(plan) }
+            }.getOrElse { error ->
+                pacePlanSendStatus = PacePlanSendStatus(
+                    planId = plan.id,
+                    name = plan.name,
+                    sending = false,
+                    success = false,
+                    message = error.message ?: "Could not save the pace plan.",
+                )
+                return@launch
+            }
+            log("PACE saved \"${saved.name}\" (${saved.splits.size} splits)")
+            if (watch == null) {
+                pacePlanSendStatus = PacePlanSendStatus(
+                    planId = saved.id,
+                    name = saved.name,
+                    sending = false,
+                    success = false,
+                    message = "Saved on this phone. No bonded Garmin watch found.",
+                )
+                return@launch
+            }
+            val bytes = runCatching { FitPaceBand.encode(saved.toFitPaceBand()) }
+                .getOrElse { error ->
+                    pacePlanSendStatus = PacePlanSendStatus(
+                        planId = saved.id,
+                        name = saved.name,
+                        sending = false,
+                        success = false,
+                        message = error.message ?: "Could not build the FIT pace band.",
+                    )
+                    return@launch
+                }
+            val pending = PendingWorkoutSend(saved.id, saved.name, bytes, UploadKind.PACE_PLAN)
+            pendingWorkoutSend = pending
+            pacePlanSendStatus = PacePlanSendStatus(
+                planId = saved.id,
+                name = saved.name,
+                sending = true,
+                message = "Connecting to ${watch.name ?: "watch"}…",
+            )
+            log("PACE preparing \"${saved.name}\": ${bytes.size} FIT bytes")
+            syncNow(pending)
+        }
+    }
+
     private fun syncNow(pendingWorkout: PendingWorkoutSend? = null) {
         if (pendingWorkout != null) pendingWorkoutSend = pendingWorkout
         val c = client ?: return
@@ -905,10 +1048,10 @@ class MainActivity : ComponentActivity() {
         syncNotificationActive = true
         SyncNotifications.start(this)
         updateSyncNotification(
-            status = if (pendingWorkoutSend != null) {
-                "Connecting to ${watch.name} to send a workout…"
-            } else {
-                "Connecting to ${watch.name}…"
+            status = when (pendingWorkoutSend?.kind) {
+                UploadKind.PACE_PLAN -> "Connecting to ${watch.name} to send a pace plan…"
+                UploadKind.WORKOUT -> "Connecting to ${watch.name} to send a workout…"
+                null -> "Connecting to ${watch.name}…"
             },
             progress = null,
         )

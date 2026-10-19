@@ -19,6 +19,8 @@ object GarminProfile {
     fun messageName(number: Int): String? = when (number) {
         79 -> "user_metrics"
         140 -> "activity_metrics"
+        310 -> "pace_band"
+        311 -> "pace_band_split"
         else -> null
     }
 

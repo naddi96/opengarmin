@@ -11,9 +11,10 @@ scratch in the `protocol/` module.
 
 > **Status:** working local pipeline. BLE/GFDI sync, FIT + wellness ingestion,
 > the five-tab Pulse UI (Today, Health, Training, Activities, Coach), an
-> OpenAI-compatible AI coach with multi-conversation history, and local
-> database backup/restore are implemented. All health data comes from the
-> watch's own FIT files; no Garmin Connect account or REST API is used. See
+> OpenAI-compatible AI coach with multi-conversation history, local database
+> backup/restore, and PacePro strategy building with on-phone run guidance are
+> implemented. All health data comes from the watch's own FIT files; no Garmin
+> Connect account or REST API is used. See
 > [`BACKLOG.md`](BACKLOG.md) for remaining data-coverage items and
 > [`docs/HANDOFF.md`](docs/HANDOFF.md) for the protocol notes.
 
@@ -75,6 +76,15 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
   load focus, lactate threshold, performance condition, and the latest training
   effect, all decoded from the watch's `activity_metrics`/`user_metrics` FIT
   messages.
+- **PacePro:** build a race strategy from a 5K, 10K, half, marathon or custom
+  distance goal, optionally using the elevation profile of a recent GPS run.
+  Split strategy and hill-effort sliders recalculate every split; the preview
+  shows target pace, elapsed time and climb per split. **Accept and send to
+  watch** writes a `FIT_TYPE_56` pace-band file directly over BLE. **Preview
+  run** is a live on-phone pacing screen with GPS distance, current/overall pace
+  versus target, split status, finish estimate, elevation and manual laps.
+  Watch upload was verified on a Forerunner 255; live HR still needs the watch's
+  Broadcast Heart Rate mode.
 - **Plan:** build workouts from timed, distance or open steps and repeat blocks,
   save drafts, schedule sessions, or ask the coach to create one; push the
   generated FIT workout directly to the watch's Workouts menu over BLE. No

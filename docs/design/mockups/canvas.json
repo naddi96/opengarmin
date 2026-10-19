@@ -55,6 +55,22 @@
       "x": 1880,
       "y": 0
     },
+    "PaceStrategy.dc.html": {
+      "h": 1500,
+      "is_interactive": true,
+      "title": "4c · PacePro strategy",
+      "w": 390,
+      "x": 2350,
+      "y": 0
+    },
+    "PaceRun.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "title": "4d · PacePro run",
+      "w": 390,
+      "x": 2820,
+      "y": 0
+    },
     "Trends.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -88,6 +104,8 @@
     "Training.dc.html",
     "ActivityDetail.dc.html",
     "Plan.dc.html",
+    "PaceStrategy.dc.html",
+    "PaceRun.dc.html",
     "Trends.dc.html",
     "Activities.dc.html",
     "Coach.dc.html"

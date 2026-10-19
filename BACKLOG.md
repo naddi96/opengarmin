@@ -145,6 +145,36 @@ Remaining on this surface: an instrumented backup/restore test and optional
 backup encryption. Exported ZIPs are currently unencrypted and contain the full
 database.
 
+## Implementation update — 2026-10-19 (PacePro)
+
+Added the PacePro strategy and run screens from the new mockups:
+
+- **Strategy builder:** 5K/10K/half/marathon or **custom distance** goals;
+  standard races default from Riegel race predictions over the last 180 days
+  and custom distances scale from the closest prediction (manual goal editing
+  is always available). Recent GPS runs provide a real elevation profile;
+  otherwise the plan assumes flat ground. Split-strategy and hill-effort sliders
+  recalculate the splits and the preview table/elevation bars.
+- **Persistence:** `pace_plans` (Room v9, migration 8→9) stores the race, goal,
+  course, sliders, alert mode and split JSON. Plans appear in Training and in
+  the builder's saved list.
+- **Watch upload:** `FitPaceBand` encodes the recovered `FIT_TYPE_56` format
+  (`file_id` 56, `pace_band` 310, `pace_band_split` 311). The legacy GFDI
+  upload path now carries a configurable FIT subtype; a 10-split 10K plan was
+  accepted by the FR255 (`CREATE_FILE` → `UPLOAD_REQUEST` → chunks →
+  `SYNC_COMPLETE`).
+- **Preview run:** live phone-GPS pacing screen with distance, current/target
+  pace, split status, ahead/behind, finish estimate, elevation, pause/resume,
+  manual laps and a confirmed stop. Heart rate stays empty when no live HR
+  source exists.
+- **Tests/docs:** protocol pace-band encoder tests and app split/JSON/prediction
+  tests; README, protocol, architecture, testing and design mockups updated.
+
+Open items: verify the watch menu entry on device and add live HR via Broadcast
+Heart Rate (or a BLE HR strap). The watch rejects `FIT_TYPE_56` directory
+filtering on FR255, so upload success is verified from the GFDI sequence rather
+than by reading the file back.
+
 ## Delivery milestones
 
 1. **M0 — Foundation (done):** docs and mockups in place.

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pulse PacePro Run</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 900px; box-sizing: border-box; background: #0E1311; color: #EAF1EC; font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column; overflow: hidden">
+
+<div style="flex: 1; min-height: 0; overflow-y: auto; padding: 24px 20px 16px 20px; display: flex; flex-direction: column; gap: 14px">
+
+<!-- Run header -->
+<div style="display: flex; justify-content: space-between; align-items: center">
+<div>
+<div style="font-size: 13px; color: #8FA096">PacePro · Riverside loop</div>
+<div style="font-size: 13px; color: #8FA096; margin-top: 2px">Target 46:10 · 10 km</div>
+</div>
+<div style="font-size: 12px; font-weight: 700; color: #0E1311; background: #C7F26B; border-radius: 999px; padding: 5px 10px">GPS locked</div>
+</div>
+
+<!-- Current split pace -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px">
+<div style="display: flex; justify-content: space-between; align-items: baseline">
+<div style="font-size: 13px; color: #8FA096">Split 5 · current pace</div>
+<div style="font-size: 13px; color: #8FA096">Target {{targetPace}}</div>
+</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 52px; font-weight: 700; line-height: 1.05; margin-top: 4px">{{curPace}}<span style="font-size: 16px; font-weight: 500; color: #8FA096"> /km</span></div>
+<div style="display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 14px; font-weight: 700; color: {{statusColor}}; background: #1E2723; border-radius: 999px; padding: 6px 12px">
+<span aria-hidden="true">{{statusIcon}}</span>{{statusText}}
+</div>
+</div>
+
+<!-- Split progress -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px">
+<div style="display: flex; justify-content: space-between; font-size: 13px; color: #8FA096"><span>This split</span><span>{{leftText}}</span></div>
+<div style="height: 10px; border-radius: 999px; background: #26322D; margin-top: 10px; overflow: hidden">
+<div style="width: 60%; height: 100%; background: #C7F26B; border-radius: 999px"></div>
+</div>
+</div>
+
+<!-- Overall -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+<div>
+<div style="font-size: 13px; color: #8FA096">Overall</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; margin-top: 4px; color: {{overallColor}}">{{overallText}}</div>
+</div>
+<div>
+<div style="font-size: 13px; color: #8FA096">Finish estimate</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; margin-top: 4px">{{finishEst}}</div>
+</div>
+</div>
+
+<!-- Split strip -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px">
+<div style="font-size: 13px; color: #8FA096">Splits</div>
+<div style="display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; margin-top: 10px">
+<sc-for list="{{cells}}" as="c" hint-placeholder-count="10">
+<div aria-label="{{c.label}}" style="{{c.style}}">{{c.icon}}</div>
+</sc-for>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #8FA096; margin-top: 10px">
+<span>✓ on pace</span><span>↓ ahead</span><span>↑ behind</span><span>○ upcoming</span>
+</div>
+</div>
+
+<!-- Elevation strip -->
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px">
+<div style="display: flex; justify-content: space-between; font-size: 13px; color: #8FA096"><span>Elevation</span><span>{{nextClimb}}</span></div>
+<svg viewBox="0 0 300 60" width="100%" height="60" style="display: block; margin-top: 8px" role="img" aria-label="Elevation per split with the current split marked">
+<sc-for list="{{bars}}" as="b" hint-placeholder-count="10">
+<rect x="{{b.x}}" y="{{b.y}}" width="{{b.w}}" height="{{b.h}}" rx="2" fill="{{b.fill}}"></rect>
+</sc-for>
+</svg>
+</div>
+
+<!-- Stats -->
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 16px; padding: 12px"><div style="font-size: 12px; color: #8FA096">Distance</div><div style="font-weight: 700; font-size: 18px">4.8 km</div></div>
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 16px; padding: 12px"><div style="font-size: 12px; color: #8FA096">Time</div><div style="font-weight: 700; font-size: 18px">26:10</div></div>
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 16px; padding: 12px"><div style="font-size: 12px; color: #8FA096">Heart rate</div><div style="font-weight: 700; font-size: 18px">151</div></div>
+</div>
+
+<!-- Design-only state switch -->
+<div style="font-size: 12px; color: #8FA096">Preview state (design review only)</div>
+<div style="display: flex; height: 44px; background: #161D1A; border: 1px solid #2A3530; border-radius: 999px; padding: 3px; gap: 3px">
+<sc-for list="{{modes}}" as="m" hint-placeholder-count="2">
+<button type="button" onClick="{{m.pick}}" style="{{m.style}}">{{m.label}}</button>
+</sc-for>
+</div>
+
+</div>
+
+<!-- Run controls -->
+<div style="flex: none; box-sizing: border-box; border-top: 1px solid #2A3530; background: #0E1311; padding: 12px 20px 22px 20px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px">
+<a href="Activities.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 56px; border-radius: 16px; background: #1E2723; color: #EAF1EC; font-size: 14px; font-weight: 700">Pause</a>
+<a href="Activities.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 56px; border-radius: 16px; background: #1E2723; color: #EAF1EC; font-size: 14px; font-weight: 700">Lap</a>
+<a href="Activities.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 56px; border-radius: 16px; background: #C7F26B; color: #0E1311; font-size: 14px; font-weight: 700">Stop PacePro</a>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const mode = (this.state && this.state.mode) || 'behind';
+const ahead = mode === 'ahead';
+const target = 331;
+const cur = ahead ? 318 : 346;
+const overall = ahead ? -14 : 20;
+const done = ahead ? ['ahead', 'ahead', 'on', 'ahead'] : ['on', 'behind', 'behind', 'behind'];
+const curIdx = 4;
+const cells = [];
+for (let i = 0; i < 10; i++) {
+let st = 'upcoming';
+if (i < curIdx) st = done[i];
+else if (i === curIdx) st = 'current';
+const icon = st === 'on' ? '✓' : st === 'ahead' ? '↓' : st === 'behind' ? '↑' : st === 'current' ? '▸' : '○';
+const color = st === 'ahead' ? '#C7F26B' : st === 'behind' ? '#FF7A66' : st === 'on' ? '#5ED6C1' : '#EAF1EC';
+const bg = st === 'upcoming' ? 'transparent' : st === 'current' ? '#1E2723' : '#1E2723';
+const border = st === 'current' ? '2px solid #EAF1EC' : '1px solid #2A3530';
+cells.push({
+icon: icon,
+label: 'Split ' + (i + 1) + ': ' + (st === 'ahead' ? 'ahead' : st === 'behind' ? 'behind' : st === 'on' ? 'on pace' : st === 'current' ? 'current' : 'upcoming'),
+style: 'height: 36px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; border-radius: 8px; background: ' + bg + '; border: ' + border + '; color: ' + (st === 'upcoming' ? '#8FA096' : color) + ';'
+});
+}
+const gains = [4, 2, 3, 5, 6, 4, 3, 2, 4, 9];
+const maxG = 9;
+const bars = gains.map((g, i) => {
+const h = Math.max(3, (g / maxG) * 44);
+return { x: (i * 30 + 3).toFixed(1), y: (50 - h).toFixed(1), w: '24', h: h.toFixed(1), fill: i === curIdx ? '#C7F26B' : (i === curIdx + 1 ? '#FF9F5E' : '#2F3F38') };
+});
+const modes = [['ahead', 'Ahead'], ['behind', 'Behind']].map((m) => ({
+label: m[1],
+pick: () => this.setState({ mode: m[0] }),
+style: 'flex: 1; border: none; border-radius: 999px; font-size: 14px; font-weight: 700; cursor: pointer; ' + (m[0] === mode ? 'background: #C7F26B; color: #0E1311;' : 'background: transparent; color: #8FA096;')
+}));
+const fmt = (s) => Math.floor(s / 60) + ':' + (s % 60 < 10 ? '0' : '') + (s % 60);
+const abs = Math.abs(overall);
+return {
+targetPace: fmt(target) + ' /km',
+curPace: fmt(cur),
+statusText: ahead ? 'Ahead by 0:' + (abs < 10 ? '0' : '') + abs + ' on this split' : 'Behind by 0:' + (abs < 10 ? '0' : '') + abs + ' on this split',
+statusIcon: ahead ? '↓' : '↑',
+statusColor: ahead ? '#C7F26B' : '#FF7A66',
+leftText: '1.2 km left',
+overallText: (ahead ? 'Ahead ' : 'Behind ') + '0:' + (abs < 10 ? '0' : '') + abs,
+overallColor: ahead ? '#C7F26B' : '#FF7A66',
+finishEst: fmt(2770 + overall),
+nextClimb: 'Next climb: +30 m at km 6',
+cells: cells,
+bars: bars,
+modes: modes
+};
+}
+}
+</script>
+</body>
+</html>

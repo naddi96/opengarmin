@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pulse PacePro Strategy</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+button,input{font-family:inherit}
+input[type=range]{width:100%;accent-color:#C7F26B}
+</style>
+</helmet>
+<div style="width: 390px; height: 1500px; box-sizing: border-box; position: relative; background: #0E1311; color: #EAF1EC; font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column; overflow: hidden">
+
+<div style="flex: 1; min-height: 0; overflow-y: auto; padding: 24px 20px 16px 20px; display: flex; flex-direction: column; gap: 14px">
+
+<!-- Header -->
+<div>
+<a href="Training.dc.html" style="display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: #8FA096; min-height: 28px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Training</a>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; margin-top: 2px">PacePro strategy</div>
+<div style="font-size: 13px; color: #8FA096; margin-top: 2px">Split-by-split targets that follow the terrain</div>
+</div>
+
+<!-- Stepper -->
+<div role="list" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+<button type="button" onClick="{{s.go}}" style="{{s.style}}">{{s.label}}</button>
+</sc-for>
+</div>
+
+<!-- Step 1: Goal -->
+<sc-if value="{{onGoal}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; gap: 14px">
+<div style="font-size: 13px; color: #8FA096">Race</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{races}}" as="r" hint-placeholder-count="4">
+<button type="button" onClick="{{r.pick}}" style="{{r.style}}">{{r.label}}<span style="display: block; font-size: 12px; font-weight: 500; color: #8FA096; margin-top: 2px">{{r.sub}}</span></button>
+</sc-for>
+</div>
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 13px; color: #8FA096">Goal finish time</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
+<button type="button" aria-label="Subtract 15 seconds" onClick="{{onGoalMinus}}" style="width: 52px; height: 52px; border: none; border-radius: 16px; background: #1E2723; color: #EAF1EC; font-size: 22px; cursor: pointer">−</button>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 40px; font-weight: 700" aria-live="polite">{{goalText}}</div>
+<button type="button" aria-label="Add 15 seconds" onClick="{{onGoalPlus}}" style="width: 52px; height: 52px; border: none; border-radius: 16px; background: #1E2723; color: #EAF1EC; font-size: 22px; cursor: pointer">+</button>
+</div>
+<div style="font-size: 13px; color: #8FA096">{{goalHint}}</div>
+</div>
+</div>
+</sc-if>
+
+<!-- Step 2: Course -->
+<sc-if value="{{onCourse}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 13px; color: #8FA096">Course</div>
+<sc-for list="{{courses}}" as="c" hint-placeholder-count="3">
+<button type="button" onClick="{{c.pick}}" style="{{c.style}}">
+<span style="flex: 1; min-width: 0; display: block">
+<span style="display: block; font-size: 15px; font-weight: 700">{{c.name}}</span>
+<span style="display: block; font-size: 12px; color: #8FA096; margin-top: 2px">{{c.sub}}</span>
+</span>
+<span style="{{c.radio}}"></span>
+</button>
+</sc-for>
+<div style="display: flex; gap: 8px; margin-top: 4px">
+<button type="button" style="flex: 1; min-height: 44px; border: 1px dashed #2F3F38; background: transparent; color: #C7F26B; border-radius: 14px; font-size: 13px; font-weight: 700; cursor: pointer">Draw route</button>
+<button type="button" style="flex: 1; min-height: 44px; border: 1px dashed #2F3F38; background: transparent; color: #C7F26B; border-radius: 14px; font-size: 13px; font-weight: 700; cursor: pointer">Auto-generate</button>
+</div>
+<div style="font-size: 12px; color: #8FA096; line-height: 1.4">Elevation from the course sets each split's target. Without a course the plan assumes flat ground.</div>
+</div>
+</sc-if>
+
+<!-- Step 3: Strategy -->
+<sc-if value="{{onStrategy}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 14px">
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; font-size: 13px; color: #8FA096"><span>Split strategy</span><span style="color: #EAF1EC; font-weight: 700">{{splitLabel}}</span></div>
+<input type="range" min="0" max="100" step="5" value="{{split}}" onInput="{{onSplit}}" aria-label="Split strategy, negative to positive">
+<div style="display: flex; justify-content: space-between; font-size: 11px; color: #8FA096"><span>Negative split</span><span>Even</span><span>Positive split</span></div>
+</div>
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; font-size: 13px; color: #8FA096"><span>Hill effort</span><span style="color: #EAF1EC; font-weight: 700">{{hillLabel}}</span></div>
+<input type="range" min="0" max="100" step="5" value="{{hill}}" onInput="{{onHill}}" aria-label="Hill effort, easier to harder">
+<div style="display: flex; justify-content: space-between; font-size: 11px; color: #8FA096"><span>Easier</span><span>Harder</span></div>
+</div>
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 13px; color: #8FA096">Pacing alerts</div>
+<div style="display: flex; height: 44px; background: #0E1311; border: 1px solid #2A3530; border-radius: 999px; padding: 3px; gap: 3px">
+<sc-for list="{{alerts}}" as="a" hint-placeholder-count="3">
+<button type="button" onClick="{{a.pick}}" style="{{a.style}}">{{a.label}}</button>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+
+<!-- Step 4: Preview -->
+<sc-if value="{{onPreview}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 14px">
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 16px 18px">
+<div style="display: flex; justify-content: space-between; align-items: baseline">
+<div style="font-size: 13px; color: #8FA096">{{race}} · {{courseName}}</div>
+<div style="font-size: 12px; color: #8FA096">{{elevLabel}}</div>
+</div>
+<div style="font-family: 'Space Grotesk', sans-serif; font-size: 30px; font-weight: 700; margin-top: 4px">{{goalText}} <span style="font-size: 14px; font-weight: 500; color: #8FA096">finish · avg {{avgPace}} /km</span></div>
+<svg viewBox="0 0 300 70" width="100%" height="70" style="display: block; margin-top: 12px" role="img" aria-label="Elevation gain per kilometre on this course">
+<sc-for list="{{bars}}" as="b" hint-placeholder-count="10">
+<rect x="{{b.x}}" y="{{b.y}}" width="{{b.w}}" height="{{b.h}}" rx="2" fill="{{b.fill}}"></rect>
+</sc-for>
+</svg>
+<div style="font-size: 11px; color: #8FA096; margin-top: 4px">Elevation gain per km (bars). Taller bars are climbs.</div>
+</div>
+
+<div style="background: #161D1A; border: 1px solid #2A3530; border-radius: 22px; padding: 6px 16px">
+<div style="display: grid; grid-template-columns: 44px 1fr 1fr 64px; gap: 6px; font-size: 11px; color: #8FA096; padding: 10px 0 6px 0; border-bottom: 1px solid #222C27">
+<span>Split</span><span>Target pace</span><span>Elapsed</span><span style="text-align: right">Climb</span>
+</div>
+<sc-for list="{{splits}}" as="sp" hint-placeholder-count="6">
+<div style="display: grid; grid-template-columns: 44px 1fr 1fr 64px; gap: 6px; font-size: 14px; padding: 9px 0; border-bottom: 1px solid #222C27">
+<span style="color: #8FA096">{{sp.n}}</span>
+<span style="font-weight: 700">{{sp.pace}}</span>
+<span>{{sp.cum}}</span>
+<span style="text-align: right; color: #8FA096">{{sp.gain}}</span>
+</div>
+</sc-for>
+</div>
+
+<div style="font-size: 12px; color: #8FA096; line-height: 1.4">Alerts: {{alertLabel}}. Targets assume you run this course. A different route will throw off guidance on the watch.</div>
+</div>
+</sc-if>
+
+</div>
+
+<!-- Bottom action bar -->
+<div style="flex: none; box-sizing: border-box; border-top: 1px solid #2A3530; background: #0E1311; padding: 12px 20px 22px 20px; display: flex; gap: 10px">
+<sc-if value="{{canBack}}" hint-placeholder-val="{{ false }}">
+<button type="button" onClick="{{onBack}}" style="flex: 1; min-height: 52px; border: 1px solid #2A3530; border-radius: 16px; background: transparent; color: #EAF1EC; font-size: 15px; font-weight: 700; cursor: pointer">Back</button>
+</sc-if>
+<sc-if value="{{canNext}}" hint-placeholder-val="{{ true }}">
+<button type="button" onClick="{{onNext}}" style="flex: 2; min-height: 52px; border: none; border-radius: 16px; background: #C7F26B; color: #0E1311; font-size: 15px; font-weight: 700; cursor: pointer">Continue</button>
+</sc-if>
+<sc-if value="{{canAccept}}" hint-placeholder-val="{{ false }}">
+<button type="button" onClick="{{onAccept}}" style="flex: 2; min-height: 52px; border: none; border-radius: 16px; background: #C7F26B; color: #0E1311; font-size: 15px; font-weight: 700; cursor: pointer">Accept and send to watch</button>
+</sc-if>
+</div>
+<sc-if value="{{accepted}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 20px; right: 20px; bottom: 96px; background: #1E2723; border: 1px solid #2F3F38; border-radius: 16px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px">
+<span style="font-size: 14px">Plan sent to your watch</span>
+<a href="PaceRun.dc.html" style="font-size: 13px; font-weight: 700; color: #C7F26B">Preview run ›</a>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1500}}'>
+class Component extends DCLogic {
+races() {
+return [
+{ id: '5K', dist: 5, goal: 1325, sub: '22:05 · predicted' },
+{ id: '10K', dist: 10, goal: 2770, sub: '46:10 · predicted' },
+{ id: 'Half', dist: 21, goal: 6150, sub: '1:42:30 · predicted' },
+{ id: 'Marathon', dist: 42, goal: 13260, sub: '3:41:00 · predicted' }
+];
+}
+courses() {
+return [
+{ id: 'river', name: 'Riverside loop', sub: '10.0 km · 42 m climb', gains: [4, 2, 3, 5, 6, 4, 3, 2, 4, 9] },
+{ id: 'hill', name: 'Hill park loop', sub: '8.2 km · 190 m climb', gains: [10, 28, 35, 22, 18, 30, 25, 22] },
+{ id: 'flat', name: 'Flat, no course', sub: 'Assumes flat ground', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
+];
+}
+fmtClock(s) {
+const h = Math.floor(s / 3600);
+const m = Math.floor((s % 3600) / 60);
+const x = s % 60;
+const p = (n) => (n < 10 ? '0' + n : '' + n);
+return h > 0 ? h + ':' + p(m) + ':' + p(x) : m + ':' + p(x);
+}
+fmtPace(s) { return Math.floor(s / 60) + ':' + (Math.round(s % 60) < 10 ? '0' : '') + Math.round(s % 60); }
+renderVals() {
+const st = this.state || {};
+const step = st.step || 0;
+const accepted = !!st.accepted;
+const race = this.races().find((r) => r.id === (st.race || '10K'));
+const goal = st.goal || race.goal;
+const course = this.courses().find((c) => c.id === (st.course || 'river'));
+const split = st.split === undefined ? 50 : st.split;
+const hill = st.hill === undefined ? 50 : st.hill;
+const alert = st.alert || 'km';
+const N = race.dist;
+const gains = [];
+for (let i = 0; i < N; i++) {
+const idx = Math.min(course.gains.length - 1, Math.floor(i * course.gains.length / N));
+gains.push(course.gains[idx]);
+}
+const k = ((split - 50) / 50) * 10;
+const hEff = (hill - 50) / 50;
+const raw = gains.map((g, i) => {
+const half = i < N / 2 ? -k : k;
+return 330 + half + g * 0.4 * (1 - hEff);
+});
+const sum = raw.reduce((a, b) => a + b, 0);
+const scale = goal / sum;
+const paces = raw.map((p) => p * scale);
+let cum = 0;
+const splits = paces.map((p, i) => {
+cum += p;
+return { n: i + 1, pace: this.fmtPace(p) + ' /km', cum: this.fmtClock(Math.round(cum)), gain: gains[i] + ' m' };
+});
+const maxG = Math.max.apply(null, gains.concat([1]));
+const bars = gains.map((g, i) => {
+const w = 300 / N;
+const h = Math.max(2, (g / maxG) * 60);
+return { x: (i * w + 2).toFixed(1), y: (66 - h).toFixed(1), w: (w - 4).toFixed(1), h: h.toFixed(1), fill: g >= 20 ? '#FF9F5E' : '#5ED6C1' };
+});
+const tabs = ['Goal', 'Course', 'Strategy', 'Preview'];
+const steps = tabs.map((t, i) => ({
+label: (i + 1) + '. ' + t,
+go: () => this.setState({ step: i }),
+style: 'min-height: 40px; border: none; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer; background: ' + (i === step ? '#C7F26B' : (i < step ? '#1E2723' : '#161D1A')) + '; color: ' + (i === step ? '#0E1311' : '#EAF1EC') + '; border: 1px solid ' + (i === step ? '#C7F26B' : '#2A3530') + ';'
+}));
+const races = this.races().map((r) => ({
+label: r.id,
+sub: r.id === race.id ? 'Selected' : r.sub.split(' · ')[0],
+pick: () => this.setState({ race: r.id, goal: null }),
+style: 'min-height: 72px; text-align: left; padding: 12px 14px; border-radius: 16px; font-size: 16px; font-weight: 700; cursor: pointer; background: #161D1A; color: #EAF1EC; border: 1px solid ' + (r.id === race.id ? '#C7F26B' : '#2A3530') + ';'
+}));
+const courses = this.courses().map((c) => ({
+name: c.name,
+sub: c.sub,
+pick: () => this.setState({ course: c.id }),
+radio: 'width: 20px; height: 20px; border-radius: 50%; flex: none; border: 2px solid ' + (c.id === course.id ? '#C7F26B' : '#2F3F38') + '; background: ' + (c.id === course.id ? '#C7F26B' : 'transparent') + ';',
+style: 'display: flex; align-items: center; gap: 12px; text-align: left; width: 100%; box-sizing: border-box; min-height: 64px; padding: 12px 14px; border-radius: 16px; background: #161D1A; color: #EAF1EC; cursor: pointer; border: 1px solid ' + (c.id === course.id ? '#C7F26B' : '#2A3530') + ';'
+}));
+const alerts = [['km', 'Every km'], ['mi', 'Every mile'], ['elev', 'Elevation']].map((a) => ({
+label: a[1],
+pick: () => this.setState({ alert: a[0] }),
+style: 'flex: 1; border: none; border-radius: 999px; font-size: 13px; font-weight: 700; cursor: pointer; ' + (a[0] === alert ? 'background: #C7F26B; color: #0E1311;' : 'background: transparent; color: #8FA096;')
+}));
+const k2 = Math.round(k);
+const splitLabel = k2 < 0 ? 'Negative ' + (-k2) + ' s/km' : k2 > 0 ? 'Positive ' + k2 + ' s/km' : 'Even';
+const hillLabel = hEff > 0.2 ? 'Harder' : hEff < -0.2 ? 'Easier' : 'Balanced';
+const alertLabel = alert === 'km' ? 'every km' : alert === 'mi' ? 'every mile' : 'at elevation changes';
+const gStep = goal >= 3600 ? 15 : 15;
+return {
+steps: steps,
+races: races,
+courses: courses,
+alerts: alerts,
+race: race.id,
+courseName: course.name,
+elevLabel: 'Climb ' + gains.reduce((a, b) => a + b, 0) + ' m',
+onGoal: step === 0,
+onCourse: step === 1,
+onStrategy: step === 2,
+onPreview: step === 3,
+goalText: this.fmtClock(goal),
+goalHint: st.goal ? 'Custom goal' : 'From your ' + race.id + ' race predictor',
+onGoalMinus: () => this.setState({ goal: goal - gStep }),
+onGoalPlus: () => this.setState({ goal: goal + gStep }),
+split: split,
+splitLabel: splitLabel,
+onSplit: (e) => this.setState({ split: Number(e.target.value) }),
+hill: hill,
+hillLabel: hillLabel,
+onHill: (e) => this.setState({ hill: Number(e.target.value) }),
+splits: splits,
+bars: bars,
+avgPace: this.fmtPace(goal / N),
+alertLabel: alertLabel,
+canBack: step > 0,
+canNext: step < 3,
+canAccept: step === 3 && !accepted,
+accepted: accepted,
+onBack: () => this.setState({ step: Math.max(0, step - 1) }),
+onNext: () => this.setState({ step: Math.min(3, step + 1) }),
+onAccept: () => this.setState({ accepted: true })
+};
+}
+}
+</script>
+</body>
+</html>

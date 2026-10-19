@@ -601,3 +601,68 @@ and a stream whose zlib `CINFO` is larger than the negotiated window is rejected
 by the watch (`invalid window size`). OpenGarmin writes a valid zlib stream made
 of **stored deflate blocks** with the negotiated `CINFO`; it is uncompressed on
 the wire but valid for every window size.
+
+### 10.7 PacePro pace band — `FIT_TYPE_56` (RE)
+
+Garmin Connect's file-transfer enum maps `FIT_TYPE_56` to `PACE_BAND`
+(`XF/p` → `PACE_BAND`), and its bundled FIT profile defines two Garmin-specific
+messages:
+
+| Message | Global number | Purpose |
+|---|---:|---|
+| `pace_band` | 310 (`0x136`) | Goal, strategy metadata and split count |
+| `pace_band_split` | 311 (`0x137`) | One target per km/mile split |
+
+The FIT `file_id.type` is `56`. The legacy GFDI upload accepts it with
+`subType = 56` instead of the workout value `5` (the `CREATE_FILE` payload
+otherwise stays the same). OpenGarmin encodes the file in
+`protocol/src/main/kotlin/dev/opengarmin/protocol/FitPaceBand.kt`.
+
+Verified on the FR255: an 882-byte pace band (`10K`, 10 splits) was accepted
+through `CREATE_FILE` → `UPLOAD_REQUEST` → `FILE_TRANSFER_DATA` →
+`SYNC_COMPLETE`. A FileAccess `ItemListRequest` filtered by `FIT_TYPE_56`
+returned `FAIL_INVALID_DATA_TYPE (6)` on the same firmware, so pace bands are
+not exposed to third-party directory listing even though the upload is
+accepted.
+
+#### `pace_band` fields
+
+| # | Name | Base type | Scale / units |
+|---:|---|---|---|
+| 0 | `event_timestamp` | date_time (`uint32`) | Garmin epoch seconds |
+| 1 | `name` | string | 32 bytes |
+| 2 | `segmentation_type` | enum | `0` fixed distance, `1` elevation |
+| 3 | `goal_total_time` | uint32 | milliseconds |
+| 4 | `goal_avg_speed` | uint16 | mm/s |
+| 5 | `goal_distance` | uint32 | centimetres |
+| 6 | `split_count` | uint16 | count |
+| 7 | `user_fixed_split_distance` | uint32 | centimetres |
+| 8 | `pacing_strategy` | float32 | seconds/km slider value |
+| 9 | `hill_effort` | float32 | `-1` easier … `1` harder |
+| 10 | `course_serial_number` | uint32z | `0` when no course |
+| 11 | `elevation_segment_tolerance` | float32 | Garmin default `50` |
+| 12 | `elevation_segment_min_length` | float32 | Garmin default `1700` |
+| 13 | `pace_factor` | float32 | Garmin default `2.0` |
+| 14 | `contains_manual_pace_edits` | bool | `0` |
+| 0xFC | `checksum` | uint8 | `0` accepted |
+| 0xFB | `pad` | byte[13] | zeros |
+
+#### `pace_band_split` fields
+
+| # | Name | Base type | Scale / units |
+|---:|---|---|---|
+| 254 | `message_index` | uint16 | split index |
+| 0 | `cumulative_time` | uint32 | milliseconds |
+| 1 | `cumulative_distance` | uint32 | centimetres |
+| 2 | `target_split_time` | uint32 | milliseconds |
+| 3 | `target_split_distance` | uint32 | centimetres |
+| 4 | `target_split_avg_speed` | uint16 | mm/s |
+| 9–12 | `start_long`/`start_lat`/`end_long`/`end_lat` | sint32 | semicircles, `0x7FFFFFFF` invalid |
+| 13–14 | `start_elevation`/`end_elevation` | uint32 | `metres * 5 + 500`, `0xFFFFFFFF` invalid |
+| 15 | `end_bearing` | sint32 | semicircles, `0x7FFFFFFF` invalid |
+| 0xFC | `checksum` | uint8 | `0` accepted |
+| 0xFB | `pad` | byte[13] | zeros |
+
+The strategy maths are shared with the app: the first half is slowed for a
+negative split and climbs add `gain_m * 0.4 * (1 - hill_effort)` seconds; the
+raw targets are then scaled so the split times add up to the goal exactly.

@@ -351,6 +351,30 @@ interface ActivityDao {
 }
 
 @Dao
+interface PacePlanDao {
+    @Query("SELECT * FROM pace_plans ORDER BY updatedAt DESC")
+    fun observeAll(): Flow<List<PacePlanEntity>>
+
+    @Query("SELECT * FROM pace_plans WHERE id = :id")
+    suspend fun byId(id: Long): PacePlanEntity?
+
+    @Query("SELECT * FROM pace_plans ORDER BY updatedAt DESC")
+    suspend fun all(): List<PacePlanEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(plan: PacePlanEntity): Long
+
+    @Update
+    suspend fun update(plan: PacePlanEntity)
+
+    @Query("DELETE FROM pace_plans WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("UPDATE pace_plans SET lastSentAt = :timestamp, updatedAt = :timestamp WHERE id = :id")
+    suspend fun markSent(id: Long, timestamp: Long)
+}
+
+@Dao
 interface WorkoutDao {
     @Query(
         "SELECT * FROM planned_workouts " +
@@ -391,6 +415,7 @@ interface WorkoutDao {
         SleepStageEntity::class,
         ImportedWellnessFileEntity::class,
         PlannedWorkoutEntity::class,
+        PacePlanEntity::class,
     ],
     version = AppDatabase.SCHEMA_VERSION,
     exportSchema = false,
@@ -398,10 +423,11 @@ interface WorkoutDao {
 abstract class AppDatabase : RoomDatabase() {
     abstract fun activityDao(): ActivityDao
     abstract fun workoutDao(): WorkoutDao
+    abstract fun pacePlanDao(): PacePlanDao
 
     companion object {
         const val DB_NAME = "opengarmin.db"
-        const val SCHEMA_VERSION = 8
+        const val SCHEMA_VERSION = 9
 
         @Volatile
         private var instance: AppDatabase? = null
@@ -580,6 +606,28 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `pace_plans` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, " +
+                        "`race` TEXT NOT NULL, " +
+                        "`distanceMeters` REAL NOT NULL, " +
+                        "`goalSeconds` INTEGER NOT NULL, " +
+                        "`courseName` TEXT NOT NULL, " +
+                        "`courseActivityId` INTEGER, " +
+                        "`splitSlider` INTEGER NOT NULL, " +
+                        "`hillSlider` INTEGER NOT NULL, " +
+                        "`alert` TEXT NOT NULL, " +
+                        "`splitsJson` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL, " +
+                        "`lastSentAt` INTEGER)",
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -594,6 +642,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_5_6,
                     MIGRATION_6_7,
                     MIGRATION_7_8,
+                    MIGRATION_8_9,
                 ).build().also { instance = it }
             }
 
@@ -640,10 +689,12 @@ abstract class AppDatabase : RoomDatabase() {
 class ActivityRepository(private val database: () -> AppDatabase) {
     private val dao: ActivityDao get() = database().activityDao()
     private val workoutDao: WorkoutDao get() = database().workoutDao()
+    private val pacePlanDao: PacePlanDao get() = database().pacePlanDao()
 
     val activities: Flow<List<ActivityEntity>> get() = dao.observeAll()
     val wellnessDays: Flow<List<WellnessDayEntity>> get() = dao.observeWellnessDays()
     val plannedWorkouts: Flow<List<PlannedWorkoutEntity>> get() = workoutDao.observeAll()
+    val pacePlans: Flow<List<PacePlanEntity>> get() = pacePlanDao.observeAll()
 
     suspend fun records(activityId: Long): List<RecordEntity> = dao.records(activityId)
 
@@ -715,6 +766,34 @@ class ActivityRepository(private val database: () -> AppDatabase) {
     suspend fun workout(id: Long): PlannedWorkoutEntity? = workoutDao.byId(id)
 
     suspend fun plannedWorkoutsOnce(): List<PlannedWorkoutEntity> = workoutDao.all()
+
+    suspend fun savePacePlan(plan: PacePlanEntity): PacePlanEntity {
+        val now = System.currentTimeMillis() / 1000
+        return if (plan.id == 0L) {
+            val id = pacePlanDao.insert(plan.copy(createdAt = now, updatedAt = now))
+            plan.copy(id = id, createdAt = now, updatedAt = now)
+        } else {
+            pacePlanDao.update(plan.copy(updatedAt = now))
+            plan.copy(updatedAt = now)
+        }
+    }
+
+    suspend fun deletePacePlan(id: Long) = pacePlanDao.delete(id)
+
+    suspend fun markPacePlanSent(id: Long) {
+        pacePlanDao.markSent(id, System.currentTimeMillis() / 1000)
+    }
+
+    suspend fun pacePlan(id: Long): PacePlanEntity? = pacePlanDao.byId(id)
+
+    suspend fun pacePlansOnce(): List<PacePlanEntity> = pacePlanDao.all()
+
+    /** Builds an elevation profile from the records of one recorded run. */
+    suspend fun paceCourse(activityId: Long): PaceCourse? {
+        val activity = dao.activityById(activityId) ?: return null
+        val records = dao.records(activityId)
+        return PacePlanCalculator.courseFromActivity(activity, records)
+    }
 
     suspend fun clear() = dao.clear()
 

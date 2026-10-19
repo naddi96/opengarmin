@@ -2,6 +2,8 @@ package dev.opengarmin.app.sync
 
 import android.os.Handler
 import android.os.SystemClock
+import dev.opengarmin.protocol.FitPaceBand
+import dev.opengarmin.protocol.FitWorkout
 import dev.opengarmin.protocol.GarminSession
 import dev.opengarmin.protocol.Crc16
 import dev.opengarmin.protocol.Gdi
@@ -41,11 +43,12 @@ class SyncCoordinator(
     private val onWorkoutSent: (id: Long, name: String, bytes: Int) -> Unit = { _, _, _ -> },
     private val onWorkoutFailed: (id: Long, name: String, message: String) -> Unit = { _, _, _ -> },
 ) {
-    /** A user-requested workout upload, queued until the GDI session is ready. */
+    /** A user-requested FIT upload, queued until the GDI session is ready. */
     data class PendingWorkout(
         val id: Long,
         val name: String,
         val bytes: ByteArray,
+        val fitType: Int = FitWorkout.FILE_WORKOUT,
         var attempts: Int = 0,
         var triedGdi: Boolean = false,
     )
@@ -231,16 +234,28 @@ class SyncCoordinator(
      * the GDI capability exchange is complete and the transfer slot is free.
      */
     fun enqueueWorkout(id: Long, name: String, bytes: ByteArray) {
+        enqueueUpload(id, name, bytes, FitWorkout.FILE_WORKOUT)
+    }
+
+    /** Queues a PacePro plan encoded as a `FIT_TYPE_56` pace-band file. */
+    fun enqueuePacePlan(id: Long, name: String, bytes: ByteArray) {
+        enqueueUpload(id, name, bytes, FitPaceBand.FILE_PACE_BAND)
+    }
+
+    private fun enqueueUpload(id: Long, name: String, bytes: ByteArray, fitType: Int) {
+        val kind = if (fitType == FitPaceBand.FILE_PACE_BAND) "PACE" else "WORKOUT"
         if (bytes.isEmpty()) {
-            onWorkoutFailed(id, name, "The workout file is empty.")
+            onWorkoutFailed(id, name, "The $kind file is empty.")
             return
         }
-        if (pendingWorkout?.id == id || workoutQueue.any { it.id == id }) {
-            log("WORKOUT already queued id=$id")
+        if ((pendingWorkout?.id == id && pendingWorkout?.fitType == fitType) ||
+            workoutQueue.any { it.id == id && it.fitType == fitType }
+        ) {
+            log("$kind already queued id=$id")
             return
         }
-        workoutQueue.addLast(PendingWorkout(id, name, bytes))
-        log("WORKOUT queued id=$id name=\"$name\" bytes=${bytes.size}")
+        workoutQueue.addLast(PendingWorkout(id, name, bytes, fitType))
+        log("$kind queued id=$id name=\"$name\" bytes=${bytes.size}")
         if (capabilitiesReceived && pipe == null && !wellnessTransfer) sendNextWorkout()
     }
 
@@ -375,6 +390,7 @@ class SyncCoordinator(
             // us and are not health data either.
             type != "FIT_TYPE_41" &&
                 type != "FIT_TYPE_5" &&
+                type != "FIT_TYPE_56" &&
                 uid.isNotEmpty() && uid !in queuedUids &&
                 !(immutable && isWellnessItemKnown(uid))
         }
@@ -956,8 +972,11 @@ class SyncCoordinator(
     private fun startLegacyWorkout(pending: PendingWorkout) {
         val upload = LegacyUpload(pending)
         legacyUpload = upload
-        log("WORKOUT legacy CREATE_FILE size=${pending.bytes.size} type=FIT/5")
-        session.sendGfdi(GfdiFileUpload.createFile(pending.bytes.size))
+        val kind = if (pending.fitType == FitPaceBand.FILE_PACE_BAND) "PACE" else "WORKOUT"
+        log("$kind legacy CREATE_FILE size=${pending.bytes.size} type=FIT/${pending.fitType}")
+        session.sendGfdi(
+            GfdiFileUpload.createFile(pending.bytes.size, subType = pending.fitType),
+        )
         armLegacyTimeout(upload, "The watch did not answer CREATE_FILE.")
     }
 
@@ -968,7 +987,7 @@ class SyncCoordinator(
             uid = Gdi.Uuid(uuid.mostSignificantBits, uuid.leastSignificantBits),
             dataType = Gdi.DataTypeInfo(
                 format = 0, // GDXML_DATA_TYPE
-                gdxmlString = "FIT_TYPE_5", // workouts
+                gdxmlString = "FIT_TYPE_${pending.fitType}",
                 gdxmlStringKey = 0,
                 gdxmlFileIdentifier = null,
                 softwareUpdatePath = null,
@@ -981,14 +1000,15 @@ class SyncCoordinator(
             urgency = 0,
         )
         workoutRequested = true
-        log("WORKOUT GDI push request id=${pending.id} bytes=${pending.bytes.size}")
+        val kind = if (pending.fitType == FitPaceBand.FILE_PACE_BAND) "PACE" else "WORKOUT"
+        log("$kind GDI push request id=${pending.id} bytes=${pending.bytes.size}")
         gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.pushItemRequest(item))) { response ->
             handler.post { handleSmart(response) }
         }
         handler.postDelayed({
             if (workoutRequested && pendingWorkout === pending && workoutPipe == null) {
                 workoutRequested = false
-                failWorkout("The watch did not answer the workout upload.")
+                failWorkout("The watch did not answer the $kind upload.")
             }
         }, PULL_TIMEOUT_MS)
     }

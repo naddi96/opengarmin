@@ -31,6 +31,10 @@ import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.FitMessageEntity
 import dev.opengarmin.app.data.LapEntity
+import dev.opengarmin.app.data.PaceCourse
+import dev.opengarmin.app.data.PacePlanCalculator
+import dev.opengarmin.app.data.PacePlanEntity
+import dev.opengarmin.app.data.PacePlanSendStatus
 import dev.opengarmin.app.data.PlannedWorkoutEntity
 import dev.opengarmin.app.data.RecordEntity
 import dev.opengarmin.app.data.SleepStageEntity
@@ -50,6 +54,8 @@ import dev.opengarmin.app.ui.screens.ActivitiesScreen
 import dev.opengarmin.app.ui.screens.ActivityDetailScreen
 import dev.opengarmin.app.ui.screens.CoachScreen
 import dev.opengarmin.app.ui.screens.HealthScreen
+import dev.opengarmin.app.ui.screens.PaceRunScreen
+import dev.opengarmin.app.ui.screens.PaceStrategyScreen
 import dev.opengarmin.app.ui.screens.PlanScreen
 import dev.opengarmin.app.ui.screens.ProviderSettingsScreen
 import dev.opengarmin.app.ui.screens.SettingsScreen
@@ -61,7 +67,7 @@ import dev.opengarmin.app.ui.theme.PulseSpacing
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 
-private enum class AppRoute { Tabs, Trends, Detail, Plan, Settings, Provider, Data, Log }
+private enum class AppRoute { Tabs, Trends, Detail, Plan, PacePro, PaceRun, Settings, Provider, Data, Log }
 
 @Composable
 fun PulseApp(
@@ -72,6 +78,8 @@ fun PulseApp(
     trainingSummary: TrainingSummary,
     plannedWorkouts: List<PlannedWorkoutEntity>,
     workoutSendStatus: WorkoutSendStatus?,
+    pacePlans: List<PacePlanEntity>,
+    pacePlanSendStatus: PacePlanSendStatus?,
     selectedActivity: ActivityEntity?,
     selectedRecords: List<RecordEntity>,
     selectedLaps: List<LapEntity>,
@@ -101,6 +109,9 @@ fun PulseApp(
     onSaveWorkout: (PlannedWorkoutEntity) -> Unit,
     onDeleteWorkout: (Long) -> Unit,
     onSendWorkout: (PlannedWorkoutEntity) -> Unit,
+    onSendPacePlan: (PacePlanEntity) -> Unit,
+    onDeletePacePlan: (Long) -> Unit,
+    loadPaceCourse: suspend (Long) -> PaceCourse?,
     backupStatus: String?,
     backupBusy: Boolean,
     onExportBackup: (android.net.Uri) -> Unit,
@@ -109,6 +120,7 @@ fun PulseApp(
     var tabName by rememberSaveable { mutableStateOf(PulseTab.Today.name) }
     var routeName by rememberSaveable { mutableStateOf(AppRoute.Tabs.name) }
     var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var paceRunPlan by remember { mutableStateOf<PacePlanEntity?>(null) }
     var providerReturnName by rememberSaveable { mutableStateOf(AppRoute.Settings.name) }
     var providerVersion by remember { mutableIntStateOf(0) }
     val tab = PulseTab.entries.firstOrNull { it.name == tabName } ?: PulseTab.Today
@@ -131,6 +143,10 @@ fun PulseApp(
         val scheduled = plannedWorkouts.count { it.scheduledDate != null }
         "${plannedWorkouts.size} saved · $scheduled scheduled"
     }
+    val pacePlan = pacePlans.firstOrNull()
+    val paceSummary = pacePlan?.let { "${it.name} · ${it.summary()}" }
+        ?: "Build a split-by-split racing plan"
+    val racePredictions = PacePlanCalculator.predictions(activities)
 
     BackHandler(enabled = route != AppRoute.Tabs) {
         when (route) {
@@ -140,6 +156,12 @@ fun PulseApp(
             }
             AppRoute.Trends -> routeName = AppRoute.Tabs.name
             AppRoute.Plan -> routeName = AppRoute.Tabs.name
+            AppRoute.PacePro -> routeName = AppRoute.Tabs.name
+            AppRoute.PaceRun -> {
+                paceRunPlan = null
+                tabName = PulseTab.Training.name
+                routeName = AppRoute.Tabs.name
+            }
             AppRoute.Detail -> {
                 onClearSelection()
                 detailId = null
@@ -196,6 +218,9 @@ fun PulseApp(
                                 onAskCoach = { tabName = PulseTab.Coach.name },
                                 onOpenPlan = { routeName = AppRoute.Plan.name },
                                 plannedWorkoutsSummary = planSummary,
+                                onOpenPace = { routeName = AppRoute.PacePro.name },
+                                pacePlanSummary = paceSummary,
+                                racePredictions = racePredictions,
                             )
                             PulseTab.Activities -> ActivitiesScreen(
                                 activities = activities,
@@ -238,6 +263,40 @@ fun PulseApp(
                 onDelete = onDeleteWorkout,
                 onSend = onSendWorkout,
             )
+            AppRoute.PacePro -> PaceStrategyScreen(
+                plans = pacePlans,
+                activities = activities,
+                sendStatus = pacePlanSendStatus,
+                onBack = { routeName = AppRoute.Tabs.name },
+                onSend = onSendPacePlan,
+                onDelete = onDeletePacePlan,
+                loadCourse = loadPaceCourse,
+                onOpenRun = { plan ->
+                    paceRunPlan = plan
+                    routeName = AppRoute.PaceRun.name
+                },
+            )
+            AppRoute.PaceRun -> {
+                val plan = paceRunPlan
+                if (plan != null) {
+                    PaceRunScreen(
+                        plan = plan,
+                        onStop = {
+                            paceRunPlan = null
+                            tabName = PulseTab.Training.name
+                            routeName = AppRoute.Tabs.name
+                        },
+                    )
+                } else {
+                    EmptyState(
+                        title = "No pace plan selected",
+                        message = "Build a PacePro strategy before starting a run.",
+                        actionLabel = "Back",
+                        onAction = { routeName = AppRoute.Tabs.name },
+                        modifier = Modifier.padding(PulseSpacing.xxl),
+                    )
+                }
+            }
             AppRoute.Detail -> {
                 if (detailActivity != null) {
                     ActivityDetailScreen(

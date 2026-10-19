@@ -127,7 +127,7 @@ docs/                      PROTOCOL, PLAN, LICENSING, architecture, providers,
 tools/                     parse_btsnoop.py, extract_protos.py, setup scripts
 ```
 
-Tests: **44 protocol tests** (`:protocol:test`) and **72 app JVM tests**
+Tests: **55 protocol tests** (`:protocol:test`) and **91 app JVM tests**
 (`:app:testDebugUnitTest`) pass, plus the instrumented `SecretStoreTest`. Build:
 `:app:assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk`.
 
@@ -563,3 +563,36 @@ the correct 5/10/5-minute structure and tomorrow's date. The answer correctly
 said the workout was saved only on the phone and told the user to tap **Send to
 watch**; it did not claim a watch upload. The test drafts were deleted after
 verification.
+
+## 2026-10-19 — PacePro strategy + live preview
+
+Implemented the two new mockups (`PaceStrategy.dc.html`, `PaceRun.dc.html`).
+
+Reverse-engineering result: Garmin Connect's file-transfer enum maps
+`FIT_TYPE_56` to `PACE_BAND`. Its bundled FIT profile defines `pace_band`
+(310) and `pace_band_split` (311). The watch accepts the same legacy GFDI
+upload used for workouts if `CREATE_FILE.subType` is `56` instead of `5`.
+A 10-split 10K plan (882 bytes) was accepted on the FR255, and `logcat` showed
+the full `CREATE_FILE` → `UPLOAD_REQUEST` → `FILE_TRANSFER_DATA` →
+`SYNC_COMPLETE` sequence. The watch answers `ItemListRequest` filtered to
+`FIT_TYPE_56` with `FAIL_INVALID_DATA_TYPE (6)`, so the file cannot be listed
+back; this is documented in `docs/PROTOCOL.md` §10.7.
+
+Implementation:
+
+- `protocol/FitPaceBand.kt` encoder, checked by `FitPaceBandTest`.
+- `data/PacePlan.kt`: Room entity (v9), split JSON codec, Riegel predictions,
+  course profile from activity records, split maths.
+- `ui/screens/PaceStrategyScreen.kt`: four-step builder, sliders, preview table,
+  elevation bars, saved plans, accept/send status.
+- `ui/screens/PaceRunScreen.kt`: phone-GPS live run screen with pause/lap/stop,
+  split strip, overall/finish estimate and elevation. It deliberately leaves HR
+  empty without a live source.
+- `SyncCoordinator` now carries a FIT subtype on the upload queue and excludes
+  `FIT_TYPE_56` from wellness pulls.
+- Training shows race predictions and a PacePro card.
+
+Manual check on the Pixel 10a: opened Training → PacePro, confirmed race
+predictions (10K 47:45) came from the imported run, sent the plan, and observed
+the watch accept all chunks. The preview run screen and GPS permission flow
+still need a real outdoor run check.
