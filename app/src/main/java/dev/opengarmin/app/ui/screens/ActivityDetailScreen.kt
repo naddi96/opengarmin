@@ -109,7 +109,9 @@ fun ActivityDetailScreen(
 ) {
     var section by rememberSaveable(activity.id) { mutableIntStateOf(SECTION_OVERVIEW) }
     val scrollState = rememberScrollState()
+    val configuredZones = remember(records, maxHeartRate) { heartRateZoneSet(records, maxHeartRate) }
     val fallbackZones = remember(records, maxHeartRate) { zoneSummary(records, maxHeartRate) }
+    val hrZones = if (maxHeartRate != null) configuredZones else insights?.hrZones
     val gpsAvailable = ActivityExport.hasGps(records)
     LaunchedEffect(section) {
         scrollState.animateScrollTo(0)
@@ -142,7 +144,7 @@ fun ActivityDetailScreen(
                 SECTION_OVERVIEW -> ActivityOverview(
                     activity = activity,
                     insights = insights,
-                    zones = insights?.hrZones,
+                    zones = hrZones,
                     fallbackZones = fallbackZones,
                     maxHeartRate = maxHeartRate,
                     gps = gps,
@@ -162,7 +164,7 @@ fun ActivityDetailScreen(
                 SECTION_CHARTS -> ActivityCharts(
                     activity = activity,
                     insights = insights,
-                    zones = insights?.hrZones,
+                    zones = hrZones,
                     powerZones = insights?.powerZones,
                     fallbackZones = fallbackZones,
                     maxHeartRate = maxHeartRate,
@@ -1402,11 +1404,12 @@ private fun HeartRateZonesCard(
                         }
                     }
                     val basis = zones.maxHeartRate ?: maxHeartRate
+                    val source = if (zones.fromWatch) "Watch zones" else "Computed from your max HR"
                     Text(
                         if (basis != null) {
-                            "Watch zones · max HR $basis bpm · total ${formatDuration(zones.totalSeconds)}"
+                            "$source $basis bpm · total ${formatDuration(zones.totalSeconds)}"
                         } else {
-                            "Watch zones · total ${formatDuration(zones.totalSeconds)}"
+                            "$source · total ${formatDuration(zones.totalSeconds)}"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = PulseColors.TextMuted,

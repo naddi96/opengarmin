@@ -206,6 +206,11 @@ class CoachController(
         }
         val key = providerStore.apiKeyFor(config)
         val client = OpenAiClient(config.baseUrl, key, model.name)
+        val activeScope = toolScope.copy(
+            maxHeartRate = toolScope.maxHeartRate ?: settings.maxHeartRate,
+            heightCm = toolScope.heightCm ?: settings.heightCm,
+            weightKg = toolScope.weightKg ?: settings.weightKg,
+        )
         val history = messages
             .filter { it.status == MessageStatus.Complete && it.id != assistantId }
             .takeLast(12)
@@ -214,13 +219,15 @@ class CoachController(
             tools = tools,
             systemPrompt = SYSTEM_PROMPT,
             maxHeartRate = settings.maxHeartRate,
+            heightCm = settings.heightCm,
+            weightKg = settings.weightKg,
         )
         try {
             val result = loop.run(
                 client = client,
                 model = model,
                 history = history,
-                scope = toolScope,
+                scope = activeScope,
                 onText = { text ->
                     updateAssistant(assistantId) {
                         it.copy(text = text, status = MessageStatus.Streaming)
@@ -335,6 +342,9 @@ class CoachController(
             You are Pulse Coach, an informational fitness assistant inside a local-first Garmin companion app.
             Answer ONLY from the health data returned by tools or the provided snapshot. Never invent numbers,
             dates, activities, or metrics. If data is missing or a tool says it is unavailable, say so plainly.
+            A user-provided profile message may include max heart rate, height, and weight. Use it only to
+            personalize advice (zones, pacing, training load, calorie context); do not treat it as measured
+            health data and do not invent profile values that were not supplied.
             Do not diagnose conditions, prescribe treatment, or give medical advice. For concerning patterns,
             suggest consulting a qualified healthcare professional. Keep answers concise (usually 2-4 sentences),
             mention the date range, and distinguish observations from general advice.

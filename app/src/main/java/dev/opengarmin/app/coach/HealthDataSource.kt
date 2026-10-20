@@ -7,7 +7,13 @@ import java.time.ZoneId
 
 const val LOCAL_PROFILE_ID = "local"
 
-data class ToolScope(val profileId: String = LOCAL_PROFILE_ID)
+data class ToolScope(
+    val profileId: String = LOCAL_PROFILE_ID,
+    /** Profile values configured in the app, used by tools that need them. */
+    val maxHeartRate: Int? = null,
+    val heightCm: Int? = null,
+    val weightKg: Double? = null,
+)
 
 data class DailyHealth(
     val date: String,

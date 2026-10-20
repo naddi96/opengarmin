@@ -26,6 +26,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import android.net.Uri
@@ -70,8 +71,18 @@ fun SettingsScreen(
 ) {
     var goalText by remember(settings.stepGoal) { mutableStateOf(settings.stepGoal.toString()) }
     var maxHrText by remember(settings.maxHeartRate) { mutableStateOf(settings.maxHeartRate?.toString() ?: "") }
+    var heightText by remember(settings.heightCm) { mutableStateOf(settings.heightCm?.toString() ?: "") }
+    var weightText by remember(settings.weightKg) {
+        mutableStateOf(
+            settings.weightKg?.let { value ->
+                if (value == value.toInt().toDouble()) value.toInt().toString()
+                else "%.1f".format(value)
+            } ?: "",
+        )
+    }
     var savedMessage by remember { mutableStateOf<String?>(null) }
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
+    val focusManager = LocalFocusManager.current
     val fitPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onImportFit(uri)
     }
@@ -115,23 +126,59 @@ fun SettingsScreen(
                     value = maxHrText,
                     onValueChange = { maxHrText = it.filter(Char::isDigit).take(3) },
                     label = { Text("Max heart rate (bpm, optional)") },
-                    supportingText = { Text("Used only to calculate heart-rate zones. No value is estimated.") },
+                    supportingText = { Text("Used to calculate heart-rate zones. No value is estimated.") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+                    OutlinedTextField(
+                        value = heightText,
+                        onValueChange = { heightText = it.filter(Char::isDigit).take(3) },
+                        label = { Text("Height (cm, optional)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = weightText,
+                        onValueChange = {
+                            weightText = it
+                                .filter { char -> char.isDigit() || char == '.' || char == ',' }
+                                .take(6)
+                        },
+                        label = { Text("Weight (kg, optional)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Text(
+                    "Height and weight are used only by the AI coach to personalize advice. They are sent only when you chat with your configured provider.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
                     PrimaryButton("Save profile", onClick = {
                         val goal = goalText.toIntOrNull()
-                        if (goal == null || goal !in 1_000..100_000) {
-                            savedMessage = "Step goal must be between 1,000 and 100,000."
-                        } else {
-                            settings.updateStepGoal(goal)
-                            val maxHr = maxHrText.toIntOrNull()
-                            if (maxHrText.isNotBlank() && (maxHr == null || maxHr !in 100..250)) {
+                        val maxHr = maxHrText.toIntOrNull()
+                        val height = heightText.toIntOrNull()
+                        val weight = weightText.replace(',', '.').toDoubleOrNull()
+                        when {
+                            goal == null || goal !in 1_000..100_000 ->
+                                savedMessage = "Step goal must be between 1,000 and 100,000."
+                            maxHrText.isNotBlank() && (maxHr == null || maxHr !in 100..250) ->
                                 savedMessage = "Max heart rate must be between 100 and 250."
-                            } else {
+                            heightText.isNotBlank() && (height == null || height !in 100..250) ->
+                                savedMessage = "Height must be between 100 and 250 cm."
+                            weightText.isNotBlank() && (weight == null || weight !in 30.0..300.0) ->
+                                savedMessage = "Weight must be between 30 and 300 kg."
+                            else -> {
+                                settings.updateStepGoal(goal)
                                 settings.updateMaxHeartRate(maxHr)
+                                settings.updateHeightCm(height)
+                                settings.updateWeightKg(weight)
+                                focusManager.clearFocus()
                                 savedMessage = "Profile saved."
                             }
                         }
@@ -143,7 +190,15 @@ fun SettingsScreen(
                     }, enabled = settings.maxHeartRate != null)
                 }
                 savedMessage?.let {
-                    Text(it, style = MaterialTheme.typography.labelMedium, color = PulseColors.Teal)
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (it.contains("saved", ignoreCase = true) || it.contains("cleared", ignoreCase = true)) {
+                            PulseColors.Teal
+                        } else {
+                            PulseColors.Coral
+                        },
+                    )
                 }
             }
         }

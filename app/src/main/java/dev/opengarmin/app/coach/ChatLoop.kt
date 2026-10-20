@@ -8,6 +8,7 @@ import dev.opengarmin.app.llm.ModelConfig
 import dev.opengarmin.app.llm.OpenAiClient
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
+import java.util.Locale
 
 /**
  * The tool-calling/streaming loop, kept free of Android and Compose so it can be
@@ -17,6 +18,8 @@ class ChatLoop(
     private val tools: ToolRegistry,
     private val systemPrompt: String,
     private val maxHeartRate: Int?,
+    private val heightCm: Int? = null,
+    private val weightKg: Double? = null,
     private val maxRounds: Int = 4,
     private val maxToolCalls: Int = 8,
 ) {
@@ -38,10 +41,23 @@ class ChatLoop(
     ): Result {
         val conversation = mutableListOf<LlmMessage>()
         conversation += LlmMessage("system", systemPrompt)
+        val profile = buildList {
+            maxHeartRate?.let { add("max heart rate $it bpm") }
+            heightCm?.let { add("height $it cm") }
+            weightKg?.let { add("weight ${String.format(Locale.US, "%.1f", it)} kg") }
+        }
+        if (profile.isNotEmpty()) {
+            conversation += LlmMessage(
+                "system",
+                "User-provided profile: ${profile.joinToString(", ")}. " +
+                    "Use these values only when they make advice more specific (training load, calorie context, " +
+                    "pacing, or body-size context). Do not invent missing profile values or present this as medical data.",
+            )
+        }
         maxHeartRate?.let { maxHr ->
             conversation += LlmMessage(
                 "system",
-                "The user's configured max heart rate is $maxHr bpm. When zones are relevant, pass max_heart_rate=$maxHr to get_activity.",
+                "The app's configured max heart rate is $maxHr bpm. Activity zone calculations use it automatically; do not substitute a different max HR.",
             )
         }
         conversation += history

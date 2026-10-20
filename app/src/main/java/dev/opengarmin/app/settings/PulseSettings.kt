@@ -20,6 +20,14 @@ class PulseSettings(context: Context) {
         prefs.getInt(KEY_MAX_HR, 0).takeIf { it in 100..250 },
     )
         private set
+    var heightCm by mutableStateOf(
+        prefs.getInt(KEY_HEIGHT_CM, 0).takeIf { it in 100..250 },
+    )
+        private set
+    var weightKg by mutableStateOf(
+        prefs.getFloat(KEY_WEIGHT_KG, 0f).takeIf { it in 30f..300f }?.toDouble(),
+    )
+        private set
     var lastSyncAt by mutableStateOf(prefs.getLong(KEY_LAST_SYNC, 0L).takeIf { it > 0L })
         private set
     var lastSyncStatus by mutableStateOf(prefs.getString(KEY_LAST_STATUS, "") ?: "")
@@ -68,6 +76,9 @@ class PulseSettings(context: Context) {
 
     private fun applyPersistedValue(key: String?) {
         when (key) {
+            KEY_HEIGHT_CM -> heightCm = prefs.getInt(KEY_HEIGHT_CM, 0).takeIf { it in 100..250 }
+            KEY_WEIGHT_KG -> weightKg = prefs.getFloat(KEY_WEIGHT_KG, 0f)
+                .takeIf { it in 30f..300f }?.toDouble()
             KEY_LAST_SYNC -> lastSyncAt = prefs.getLong(KEY_LAST_SYNC, 0L).takeIf { it > 0L }
             KEY_LAST_STATUS -> lastSyncStatus = prefs.getString(KEY_LAST_STATUS, "") ?: ""
             KEY_LAST_ERROR -> lastSyncError = prefs.getString(KEY_LAST_ERROR, "") ?: ""
@@ -113,6 +124,28 @@ class PulseSettings(context: Context) {
             val safe = value.coerceIn(100, 250)
             maxHeartRate = safe
             prefs.edit().putInt(KEY_MAX_HR, safe).apply()
+        }
+    }
+
+    fun updateHeightCm(value: Int?) {
+        if (value == null) {
+            heightCm = null
+            prefs.edit().remove(KEY_HEIGHT_CM).apply()
+        } else {
+            val safe = value.coerceIn(100, 250)
+            heightCm = safe
+            prefs.edit().putInt(KEY_HEIGHT_CM, safe).apply()
+        }
+    }
+
+    fun updateWeightKg(value: Double?) {
+        if (value == null) {
+            weightKg = null
+            prefs.edit().remove(KEY_WEIGHT_KG).apply()
+        } else {
+            val safe = value.coerceIn(30.0, 300.0)
+            weightKg = safe
+            prefs.edit().putFloat(KEY_WEIGHT_KG, safe.toFloat()).apply()
         }
     }
 
@@ -182,6 +215,8 @@ class PulseSettings(context: Context) {
         const val DEFAULT_STEP_GOAL = 10_000
         private const val KEY_STEP_GOAL = "step_goal"
         private const val KEY_MAX_HR = "max_heart_rate"
+        private const val KEY_HEIGHT_CM = "height_cm"
+        private const val KEY_WEIGHT_KG = "weight_kg"
         private const val KEY_LAST_SYNC = "last_sync_at"
         private const val KEY_LAST_STATUS = "last_sync_status"
         private const val KEY_LAST_ERROR = "last_sync_error"

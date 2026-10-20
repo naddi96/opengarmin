@@ -96,7 +96,7 @@ a separate ViewModel layer; the Coach has its own `CoachController`.
 - Screens live under `ui/screens/`; shared cards, charts, chat bubbles, and
   controls live under `ui/components/`. Styling comes from `ui/theme/` and the
   Pulse spacing/color tokens; DM Sans and Space Grotesk are bundled.
-- Settings includes profile values (step goal, max HR), provider management,
+- Settings includes profile values (step goal, max HR, height, weight), provider management,
   sync/scan/disconnect controls, the device log, FIT import, and the
   **Data & backup** section.
 - The Coach screen header exposes **History** and **New conversation**. History
@@ -133,7 +133,7 @@ migration test.
 
 | Storage | Contents |
 |---|---|
-| `pulse_settings` prefs | Step goal, optional max HR, sync time/status/error, last attempt/duration/trigger/result, watch name, periodic sync enabled/interval/charging-only |
+| `pulse_settings` prefs | Step goal, optional max HR, height, weight, sync time/status/error, last attempt/duration/trigger/result, watch name, periodic sync enabled/interval/charging-only |
 | `pulse_provider` prefs | Provider preset/base URL/models and a masked key hint |
 | `pulse_secrets` prefs | Base64 IV + AES-GCM ciphertext for the API key; the encryption key stays in AndroidKeyStore |
 | `pulse_chat` prefs | Up to 50 coach conversations × 200 messages as JSON, including evidence and chart specs; the legacy single-chat value is migrated on first read |
@@ -328,7 +328,7 @@ Important limitations:
 | **Training effect / performance condition** | ✅ | `activity_metrics` fields |
 | **Floors** | ❌ | not stored |
 | **HR zones** | ✅ | derived from activity records + configured max HR |
-| **Step goal / max HR** | ✅ | `PulseSettings`, editable in Settings |
+| **Step goal / max HR / height / weight** | ✅ | `PulseSettings`, editable in Settings; max HR drives activity zones and the profile is available to the coach |
 | **Watch battery** | ❌ | not read |
 | **"Synced N min ago"** | ✅ | persisted `lastSyncAt` / `lastSyncStatus` |
 | Weekly/monthly aggregates | ✅ | `WellnessHistory` over accumulated days, with partial-history labels |

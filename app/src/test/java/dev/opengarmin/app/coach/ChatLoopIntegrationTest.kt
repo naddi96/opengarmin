@@ -270,6 +270,43 @@ class ChatLoopIntegrationTest {
         assertEquals(1L, json.getLong("id"))
     }
 
+    @Test
+    fun `injects the configured profile into the coach context`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"Use a steady effort.\"},\"finish_reason\":\"stop\"}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+
+        val loop = ChatLoop(
+            tools = ToolRegistry(FakeSource(today)) { today },
+            systemPrompt = "test prompt",
+            maxHeartRate = 190,
+            heightCm = 180,
+            weightKg = 75.0,
+        )
+        loop.run(
+            client = client(),
+            model = ModelConfig("m", "mock-model"),
+            history = listOf(LlmMessage("user", "How should I pace my next run?")),
+            scope = ToolScope(),
+        )
+
+        val request = JSONObject(server.takeRequest().body.readUtf8())
+        val messages = request.getJSONArray("messages")
+        val systemText = (0 until messages.length())
+            .map { messages.getJSONObject(it) }
+            .filter { it.optString("role") == "system" }
+            .joinToString("\n") { it.optString("content") }
+        assertTrue(systemText.contains("max heart rate 190 bpm"))
+        assertTrue(systemText.contains("height 180 cm"))
+        assertTrue(systemText.contains("weight 75.0 kg"))
+        assertTrue(systemText.contains("configured max heart rate is 190 bpm"))
+    }
+
     private class FakeWorkoutWriter : WorkoutWriter {
         val created = mutableListOf<dev.opengarmin.app.data.PlannedWorkoutEntity>()
 

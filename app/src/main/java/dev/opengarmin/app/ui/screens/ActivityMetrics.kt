@@ -1,6 +1,9 @@
 package dev.opengarmin.app.ui.screens
 
 import dev.opengarmin.app.data.ActivityEntity
+import dev.opengarmin.app.data.ActivityZoneSet
+import dev.opengarmin.app.data.HeartRateZoneSample
+import dev.opengarmin.app.data.HeartRateZones
 import dev.opengarmin.app.data.RecordEntity
 import dev.opengarmin.app.formatPace
 import dev.opengarmin.app.coach.SportCategory
@@ -11,28 +14,23 @@ data class ZoneSummary(
     val percentages: List<Float>,
 )
 
-fun zoneSummary(records: List<RecordEntity>, maxHeartRate: Int?): ZoneSummary? {
-    if (maxHeartRate == null || maxHeartRate !in 100..250) return null
-    val heartRates = records.mapNotNull { it.heartRate }
-    if (heartRates.isEmpty()) return null
-    val counts = IntArray(5)
-    heartRates.forEach { hr ->
-        val percent = hr.toDouble() / maxHeartRate
-        val index = when {
-            percent < 0.60 -> 0
-            percent < 0.70 -> 1
-            percent < 0.80 -> 2
-            percent < 0.90 -> 3
-            else -> 4
-        }
-        counts[index]++
-    }
-    val total = counts.sum().coerceAtLeast(1)
-    return ZoneSummary(
+/**
+ * Builds five heart-rate zones from the max heart rate configured in Settings.
+ * The shared [HeartRateZones] calculation is also used by the coach tools.
+ */
+fun heartRateZoneSet(records: List<RecordEntity>, maxHeartRate: Int?): ActivityZoneSet? =
+    HeartRateZones.zones(
+        samples = records.map { HeartRateZoneSample(it.timestamp, it.heartRate) },
         maxHeartRate = maxHeartRate,
-        percentages = counts.map { it.toFloat() / total * 100f },
     )
-}
+
+fun zoneSummary(records: List<RecordEntity>, maxHeartRate: Int?): ZoneSummary? =
+    heartRateZoneSet(records, maxHeartRate)?.let { set ->
+        ZoneSummary(
+            maxHeartRate = set.maxHeartRate ?: maxHeartRate ?: return null,
+            percentages = set.zones.map { it.percent },
+        )
+    }
 
 fun activityPaceLabel(activity: ActivityEntity): String = when (
     categoryForSport(activity.sport, activity.subSport)

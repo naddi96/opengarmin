@@ -121,7 +121,7 @@ class HealthToolsTest {
     }
 
     @Test
-    fun `activity zones are only returned when max heart rate is supplied`() = runBlocking {
+    fun `activity zones use supplied or configured max heart rate`() = runBlocking {
         val withoutZones = registry.execute("get_activity", """{"id":1}""", ToolScope())
         assertFalse(JSONObject(withoutZones.json).getBoolean("zonesAvailable"))
 
@@ -135,6 +135,14 @@ class HealthToolsTest {
         val percentages = zones.getJSONObject("zonePercent")
         val sum = (1..5).sumOf { percentages.getDouble("z$it") }
         assertTrue(sum in 99.0..101.0)
+
+        val configured = registry.execute(
+            "get_activity",
+            """{"id":1}""",
+            ToolScope(maxHeartRate = 190),
+        )
+        assertTrue(JSONObject(configured.json).getBoolean("zonesAvailable"))
+        assertEquals("max_heart_rate=190", JSONObject(configured.json).getString("zoneBasis"))
     }
 
     @Test

@@ -15,6 +15,8 @@ import dev.opengarmin.app.coach.categoryForSport
 import dev.opengarmin.app.coach.epochRange
 import dev.opengarmin.app.coach.sportLabel
 import dev.opengarmin.app.coach.unixToLocalDate
+import dev.opengarmin.app.data.HeartRateZoneSample
+import dev.opengarmin.app.data.HeartRateZones
 import dev.opengarmin.app.data.PlannedDurationType
 import dev.opengarmin.app.data.PlannedStep
 import dev.opengarmin.app.data.PlannedWorkoutEntity
@@ -481,7 +483,7 @@ private class ActivityTool(
 ) : HealthTool {
     override val definition = LlmToolDefinition(
         name = "get_activity",
-        description = "One workout's stats, laps, GPS summary (start/end, bounds, point count; set include_route=true for a sampled route), running dynamics (cadence in steps/min, ground contact/stance time, vertical oscillation, vertical ratio, stride length), training effect, and heart-rate zones when max_heart_rate is supplied.",
+        description = "One workout's stats, laps, GPS summary (start/end, bounds, point count; set include_route=true for a sampled route), running dynamics (cadence in steps/min, ground contact/stance time, vertical oscillation, vertical ratio, stride length), training effect, and heart-rate zones using the app-configured max HR (or max_heart_rate when no app value is set).",
         parameters = schema(
             required = listOf("id"),
             props = mapOf(
@@ -491,7 +493,7 @@ private class ActivityTool(
                 },
                 "max_heart_rate" to JSONObject().apply {
                     put("type", "integer")
-                    put("description", "Optional user max HR for zone calculations (100-250)")
+                    put("description", "Optional fallback max HR for zone calculations (100-250). Used only when the app has no configured max HR.")
                 },
                 "include_route" to JSONObject().apply {
                     put("type", "boolean")
@@ -506,15 +508,22 @@ private class ActivityTool(
         if (id <= 0) throw ToolException("id is required")
         val detail = dataSource.workout(scope, id) ?: throw ToolException("Activity not found")
         val summary = detail.summary
-        val zones = args.optInt("max_heart_rate", 0).takeIf { it in 100..250 }
-            ?.let { maxHr -> zonePercentages(detail.records.mapNotNull { it.heartRate }, maxHr) }
+        val maxHr = scope.maxHeartRate ?: args.optInt("max_heart_rate", 0).takeIf { it in 100..250 }
+        val zones = maxHr?.let { zonePercentages(detail.records, it) }
         val json = workoutDetailJson(
             detail = detail,
             includeRoute = args.optBoolean("include_route", false),
         ).apply {
             if (zones == null) {
                 put("zonesAvailable", false)
-                put("zonesReason", "No max heart rate supplied")
+                put(
+                    "zonesReason",
+                    if (maxHr == null) {
+                        "No max heart rate supplied or configured"
+                    } else {
+                        "No heart-rate samples inside the configured zones"
+                    },
+                )
             } else {
                 put("zonesAvailable", true)
                 put("zoneBasis", "max_heart_rate=${zones.maxHr}")
@@ -1355,22 +1364,11 @@ private fun plannedStepJson(step: PlannedStep): JSONObject = when (step) {
 
 private data class ZoneResult(val maxHr: Int, val percentages: List<Float>)
 
-private fun zonePercentages(heartRates: List<Int>, maxHr: Int): ZoneResult {
-    val counts = IntArray(5)
-    heartRates.forEach { hr ->
-        val percent = hr.toDouble() / maxHr
-        val index = when {
-            percent < 0.60 -> 0
-            percent < 0.70 -> 1
-            percent < 0.80 -> 2
-            percent < 0.90 -> 3
-            else -> 4
-        }
-        counts[index]++
-    }
-    val total = counts.sum().coerceAtLeast(1)
-    return ZoneResult(maxHr, counts.map { it.toFloat() / total * 100f })
-}
+private fun zonePercentages(records: List<RecordPoint>, maxHr: Int): ZoneResult? =
+    HeartRateZones.percentages(
+        samples = records.map { HeartRateZoneSample(it.timestamp, it.heartRate) },
+        maxHeartRate = maxHr,
+    )?.let { ZoneResult(maxHr, it) }
 
 private fun workoutDetailJson(
     detail: dev.opengarmin.app.coach.WorkoutDetail,
