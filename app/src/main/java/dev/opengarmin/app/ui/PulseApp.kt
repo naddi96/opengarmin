@@ -50,6 +50,7 @@ import dev.opengarmin.app.llm.ProviderConfig
 import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivitySyncProgress
+import dev.opengarmin.app.sync.SyncPhase
 import dev.opengarmin.app.ui.components.EmptyState
 import dev.opengarmin.app.ui.components.IconButtonRound
 import dev.opengarmin.app.ui.components.PulseTab
@@ -207,7 +208,10 @@ fun PulseApp(
                                 activitySyncProgress = activitySyncProgress,
                                 lastImportedLabel = lastImportedLabel,
                                 syncError = settings.lastSyncError
-                                    .takeIf { settings.lastSyncStatus == "failed" && it.isNotBlank() },
+                                    .takeIf {
+                                        SyncPhase.fromStored(settings.lastSyncStatus) == SyncPhase.Failed &&
+                                            it.isNotBlank()
+                                    },
                                 onSync = onSync,
                                 onOpenSettings = { openSettings() },
                                 onAskCoach = { tabName = PulseTab.Coach.name },

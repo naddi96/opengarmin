@@ -18,9 +18,7 @@ import dev.opengarmin.app.data.WorkoutSendStatus
 class SyncUiState(
     private val main: Handler = Handler(Looper.getMainLooper()),
 ) {
-    var status by mutableStateOf("idle")
-    var lastFile by mutableStateOf("—")
-    var importing by mutableStateOf(false)
+    var phase by mutableStateOf(SyncPhase.Idle)
     var activityProgress by mutableStateOf<ActivitySyncProgress?>(null)
     var lastImportedLabel by mutableStateOf<String?>(null)
     var workoutSendStatus by mutableStateOf<WorkoutSendStatus?>(null)

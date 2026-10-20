@@ -46,14 +46,12 @@ class ActivityImporter(
     }
 
     fun importFit(file: File, itemUid: String) {
-        ui.importing = true
-        ui.status = "importing"
+        ui.phase = SyncPhase.Importing
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching { repository.importFit(file.name, file.readBytes(), itemUid) }
             }
-            ui.importing = false
-            ui.status = if (ui.activityProgress != null) "syncing" else "synced"
+            ui.phase = if (ui.activityProgress != null) SyncPhase.Syncing else SyncPhase.UpToDate
             result.onSuccess { entity ->
                 if (entity == null) {
                     ui.log("FIT has no session or was already imported")

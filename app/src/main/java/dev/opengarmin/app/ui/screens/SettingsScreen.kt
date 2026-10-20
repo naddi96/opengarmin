@@ -35,8 +35,10 @@ import dev.opengarmin.app.llm.ProviderConfig
 import dev.opengarmin.app.llm.ProviderPresets
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivitySyncProgress
+import dev.opengarmin.app.sync.SyncPhase
 import dev.opengarmin.app.sync.SyncPolicy
 import dev.opengarmin.app.ui.components.IconButtonRound
+import dev.opengarmin.app.util.formatFileSize
 import dev.opengarmin.app.ui.components.PillChip
 import dev.opengarmin.app.ui.components.PrimaryButton
 import dev.opengarmin.app.ui.components.PulseCard
@@ -477,7 +479,8 @@ fun SettingsScreen(
                 PrimaryButton(
                     "Run background sync now",
                     onClick = onRunBackgroundSyncNow,
-                    enabled = settings.periodicSyncEnabled && settings.lastSyncStatus != "syncing",
+                    enabled = settings.periodicSyncEnabled &&
+                        SyncPhase.fromStored(settings.lastSyncStatus) != SyncPhase.Syncing,
                 )
                 settings.lastSyncAttemptAt?.let {
                     Text(
@@ -595,14 +598,17 @@ fun SettingsScreen(
     }
 }
 
-private fun syncResultLabel(kind: String, status: String): String = when {
-    status == "syncing" -> "Syncing"
-    kind == "success" -> "Success"
-    kind == "permanent" -> "Needs setup"
-    kind == "busy" -> "Busy"
-    kind == "cancelled" -> "Stopped"
-    kind == "transient" -> "Temporary failure"
-    status == "synced" -> "Success"
-    status == "failed" -> "Failed"
-    else -> "Not recorded"
+private fun syncResultLabel(kind: String, status: String): String {
+    val phase = SyncPhase.fromStored(status)
+    return when {
+        phase == SyncPhase.Syncing -> "Syncing"
+        kind == "success" -> "Success"
+        kind == "permanent" -> "Needs setup"
+        kind == "busy" -> "Busy"
+        kind == "cancelled" -> "Stopped"
+        kind == "transient" -> "Temporary failure"
+        phase == SyncPhase.UpToDate -> "Success"
+        phase == SyncPhase.Failed -> "Failed"
+        else -> "Not recorded"
+    }
 }

@@ -45,6 +45,8 @@ import dev.opengarmin.app.sync.SyncScheduler
 import dev.opengarmin.app.sync.SyncSessionController
 import dev.opengarmin.app.sync.SyncUiState
 import dev.opengarmin.app.ui.PulseApp
+import dev.opengarmin.app.ui.syncStatusColor
+import dev.opengarmin.app.ui.syncStatusLabel
 import dev.opengarmin.app.ui.theme.PulseTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -168,6 +170,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             PulseTheme {
                 val progress = syncController.activityProgress
+                val syncLabel = syncStatusLabel(syncController.phase, progress, settings)
+                val syncColor = syncStatusColor(syncController.phase, progress, settings)
                 PulseApp(
                     activities = activities,
                     wellnessDays = wellnessDays,
@@ -195,8 +199,8 @@ class MainActivity : ComponentActivity() {
                     settings = settings,
                     providerStore = providerStore,
                     coachController = coachController,
-                    syncLabel = syncController.syncLabel,
-                    syncColor = syncController.syncColor,
+                    syncLabel = syncLabel,
+                    syncColor = syncColor,
                     activitySyncProgress = progress,
                     lastImportedLabel = syncController.lastImportedLabel,
                     logs = syncController.logs,

@@ -34,6 +34,7 @@ import dev.opengarmin.app.formatWellnessDate
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivitySyncProgress
 import dev.opengarmin.app.ui.components.CoachInsightCard
+import dev.opengarmin.app.util.formatFileSize
 import dev.opengarmin.app.ui.components.LineChart
 import dev.opengarmin.app.ui.components.ProgressRing
 import dev.opengarmin.app.ui.components.PulseCard
@@ -378,13 +379,7 @@ private fun ActivitySyncCard(progress: ActivitySyncProgress, lastImported: Strin
     }
 }
 
-internal fun formatFileSize(bytes: Long): String = when {
-    bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
-    bytes >= 1_000 -> "%.0f KB".format(bytes / 1_000.0)
-    else -> "$bytes B"
-}
-
-private fun chartTimeLabels(samples: List<WellnessSampleEntity>, isToday: Boolean): List<String> {
+internal fun chartTimeLabels(samples: List<WellnessSampleEntity>, isToday: Boolean): List<String> {
     if (samples.size < 2) return emptyList()
     val zone = ZoneId.systemDefault()
     fun format(seconds: Long) = Instant.ofEpochSecond(seconds).atZone(zone)

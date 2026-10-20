@@ -9,7 +9,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import dev.opengarmin.app.ble.GarminBleClient
 import dev.opengarmin.app.data.ActivityRepository
@@ -18,8 +17,7 @@ import dev.opengarmin.app.data.PacePlanSendStatus
 import dev.opengarmin.app.data.PlannedWorkoutEntity
 import dev.opengarmin.app.data.WorkoutSendStatus
 import dev.opengarmin.app.settings.PulseSettings
-import dev.opengarmin.app.ui.screens.formatFileSize
-import dev.opengarmin.app.ui.theme.PulseColors
+import dev.opengarmin.app.util.formatFileSize
 import dev.opengarmin.protocol.FitPaceBand
 import dev.opengarmin.protocol.FitWorkout
 import dev.opengarmin.protocol.Hex
@@ -75,6 +73,32 @@ class SyncSessionController(
         val kind: UploadKind = UploadKind.WORKOUT,
     )
 
+    private data class UploadState(
+        val id: Long,
+        val name: String,
+        val sending: Boolean,
+        val success: Boolean = false,
+        val message: String,
+    )
+
+    private data class UploadRequest<T>(
+        val kind: UploadKind,
+        val initialId: Long,
+        val initialName: String,
+        val preparingMessage: String,
+        val logPrefix: String,
+        val requiresWatchBeforeSave: Boolean,
+        val noWatchMessage: String,
+        val saveFailureMessage: String,
+        val encodeFailureMessage: String,
+        val save: suspend () -> T,
+        val encode: (T) -> ByteArray,
+        val id: (T) -> Long,
+        val name: (T) -> String,
+        val onSaved: (T) -> Unit = {},
+        val onStatus: (UploadState) -> Unit,
+    )
+
     private val watchReconnectReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != BluetoothDevice.ACTION_ACL_CONNECTED) return
@@ -110,7 +134,13 @@ class SyncSessionController(
             },
             onStateChanged = { s ->
                 main.post {
-                    ui.status = s
+                    ui.phase = when (s) {
+                        "connected" -> SyncPhase.Connected
+                        "failed" -> SyncPhase.Failed
+                        "reconnecting" -> SyncPhase.Reconnecting
+                        "disconnected" -> if (syncInProgress) SyncPhase.Failed else SyncPhase.Idle
+                        else -> SyncPhase.Idle
+                    }
                     when (s) {
                         "connected" -> {
                             coordinator?.reset()
@@ -216,7 +246,6 @@ class SyncSessionController(
             isWellnessItemKnown = importer::isKnownWellnessUid,
             onFinished = { raw, decoded, itemUid ->
                 cancelWatchdog()
-                ui.lastFile = "${decoded.name} (${decoded.length()} bytes)"
                 ui.log(
                     "SYNC complete: raw=${raw.length()} decoded=${decoded.length()} (${decoded.name})",
                 )
@@ -229,14 +258,14 @@ class SyncSessionController(
             onUpToDate = {
                 cancelWatchdog()
                 ui.activityProgress = null
-                ui.status = "up to date"
+                ui.phase = SyncPhase.UpToDate
                 ui.log("SYNC up to date: all activity files already imported")
                 finishSync(success = true)
             },
             onActivityProgress = { progress ->
                 ui.activityProgress = progress.takeIf { it.total > 0 && it.done < it.total }
                 if (progress.total > 0 && progress.done < progress.total) {
-                    ui.status = "syncing"
+                    ui.phase = SyncPhase.Syncing
                     updateSyncNotification(progress = ui.activityProgress)
                 }
             },
@@ -309,29 +338,7 @@ class SyncSessionController(
     val workoutSendStatus: WorkoutSendStatus? get() = ui.workoutSendStatus
     val pacePlanSendStatus: PacePlanSendStatus? get() = ui.pacePlanSendStatus
 
-    val syncLabel: String
-        get() {
-            val progress = ui.activityProgress
-            val progressNumber = progress?.let { (it.done + 1).coerceAtMost(it.total) }
-            return when {
-                progress != null && progressNumber != null -> "Syncing $progressNumber/${progress.total}"
-                ui.status == "importing" || ui.status == "syncing" ||
-                    settings.lastSyncStatus == "syncing" -> "Syncing…"
-                ui.status == "failed" || settings.lastSyncStatus == "failed" -> "Sync failed"
-                settings.lastSyncAt != null -> "Synced ${relativeSync(settings.lastSyncAt!!)}"
-                else -> "Not synced"
-            }
-        }
-
-    val syncColor: Color
-        get() = when {
-            ui.activityProgress != null -> PulseColors.Orange
-            ui.status == "failed" || settings.lastSyncStatus == "failed" -> PulseColors.Coral
-            ui.status == "importing" || ui.status == "syncing" ||
-                settings.lastSyncStatus == "syncing" -> PulseColors.Orange
-            settings.lastSyncStatus == "synced" -> PulseColors.Teal
-            else -> PulseColors.TextMuted
-        }
+    val phase: SyncPhase get() = ui.phase
 
     fun deviceInfo(): List<Pair<String, String>> {
         val session = client?.session ?: return emptyList()
@@ -346,7 +353,7 @@ class SyncSessionController(
     }
 
     fun isSyncingOrImporting(): Boolean =
-        ui.status == "syncing" || ui.status == "importing"
+        ui.phase == SyncPhase.Syncing || ui.phase == SyncPhase.Importing
 
     // Lifecycle --------------------------------------------------------------
 
@@ -360,7 +367,7 @@ class SyncSessionController(
         val c = client ?: return
         if (!c.hasPermissions()) return
         val backgroundRunning = SyncGate.owner() == SyncGate.OWNER_BACKGROUND
-        if (!backgroundRunning && settings.lastSyncStatus == "syncing") {
+        if (!backgroundRunning && SyncPhase.fromStored(settings.lastSyncStatus) == SyncPhase.Syncing) {
             // A process death or force-stop can leave the persisted status at
             // "syncing" even though no worker survived. Do not show a fake
             // in-progress state indefinitely.
@@ -371,7 +378,7 @@ class SyncSessionController(
             )
         }
         if (backgroundRunning) {
-            ui.status = "background sync"
+            ui.phase = SyncPhase.Background
             ui.log("background sync is already running")
             return
         }
@@ -495,6 +502,7 @@ class SyncSessionController(
         ui.importedThisSync = 0
         ui.importErrorThisSync = null
         syncInProgress = true
+        ui.phase = SyncPhase.Connecting
         syncTrigger = trigger
         syncStartedAt = SystemClock.elapsedRealtime()
         disconnectWhenSyncFinishes = false
@@ -526,20 +534,20 @@ class SyncSessionController(
             }
             if (!co.hasStarted() && syncAttempts == 0) {
                 ui.log("awaiting watch-side sync (link stays open)")
-                ui.status = "awaiting watch sync"
+                ui.phase = SyncPhase.AwaitingWatch
                 armWatchdog(60_000)
                 return@Runnable
             }
             if (syncAttempts < maxSyncAttempts) {
                 syncAttempts++
                 ui.log("sync stalled; reconnecting ($syncAttempts/$maxSyncAttempts)")
-                ui.status = "reconnecting"
+                ui.phase = SyncPhase.Reconnecting
                 updateSyncNotification(status = "Reconnecting to watch…", progress = null)
                 client?.reconnect()
             } else {
                 val reason = syncFailureReason()
                 ui.log("sync failed after $syncAttempts attempts: $reason")
-                ui.status = "failed"
+                ui.phase = SyncPhase.Failed
                 finishSync(success = false, error = reason)
             }
         }
@@ -618,11 +626,11 @@ class SyncSessionController(
                 trigger = syncTrigger,
                 kind = SyncPolicy.FailureKind.TRANSIENT.storageKey,
             )
-            ui.status = "failed"
+            ui.phase = SyncPhase.Failed
             finishSyncNotification("Sync failed", reason)
         } else if (success) {
             settings.recordSyncSuccess(durationMs, syncTrigger)
-            ui.status = "up to date"
+            ui.phase = SyncPhase.UpToDate
             finishSyncNotification("Sync complete", importedSummary())
         } else {
             val reason = error ?: "Could not finish syncing."
@@ -636,7 +644,7 @@ class SyncSessionController(
                 trigger = syncTrigger,
                 kind = kind.storageKey,
             )
-            ui.status = "failed"
+            ui.phase = SyncPhase.Failed
             finishSyncNotification("Sync failed", reason)
         }
         ui.activityProgress = null
@@ -681,114 +689,133 @@ class SyncSessionController(
     // Uploads ----------------------------------------------------------------
 
     fun sendWorkout(workout: PlannedWorkoutEntity) {
-        if (ui.workoutSendStatus?.sending == true || ui.pacePlanSendStatus?.sending == true) return
-        val watch = client?.findBondedWatch()
-        if (watch == null) {
-            ui.workoutSendStatus = WorkoutSendStatus(
-                workoutId = workout.id,
-                name = workout.name,
-                sending = false,
-                success = false,
-                message = "No bonded Garmin watch found. Pair the watch first.",
-            )
-            return
-        }
-        ui.workoutSendStatus = WorkoutSendStatus(
-            workoutId = workout.id,
-            name = workout.name,
-            sending = true,
-            message = "Preparing workout…",
-        )
-        scope.launch {
-            val saved = withContext(Dispatchers.IO) {
-                runCatching { repository.saveWorkout(workout) }
-            }.getOrElse { error ->
-                ui.workoutSendStatus = WorkoutSendStatus(
-                    workoutId = workout.id,
-                    name = workout.name,
-                    sending = false,
-                    success = false,
-                    message = error.message ?: "Could not save the workout.",
-                )
-                return@launch
-            }
-            val bytes = runCatching { FitWorkout.encode(saved.toFitWorkout()) }
-                .getOrElse { error ->
+        sendUpload(
+            UploadRequest(
+                kind = UploadKind.WORKOUT,
+                initialId = workout.id,
+                initialName = workout.name,
+                preparingMessage = "Preparing workout…",
+                logPrefix = "WORKOUT",
+                requiresWatchBeforeSave = true,
+                noWatchMessage = "No bonded Garmin watch found. Pair the watch first.",
+                saveFailureMessage = "Could not save the workout.",
+                encodeFailureMessage = "Could not build the FIT workout.",
+                save = { repository.saveWorkout(workout) },
+                encode = { FitWorkout.encode(it.toFitWorkout()) },
+                id = { it.id },
+                name = { it.name },
+                onStatus = { state ->
                     ui.workoutSendStatus = WorkoutSendStatus(
-                        workoutId = saved.id,
-                        name = saved.name,
-                        sending = false,
-                        success = false,
-                        message = error.message ?: "Could not build the FIT workout.",
+                        workoutId = state.id,
+                        name = state.name,
+                        sending = state.sending,
+                        success = state.success,
+                        message = state.message,
                     )
-                    return@launch
-                }
-            val pending = PendingWorkoutSend(saved.id, saved.name, bytes)
-            pendingWorkoutSend = pending
-            ui.workoutSendStatus = WorkoutSendStatus(
-                workoutId = saved.id,
-                name = saved.name,
-                sending = true,
-                message = "Connecting to ${watch.name ?: "watch"}…",
-            )
-            ui.log("WORKOUT preparing \"${saved.name}\": ${bytes.size} FIT bytes")
-            syncNow(pending, trigger = "upload")
-        }
+                },
+            ),
+        )
     }
 
     fun sendPacePlan(plan: PacePlanEntity) {
-        if (ui.pacePlanSendStatus?.sending == true || ui.workoutSendStatus?.sending == true) return
+        sendUpload(
+            UploadRequest(
+                kind = UploadKind.PACE_PLAN,
+                initialId = plan.id,
+                initialName = plan.name,
+                preparingMessage = "Preparing pace plan…",
+                logPrefix = "PACE",
+                requiresWatchBeforeSave = false,
+                noWatchMessage = "Saved on this phone. No bonded Garmin watch found.",
+                saveFailureMessage = "Could not save the pace plan.",
+                encodeFailureMessage = "Could not build the FIT pace band.",
+                save = { repository.savePacePlan(plan) },
+                encode = { FitPaceBand.encode(it.toFitPaceBand()) },
+                id = { it.id },
+                name = { it.name },
+                onSaved = { ui.log("PACE saved \"${it.name}\" (${it.splits.size} splits)") },
+                onStatus = { state ->
+                    ui.pacePlanSendStatus = PacePlanSendStatus(
+                        planId = state.id,
+                        name = state.name,
+                        sending = state.sending,
+                        success = state.success,
+                        message = state.message,
+                    )
+                },
+            ),
+        )
+    }
+
+    private fun <T> sendUpload(request: UploadRequest<T>) {
+        if (ui.workoutSendStatus?.sending == true || ui.pacePlanSendStatus?.sending == true) return
         val watch = client?.findBondedWatch()
-        ui.pacePlanSendStatus = PacePlanSendStatus(
-            planId = plan.id,
-            name = plan.name,
-            sending = true,
-            message = "Preparing pace plan…",
+        if (request.requiresWatchBeforeSave && watch == null) {
+            request.onStatus(
+                UploadState(
+                    id = request.initialId,
+                    name = request.initialName,
+                    sending = false,
+                    message = request.noWatchMessage,
+                ),
+            )
+            return
+        }
+        request.onStatus(
+            UploadState(
+                id = request.initialId,
+                name = request.initialName,
+                sending = true,
+                message = request.preparingMessage,
+            ),
         )
         scope.launch {
-            val saved = withContext(Dispatchers.IO) {
-                runCatching { repository.savePacePlan(plan) }
-            }.getOrElse { error ->
-                ui.pacePlanSendStatus = PacePlanSendStatus(
-                    planId = plan.id,
-                    name = plan.name,
-                    sending = false,
-                    success = false,
-                    message = error.message ?: "Could not save the pace plan.",
-                )
-                return@launch
-            }
-            ui.log("PACE saved \"${saved.name}\" (${saved.splits.size} splits)")
-            if (watch == null) {
-                ui.pacePlanSendStatus = PacePlanSendStatus(
-                    planId = saved.id,
-                    name = saved.name,
-                    sending = false,
-                    success = false,
-                    message = "Saved on this phone. No bonded Garmin watch found.",
-                )
-                return@launch
-            }
-            val bytes = runCatching { FitPaceBand.encode(saved.toFitPaceBand()) }
+            val saved = withContext(Dispatchers.IO) { runCatching { request.save() } }
                 .getOrElse { error ->
-                    ui.pacePlanSendStatus = PacePlanSendStatus(
-                        planId = saved.id,
-                        name = saved.name,
-                        sending = false,
-                        success = false,
-                        message = error.message ?: "Could not build the FIT pace band.",
+                    request.onStatus(
+                        UploadState(
+                            id = request.initialId,
+                            name = request.initialName,
+                            sending = false,
+                            message = error.message ?: request.saveFailureMessage,
+                        ),
                     )
                     return@launch
                 }
-            val pending = PendingWorkoutSend(saved.id, saved.name, bytes, UploadKind.PACE_PLAN)
+            request.onSaved(saved)
+            if (watch == null) {
+                request.onStatus(
+                    UploadState(
+                        id = request.id(saved),
+                        name = request.name(saved),
+                        sending = false,
+                        message = request.noWatchMessage,
+                    ),
+                )
+                return@launch
+            }
+            val bytes = runCatching { request.encode(saved) }.getOrElse { error ->
+                request.onStatus(
+                    UploadState(
+                        id = request.id(saved),
+                        name = request.name(saved),
+                        sending = false,
+                        message = error.message ?: request.encodeFailureMessage,
+                    ),
+                )
+                return@launch
+            }
+            val pending = PendingWorkoutSend(request.id(saved), request.name(saved), bytes, request.kind)
             pendingWorkoutSend = pending
-            ui.pacePlanSendStatus = PacePlanSendStatus(
-                planId = saved.id,
-                name = saved.name,
-                sending = true,
-                message = "Connecting to ${watch.name ?: "watch"}…",
+            request.onStatus(
+                UploadState(
+                    id = request.id(saved),
+                    name = request.name(saved),
+                    sending = true,
+                    message = "Connecting to ${watch.name ?: "watch"}…",
+                ),
             )
-            ui.log("PACE preparing \"${saved.name}\": ${bytes.size} FIT bytes")
+            ui.log("${request.logPrefix} preparing \"${request.name(saved)}\": ${bytes.size} FIT bytes")
             syncNow(pending, trigger = "upload")
         }
     }
@@ -796,14 +823,5 @@ class SyncSessionController(
     private companion object {
         const val AUTO_SYNC_MIN_INTERVAL_MS = 5 * 60 * 1000L
 
-        fun relativeSync(timestamp: Long): String {
-            val deltaSeconds = ((System.currentTimeMillis() - timestamp) / 1000).coerceAtLeast(0)
-            return when {
-                deltaSeconds < 60 -> "just now"
-                deltaSeconds < 3600 -> "${deltaSeconds / 60} min ago"
-                deltaSeconds < 86_400 -> "${deltaSeconds / 3600} h ago"
-                else -> "${deltaSeconds / 86_400} d ago"
-            }
-        }
     }
 }
