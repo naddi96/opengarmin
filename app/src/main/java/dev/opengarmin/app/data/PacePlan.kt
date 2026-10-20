@@ -306,28 +306,7 @@ object PacePlanCalculator {
         val scale = goalSeconds / raw.sum()
         val exact = raw.map { it * scale }
         val seconds = exact.map { kotlin.math.floor(it).toInt().coerceAtLeast(1) }.toMutableList()
-        var remaining = goalSeconds - seconds.sum()
-        if (remaining > 0) {
-            val order = exact.indices.sortedByDescending { exact[it] - kotlin.math.floor(exact[it]) }
-            var cursor = 0
-            while (remaining > 0) {
-                val index = order[cursor % order.size]
-                seconds[index] = seconds[index] + 1
-                remaining--
-                cursor++
-            }
-        } else if (remaining < 0) {
-            val order = exact.indices.sortedBy { exact[it] - kotlin.math.floor(exact[it]) }
-            var cursor = 0
-            while (remaining < 0) {
-                val index = order[cursor % order.size]
-                if (seconds[index] > 1) {
-                    seconds[index] = seconds[index] - 1
-                    remaining++
-                }
-                cursor++
-            }
-        }
+        distributeRemainder(exact, seconds, goalSeconds - seconds.sum())
 
         var cumulativeTime = 0
         var cumulativeDistance = 0.0
@@ -344,6 +323,38 @@ object PacePlanCalculator {
                 cumulativeSeconds = cumulativeTime,
                 gainMeters = gains.getOrElse(index) { 0.0 },
             )
+        }
+    }
+
+    /**
+     * Spreads [remainder] whole seconds across the floored [seconds] so they add
+     * up to the goal. Positive remainders go to the largest fractional parts
+     * first, negative remainders come off the smallest, wrapping as needed.
+     */
+    private fun distributeRemainder(
+        exact: List<Double>,
+        seconds: MutableList<Int>,
+        remainder: Int,
+    ) {
+        if (remainder == 0) return
+        val adding = remainder > 0
+        val order = if (adding) {
+            exact.indices.sortedByDescending { exact[it] - kotlin.math.floor(exact[it]) }
+        } else {
+            exact.indices.sortedBy { exact[it] - kotlin.math.floor(exact[it]) }
+        }
+        var remaining = remainder
+        var cursor = 0
+        while (remaining != 0) {
+            val index = order[cursor % order.size]
+            if (adding) {
+                seconds[index] = seconds[index] + 1
+                remaining--
+            } else if (seconds[index] > 1) {
+                seconds[index] = seconds[index] - 1
+                remaining++
+            }
+            cursor++
         }
     }
 
