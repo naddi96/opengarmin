@@ -113,17 +113,23 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
   not included. The archive is unencrypted, so store it somewhere you trust.
 - **Activities:** weekly summary, sport filters (Run, Ride, Cardio, Strength,
   Walk, and an Other bucket for every remaining sport), row-to-featured
-  selection, real GPS/HR trace, heart-rate zone bar, full activity detail with
-  map, HR/elevation charts, laps, local FIT/GPX/TCX/CSV export, and the FIT data
-  explorer. Export uses the system document picker, copies the original FIT file
-  when it is still on disk, and never uploads anything. See
+  selection, real GPS/HR trace with a speed-coloured track (blue slower,
+  red faster), heart-rate zone bar, full activity detail with
+  Garmin-style Overview, Stats, Charts and Laps tabs, every session metric the
+  watch stores (pace/speed, moving time, run/walk, heart rate, training effect,
+  power, running dynamics, elevation, calories, Body Battery and watch zone
+  breakdowns), color-coded pinch-zoom/pan/tap charts for time or distance,
+  local FIT/GPX/TCX/CSV export, and the FIT data explorer. Export uses the
+  system document picker, copies the original FIT file when it is still on
+  disk, and never uploads anything. See
   [`docs/export.md`](docs/export.md) for the format and CSV-column reference.
 - **Coach:** OpenAI-compatible provider presets (OpenAI, DeepSeek, OpenRouter,
   Ollama, LM Studio, vLLM, Custom), encrypted API keys, model management,
   connection test, streaming Markdown chat with cancel, typed read-only health
   tools, coach-authored workout plans saved to the Plan tab, code-generated
   evidence chips, and inline trend/activity charts (including overlaid
-  multi-workout comparisons). Conversation history keeps up to 50 chats locally;
+  multi-workout comparisons) with pinch-zoom, pan and tap-to-inspect values.
+  Conversation history keeps up to 50 chats locally;
   reopen or delete old conversations from the Coach header.
 - **Local-first:** no account, backend, telemetry, or cloud copy.
 

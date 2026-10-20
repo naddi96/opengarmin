@@ -47,6 +47,10 @@ were read directly.
 | `color/blue` | `#8FA8FF` | Sleep, Strength |
 | `color/orange` | `#FFB45E` | Calories, Walk? (see note) |
 | `color/yellow` | `#FFD166` | Zone 3 |
+| `color/magenta` | `#E879F9` | Power charts |
+| `color/violet` | `#B39DFF` | Stride-length charts |
+| `color/route-slow` | `#4A90E2` | GPS track segments slower than the activity's speed range |
+| `color/route-fast` | `#E53935` | GPS track segments faster than the activity's speed range |
 | `color/zone-4` | `#FF9F5E` | Zone 4 |
 | `color/zone-5` | `#FF6B57` | Zone 5 |
 

@@ -25,6 +25,10 @@ object PulseColors {
     val Blue = Color(0xFF8FA8FF)
     val Orange = Color(0xFFFFB45E)
     val Yellow = Color(0xFFFFD166)
+    val Magenta = Color(0xFFE879F9)
+    val Violet = Color(0xFFB39DFF)
+    val RouteSlow = Color(0xFF4A90E2)
+    val RouteFast = Color(0xFFE53935)
     val Zone4 = Color(0xFFFF9F5E)
     val Zone5 = Color(0xFFFF6B57)
 

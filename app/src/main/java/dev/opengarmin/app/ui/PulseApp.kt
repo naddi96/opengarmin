@@ -11,9 +11,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +33,7 @@ import dev.opengarmin.app.coach.GpsSummary
 import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.ActivityExportFormat
+import dev.opengarmin.app.data.ActivityInsights
 import dev.opengarmin.app.data.FitMessageEntity
 import dev.opengarmin.app.data.LapEntity
 import dev.opengarmin.app.data.PaceCourse
@@ -84,6 +88,7 @@ fun PulseApp(
     selectedActivity: ActivityEntity?,
     selectedRecords: List<RecordEntity>,
     selectedLaps: List<LapEntity>,
+    selectedInsights: ActivityInsights?,
     selectedDynamics: RunningDynamicsSummary?,
     selectedGps: GpsSummary?,
     selectedFitExportAvailable: Boolean,
@@ -127,12 +132,14 @@ fun PulseApp(
     var tabName by rememberSaveable { mutableStateOf(PulseTab.Today.name) }
     var routeName by rememberSaveable { mutableStateOf(AppRoute.Tabs.name) }
     var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var dataId by rememberSaveable { mutableStateOf<Long?>(null) }
     var paceRunPlan by remember { mutableStateOf<PacePlanEntity?>(null) }
     var providerReturnName by rememberSaveable { mutableStateOf(AppRoute.Settings.name) }
     var providerVersion by remember { mutableIntStateOf(0) }
     val tab = PulseTab.entries.firstOrNull { it.name == tabName } ?: PulseTab.Today
     val route = runCatching { AppRoute.valueOf(routeName) }.getOrDefault(AppRoute.Tabs)
     val detailActivity = activities.firstOrNull { it.id == detailId }
+    val dataTarget = activities.firstOrNull { it.id == dataId } ?: dataActivity ?: detailActivity
     val provider: ProviderConfig = remember(providerVersion, route) { providerStore.load() }
 
     fun openSettings() {
@@ -159,6 +166,7 @@ fun PulseApp(
         when (route) {
             AppRoute.Data -> {
                 onCloseData()
+                dataId = null
                 routeName = if (detailActivity != null) AppRoute.Detail.name else AppRoute.Tabs.name
             }
             AppRoute.Trends -> routeName = AppRoute.Tabs.name
@@ -306,10 +314,20 @@ fun PulseApp(
             }
             AppRoute.Detail -> {
                 if (detailActivity != null) {
+                    // After a configuration change (rotation) the activity's
+                    // record/insight state is rebuilt asynchronously. Reload it
+                    // if the remembered detail route is restored before the
+                    // selection state is.
+                    LaunchedEffect(detailActivity.id) {
+                        if (selectedActivity?.id != detailActivity.id) {
+                            onSelectActivity(detailActivity)
+                        }
+                    }
                     ActivityDetailScreen(
                         activity = detailActivity,
                         records = selectedRecords,
                         laps = selectedLaps,
+                        insights = selectedInsights,
                         dynamics = selectedDynamics,
                         gps = selectedGps,
                         maxHeartRate = settings.maxHeartRate,
@@ -323,6 +341,7 @@ fun PulseApp(
                             routeName = AppRoute.Tabs.name
                         },
                         onExploreData = {
+                            dataId = detailActivity.id
                             onExploreData(detailActivity)
                             routeName = AppRoute.Data.name
                         },
@@ -372,18 +391,26 @@ fun PulseApp(
                 },
             )
             AppRoute.Data -> {
-                val activity = dataActivity ?: detailActivity
+                val activity = dataTarget
                 if (activity != null) {
-                    DataExplorer(
-                        activity = activity,
-                        messages = dataMessages,
-                        loading = dataLoading,
-                        onBack = {
-                            onCloseData()
-                            routeName = if (detailActivity != null) AppRoute.Detail.name else AppRoute.Tabs.name
-                        },
-                        modifier = Modifier.fillMaxSize().padding(PulseSpacing.md),
-                    )
+                    LaunchedEffect(activity.id) {
+                        if (!dataLoading && dataMessages.isEmpty()) {
+                            onExploreData(activity)
+                        }
+                    }
+                    CompositionLocalProvider(LocalContentColor provides PulseColors.Text) {
+                        DataExplorer(
+                            activity = activity,
+                            messages = dataMessages,
+                            loading = dataLoading,
+                            onBack = {
+                                onCloseData()
+                                dataId = null
+                                routeName = if (detailActivity != null) AppRoute.Detail.name else AppRoute.Tabs.name
+                            },
+                            modifier = Modifier.fillMaxSize().padding(PulseSpacing.md),
+                        )
+                    }
                 } else {
                     EmptyState(
                         title = "No activity selected",

@@ -258,6 +258,9 @@ interface ActivityDao {
     @Query("SELECT * FROM fit_messages WHERE activityId = :activityId AND messageName = :messageName ORDER BY orderIndex")
     suspend fun messagesByName(activityId: Long, messageName: String): List<FitMessageEntity>
 
+    @Query("SELECT * FROM fit_messages WHERE activityId = :activityId AND messageName IN (:messageNames) ORDER BY orderIndex")
+    suspend fun messagesByNames(activityId: Long, messageNames: List<String>): List<FitMessageEntity>
+
     @Query("SELECT COUNT(*) FROM fit_messages WHERE activityId = :activityId")
     suspend fun messageCount(activityId: Long): Int
 
@@ -709,6 +712,24 @@ class ActivityRepository(private val database: () -> AppDatabase) {
 
     suspend fun messagesByName(activityId: Long, messageName: String): List<FitMessageEntity> =
         dao.messagesByName(activityId, messageName)
+
+    suspend fun messagesByNames(activityId: Long, messageNames: List<String>): List<FitMessageEntity> =
+        dao.messagesByNames(activityId, messageNames)
+
+    /**
+     * Builds the Garmin Connect-style detail model for one activity. Only the
+     * messages needed for statistics and charts are loaded.
+     */
+    suspend fun activityInsights(activityId: Long): ActivityInsights? {
+        val activity = dao.activityById(activityId) ?: return null
+        val records = dao.records(activityId)
+        val laps = dao.laps(activityId)
+        val messages = dao.messagesByNames(
+            activityId,
+            listOf("session", "activity_metrics", "msg_140", "user_metrics", "msg_79", "time_in_zone", "lap", "record"),
+        )
+        return ActivityAnalysis.build(activity, records, laps, messages)
+    }
 
     suspend fun wellnessSamples(dayId: Long): List<WellnessSampleEntity> = dao.wellnessSamples(dayId)
 

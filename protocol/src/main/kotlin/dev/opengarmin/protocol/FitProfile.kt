@@ -532,6 +532,7 @@ object FitProfile {
             84 to FieldInfo("stance_time_balance", "percent", 100.0, 0.0),
             85 to FieldInfo("step_length", "mm", 10.0, 0.0),
             87 to FieldInfo("cycle_length16", "m", 100.0, 0.0),
+            90 to FieldInfo("performance_condition", null, 1.0, 0.0),
             91 to FieldInfo("absolute_pressure", "Pa", 1.0, 0.0),
             92 to FieldInfo("depth", "m", 1000.0, 0.0),
             93 to FieldInfo("next_stop_depth", "m", 1000.0, 0.0),
