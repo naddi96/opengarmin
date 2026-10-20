@@ -219,87 +219,97 @@ class GarminSession(
         if (cid != clientId) return
 
         when (type) {
-            MlControl.REGISTER_RESP -> {
-                val resp = MlControl.parseRegisterResponse(data) ?: return
-                if (resp.status != 0x00) {
-                    log("ML: register service=0x%04x failed status=%d".format(resp.service, resp.status))
-                    if (resp.service == ServiceId.GFDI && gfdiReliable) {
-                        gfdiReliable = false
-                        log("ML: reliable GFDI rejected; falling back to ML")
-                        sink(MlControl.closeAllRequest(clientId))
-                        return
-                    }
-                    if (resp.status == 0x03 && !recovering) { // ALREADY_IN_USE
-                        recovering = true
-                        registerRetries++
-                        if (registerRetries <= 4) {
-                            later(600) { sink(MlControl.closeAllRequest(clientId)) }
-                        } else {
-                            log("ML: GFDI still in use after retries; will retry on next reconnect")
-                        }
-                    }
-                    return
-                }
-                if (resp.service == ServiceId.GFDI) recovering = false
-                if (resp.reliable) reliableHandles.add(resp.handle) else reliableHandles.remove(resp.handle)
-                onServiceRegistered?.invoke(resp.service, resp.handle, resp.reliable)
-                when (resp.service) {
-                    ServiceId.GFDI -> {
-                        gfdiHandle = resp.handle
-                        gfdiReliable = resp.reliable
-                        registerRetries = 0
-                        gfdiMlr = if (resp.reliable) {
-                            MlrReceiver { _, data ->
-                                for (b in data) cobsBuffer.add(b)
-                                drainCobs()
-                            }
-                        } else {
-                            null
-                        }
-                        mlrSendSeq = 0
-                        log("ML: GFDI on handle ${resp.handle} reliable=${resp.reliable}")
-                        while (pendingGfdi.isNotEmpty()) sendGfdi(pendingGfdi.removeFirst())
-                        onReady?.invoke()
-                    }
-                    ServiceId.REGISTRATION -> {
-                        registrationHandle = resp.handle
-                        log("ML: REGISTRATION on handle ${resp.handle}")
-                        queryRegistration()
-                    }
-                }
-            }
-            MlControl.CLOSE_ALL_RESP -> {
-                log("ML: close-all done, registering GFDI + REGISTRATION")
-                recovering = false
-                gfdiHandle = -1
-                registrationHandle = -1
-                val registerAll = {
-                    sink(MlControl.registerRequest(clientId, ServiceId.GFDI, reliable = gfdiReliable))
-                    sink(MlControl.registerRequest(clientId, ServiceId.REGISTRATION, reliable = false))
-                    sink(MlControl.registerRequest(clientId, ServiceId.KEEP_ALIVE, reliable = false))
-                }
-                if (registrationDelayMs > 0) later(registrationDelayMs) { registerAll() } else registerAll()
-            }
-            MlControl.CLOSE_HANDLE_RESP -> {
-                if (data.size >= 13) {
-                    val service = Gfdi.le16(data, 9)
-                    val raw = data[11].toInt() and 0xFF
-                    val reliable = (service == ServiceId.GFDI && gfdiReliable) || (raw and 0x80) != 0
-                    val handle = if (reliable) raw and 0x07 else raw
-                    log("ML: handle closed service=0x%04x handle=%d raw=0x%02x".format(service, handle, raw))
-                    onServiceClosed?.invoke(service)
-                    if (service == ServiceId.GFDI && handle == gfdiHandle && !recovering) {
-                        recovering = true
-                        log("ML: GFDI closed by device; cycling close-all")
-                        reliableHandles.remove(gfdiHandle)
-                        gfdiHandle = -1
-                        gfdiMlr = null
-                        later(250) { sink(MlControl.closeAllRequest(clientId)) }
+            MlControl.REGISTER_RESP -> handleRegisterResponse(data)
+            MlControl.CLOSE_ALL_RESP -> handleCloseAllResponse()
+            MlControl.CLOSE_HANDLE_RESP -> handleCloseHandleResponse(data)
+        }
+    }
+
+    private fun handleRegisterResponse(data: ByteArray) {
+        val resp = MlControl.parseRegisterResponse(data) ?: return
+        if (resp.status != 0x00) {
+            handleRegisterFailure(resp)
+            return
+        }
+        if (resp.service == ServiceId.GFDI) recovering = false
+        if (resp.reliable) reliableHandles.add(resp.handle) else reliableHandles.remove(resp.handle)
+        onServiceRegistered?.invoke(resp.service, resp.handle, resp.reliable)
+        when (resp.service) {
+            ServiceId.GFDI -> {
+                gfdiHandle = resp.handle
+                gfdiReliable = resp.reliable
+                registerRetries = 0
+                gfdiMlr = if (resp.reliable) {
+                    MlrReceiver { _, data ->
+                        for (b in data) cobsBuffer.add(b)
+                        drainCobs()
                     }
                 } else {
-                    log("ML: handle closed")
+                    null
                 }
+                mlrSendSeq = 0
+                log("ML: GFDI on handle ${resp.handle} reliable=${resp.reliable}")
+                while (pendingGfdi.isNotEmpty()) sendGfdi(pendingGfdi.removeFirst())
+                onReady?.invoke()
             }
+            ServiceId.REGISTRATION -> {
+                registrationHandle = resp.handle
+                log("ML: REGISTRATION on handle ${resp.handle}")
+                queryRegistration()
+            }
+        }
+    }
+
+    private fun handleRegisterFailure(resp: MlControl.RegisterResponse) {
+        log("ML: register service=0x%04x failed status=%d".format(resp.service, resp.status))
+        if (resp.service == ServiceId.GFDI && gfdiReliable) {
+            gfdiReliable = false
+            log("ML: reliable GFDI rejected; falling back to ML")
+            sink(MlControl.closeAllRequest(clientId))
+            return
+        }
+        if (resp.status == 0x03 && !recovering) { // ALREADY_IN_USE
+            recovering = true
+            registerRetries++
+            if (registerRetries <= 4) {
+                later(600) { sink(MlControl.closeAllRequest(clientId)) }
+            } else {
+                log("ML: GFDI still in use after retries; will retry on next reconnect")
+            }
+        }
+    }
+
+    private fun handleCloseAllResponse() {
+        log("ML: close-all done, registering GFDI + REGISTRATION")
+        recovering = false
+        gfdiHandle = -1
+        registrationHandle = -1
+        val registerAll = {
+            sink(MlControl.registerRequest(clientId, ServiceId.GFDI, reliable = gfdiReliable))
+            sink(MlControl.registerRequest(clientId, ServiceId.REGISTRATION, reliable = false))
+            sink(MlControl.registerRequest(clientId, ServiceId.KEEP_ALIVE, reliable = false))
+        }
+        if (registrationDelayMs > 0) later(registrationDelayMs) { registerAll() } else registerAll()
+    }
+
+    private fun handleCloseHandleResponse(data: ByteArray) {
+        if (data.size >= 13) {
+            val service = Gfdi.le16(data, 9)
+            val raw = data[11].toInt() and 0xFF
+            val reliable = (service == ServiceId.GFDI && gfdiReliable) || (raw and 0x80) != 0
+            val handle = if (reliable) raw and 0x07 else raw
+            log("ML: handle closed service=0x%04x handle=%d raw=0x%02x".format(service, handle, raw))
+            onServiceClosed?.invoke(service)
+            if (service == ServiceId.GFDI && handle == gfdiHandle && !recovering) {
+                recovering = true
+                log("ML: GFDI closed by device; cycling close-all")
+                reliableHandles.remove(gfdiHandle)
+                gfdiHandle = -1
+                gfdiMlr = null
+                later(250) { sink(MlControl.closeAllRequest(clientId)) }
+            }
+        } else {
+            log("ML: handle closed")
         }
     }
 
