@@ -96,11 +96,18 @@ SharedPreferences listener, so the status card refreshes when a worker finishes.
 
 ## Notifications
 
-The worker runs as a `connectedDevice` foreground worker while it transfers.
-The ongoing notification shows connection, activity progress, and completion or
-failure. A separate dismissible notification remains after success or a retryable
-failure. Permanent setup failures are kept in Settings/Today instead of posting
-the same notification on every interval.
+The worker tries to run as a `connectedDevice` foreground worker while it
+transfers. The ongoing notification shows connection, activity progress, and
+completion or failure. A separate dismissible notification remains after success
+or a retryable failure. Permanent setup failures are kept in Settings/Today
+instead of posting the same notification on every interval.
+
+On Android 12+, the OS may deny a foreground-service start when a periodic
+worker begins while the app is in the background
+(`startForegroundService() not allowed`). That must not fail the sync: the
+worker logs the denial, continues headless within the JobScheduler execution
+window, and posts the final notification normally. The foreground notification
+is used whenever the OS permits it.
 
 The channel is low-importance, silent, and private-visibility; notification
 content is hidden on the lock screen unless the user changes the system setting.

@@ -72,14 +72,40 @@ class WatchSyncWorker(
         settings.recordSyncStarted("background")
         val updates = Channel<ForegroundState>(Channel.CONFLATED)
         val updateScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val foregroundAvailable = AtomicBoolean(false)
         val notifier = updateScope.launch {
             for (state in updates) {
-                runCatching { setForeground(createForegroundInfo(state)) }
+                if (!foregroundAvailable.get()) continue
+                try {
+                    setForeground(createForegroundInfo(state))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.d(TAG, "foreground update unavailable: ${error.message}")
+                }
             }
         }
         var outcome: BackgroundSyncOutcome
         try {
-            setForeground(createForegroundInfo(ForegroundState("Connecting to watch…", null, null)))
+            // Android 12+ can deny a foreground-service start from a periodic
+            // worker while the app is in the background. That must not abort
+            // the sync: the JobScheduler job still has its ~10-minute window,
+            // and the final notification is posted normally. Keep using the
+            // foreground notification whenever the OS allows it.
+            try {
+                setForeground(
+                    createForegroundInfo(ForegroundState("Connecting to watch…", null, null)),
+                )
+                foregroundAvailable.set(true)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.d(
+                    TAG,
+                    "foreground service unavailable; running headless: " +
+                        "${error.javaClass.simpleName}: ${error.message}",
+                )
+            }
             outcome = runBackgroundSync { state -> updates.trySend(state) }
         } catch (cancelled: CancellationException) {
             val durationMs = SystemClock.elapsedRealtime() - startedAt

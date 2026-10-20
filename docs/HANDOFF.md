@@ -702,3 +702,21 @@ Changes:
 The existing stuck periodic WorkSpec may still wait for its previously scheduled
 run; the next period after this build either succeeds or returns success and
 resets the attempt count.
+
+### Follow-up: foreground-service start denial
+
+A genuinely background periodic run (app process `TRNB`, no visible activity)
+failed in 26 ms at `setForeground()`:
+
+```text
+Background started FGS: Disallowed ... code:DENIED
+startForegroundService() not allowed: service
+dev.opengarmin.app/androidx.work.impl.foreground.SystemForegroundService
+```
+
+That OS restriction (Android 12+ background FGS launch rules) is not a sync
+failure. The worker now catches the denial, logs
+`foreground service unavailable; running headless`, and continues in the
+JobScheduler execution window. The final notification still posts; the progress
+notification is used only when the OS allows the foreground worker. This path
+was verified by triggering the worker with the app backgrounded.
