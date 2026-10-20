@@ -382,87 +382,30 @@ private fun WorkoutEditor(
     var editRequest by remember { mutableStateOf<StepEditRequest?>(null) }
 
     fun updateStep(request: StepEditRequest, transform: (PlannedStep.Single) -> PlannedStep.Single) {
-        steps = if (request.parentId == null) {
-            steps.map { item ->
-                if (item is PlannedStep.Single && item.id == request.step.id) transform(item) else item
-            }
-        } else {
-            steps.map { item ->
-                if (item is PlannedStep.Repeat && item.id == request.parentId) {
-                    item.copy(
-                        children = item.children.map { child ->
-                            if (child.id == request.step.id) transform(child) else child
-                        },
-                    )
-                } else {
-                    item
-                }
-            }
-        }
+        steps = steps.updateStep(request.parentId, request.step.id, transform)
     }
 
     fun addStep(request: StepEditRequest) {
-        steps = if (request.parentId == null) {
-            steps + request.step
-        } else {
-            steps.map { item ->
-                if (item is PlannedStep.Repeat && item.id == request.parentId) {
-                    item.copy(children = item.children + request.step)
-                } else {
-                    item
-                }
-            }
-        }
+        steps = steps.addStep(request.parentId, request.step)
     }
 
     fun removeStep(request: StepEditRequest) {
-        steps = if (request.parentId == null) {
-            steps.filterNot { it is PlannedStep.Single && it.id == request.step.id }
-        } else {
-            steps.map { item ->
-                if (item is PlannedStep.Repeat && item.id == request.parentId) {
-                    item.copy(children = item.children.filterNot { it.id == request.step.id })
-                } else {
-                    item
-                }
-            }
-        }
+        steps = steps.removeStep(request.parentId, request.step.id)
     }
 
     fun moveTop(step: PlannedStep.Single, direction: Int) {
-        val index = steps.indexOfFirst { it is PlannedStep.Single && it.id == step.id }
-        val target = index + direction
-        if (index < 0 || target !in steps.indices) return
-        val copy = steps.toMutableList()
-        val item = copy.removeAt(index)
-        copy.add(target, item)
-        steps = copy
+        steps = steps.moveStep(step.id, direction)
     }
 
     fun moveChild(repeatId: String, child: PlannedStep.Single, direction: Int) {
-        steps = steps.map { item ->
-            if (item is PlannedStep.Repeat && item.id == repeatId) {
-                val index = item.children.indexOfFirst { it.id == child.id }
-                val target = index + direction
-                if (index < 0 || target !in item.children.indices) return@map item
-                val children = item.children.toMutableList()
-                val moved = children.removeAt(index)
-                children.add(target, moved)
-                item.copy(children = children)
-            } else {
-                item
-            }
+        steps = steps.updateRepeat(repeatId) { repeat ->
+            val index = repeat.children.indexOfFirst { it.id == child.id }
+            repeat.copy(children = repeat.children.moveBy(index, direction))
         }
     }
 
     fun moveRepeat(repeat: PlannedStep.Repeat, direction: Int) {
-        val index = steps.indexOfFirst { it is PlannedStep.Repeat && it.id == repeat.id }
-        val target = index + direction
-        if (index < 0 || target !in steps.indices) return
-        val copy = steps.toMutableList()
-        val item = copy.removeAt(index)
-        copy.add(target, item)
-        steps = copy
+        steps = steps.moveStep(repeat.id, direction)
     }
 
     fun buildEntity(): PlannedWorkoutEntity {
@@ -708,6 +651,60 @@ private fun WorkoutEditor(
             },
         )
     }
+}
+
+/** Applies [transform] to the repeat with [repeatId], leaving the other steps untouched. */
+private fun List<PlannedStep>.updateRepeat(
+    repeatId: String,
+    transform: (PlannedStep.Repeat) -> PlannedStep.Repeat,
+): List<PlannedStep> = map { item ->
+    if (item is PlannedStep.Repeat && item.id == repeatId) transform(item) else item
+}
+
+/** Applies [transform] to a single step at the top level or inside the repeat with [parentId]. */
+private fun List<PlannedStep>.updateStep(
+    parentId: String?,
+    stepId: String,
+    transform: (PlannedStep.Single) -> PlannedStep.Single,
+): List<PlannedStep> = if (parentId == null) {
+    map { item -> if (item is PlannedStep.Single && item.id == stepId) transform(item) else item }
+} else {
+    updateRepeat(parentId) { repeat ->
+        repeat.copy(
+            children = repeat.children.map { child -> if (child.id == stepId) transform(child) else child },
+        )
+    }
+}
+
+/** Appends [step] at the top level or to the repeat with [parentId]. */
+private fun List<PlannedStep>.addStep(parentId: String?, step: PlannedStep.Single): List<PlannedStep> =
+    if (parentId == null) {
+        this + step
+    } else {
+        updateRepeat(parentId) { repeat -> repeat.copy(children = repeat.children + step) }
+    }
+
+/** Removes the step with [stepId] from the top level or from the repeat with [parentId]. */
+private fun List<PlannedStep>.removeStep(parentId: String?, stepId: String): List<PlannedStep> =
+    if (parentId == null) {
+        filterNot { it is PlannedStep.Single && it.id == stepId }
+    } else {
+        updateRepeat(parentId) { repeat ->
+            repeat.copy(children = repeat.children.filterNot { child -> child.id == stepId })
+        }
+    }
+
+/** Moves the top-level step with [stepId] one slot in [direction] (-1 up, 1 down). */
+private fun List<PlannedStep>.moveStep(stepId: String, direction: Int): List<PlannedStep> =
+    moveBy(indexOfFirst { it.id == stepId }, direction)
+
+/** Moves the item at [index] one slot in [direction], or returns the list unchanged when out of bounds. */
+private fun <T> List<T>.moveBy(index: Int, direction: Int): List<T> {
+    val target = index + direction
+    if (index !in indices || target !in indices) return this
+    val copy = toMutableList()
+    copy.add(target, copy.removeAt(index))
+    return copy
 }
 
 @Composable
