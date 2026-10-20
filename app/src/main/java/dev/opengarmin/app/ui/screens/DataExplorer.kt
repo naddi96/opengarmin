@@ -38,8 +38,8 @@ import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.coach.ChartPoint
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.FitMessageEntity
-import dev.opengarmin.app.formatDate
-import dev.opengarmin.app.formatDuration
+import dev.opengarmin.app.util.formatDate
+import dev.opengarmin.app.util.formatElapsedTime
 import dev.opengarmin.app.sportName
 import dev.opengarmin.app.ui.components.InteractiveChart
 import dev.opengarmin.app.ui.components.InteractiveChartStyle
@@ -411,7 +411,7 @@ private fun fieldLabel(name: String): String = when (name) {
 
 private fun formatPlotX(value: Float, xField: String): String =
     if (xField == "timestamp") {
-        formatDuration(value.toDouble())
+        formatElapsedTime(value.toDouble())
     } else {
         formatCompact(value.toDouble())
     }

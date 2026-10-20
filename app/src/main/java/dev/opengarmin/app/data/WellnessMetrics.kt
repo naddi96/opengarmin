@@ -1,5 +1,6 @@
 package dev.opengarmin.app.data
 
+import dev.opengarmin.app.util.formatHoursMinutes
 import java.time.LocalDate
 
 /**
@@ -68,12 +69,7 @@ object WellnessMetrics {
         return recent.firstNotNullOfOrNull { it.hrvWeeklyAvg?.takeIf { value -> value > 0.0 } }
     }
 
-    fun formatSleepDuration(seconds: Int): String {
-        val total = seconds.coerceAtLeast(0)
-        val hours = total / 3600
-        val minutes = (total % 3600) / 60
-        return if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
-    }
+    fun formatSleepDuration(seconds: Int): String = formatHoursMinutes(seconds.toLong())
 
     fun formatHours(hours: Double): String {
         val totalMinutes = (hours * 60.0).toInt().coerceAtLeast(0)

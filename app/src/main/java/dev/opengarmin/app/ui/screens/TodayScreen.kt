@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessMetrics
 import dev.opengarmin.app.data.WellnessSampleEntity
-import dev.opengarmin.app.formatWellnessDate
+import dev.opengarmin.app.util.formatWellnessDate
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivitySyncProgress
 import dev.opengarmin.app.ui.components.CoachInsightCard

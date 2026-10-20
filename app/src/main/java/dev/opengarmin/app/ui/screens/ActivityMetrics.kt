@@ -5,7 +5,7 @@ import dev.opengarmin.app.data.ActivityZoneSet
 import dev.opengarmin.app.data.HeartRateZoneSample
 import dev.opengarmin.app.data.HeartRateZones
 import dev.opengarmin.app.data.RecordEntity
-import dev.opengarmin.app.formatPace
+import dev.opengarmin.app.util.formatPaceWithUnit
 import dev.opengarmin.app.coach.SportCategory
 import dev.opengarmin.app.coach.categoryForSport
 
@@ -46,7 +46,7 @@ fun activityPaceLabel(activity: ActivityEntity): String = when (
     SportCategory.Strength -> "Strength session"
     SportCategory.Walk, SportCategory.Run ->
         if (activity.distanceMeters > 0) {
-            "Avg pace ${formatPace(activity.durationSeconds, activity.distanceMeters)}"
+            "Avg pace ${formatPaceWithUnit(activity.durationSeconds, activity.distanceMeters)}"
         } else {
             "Recorded on watch"
         }

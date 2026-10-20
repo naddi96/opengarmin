@@ -38,9 +38,10 @@ import dev.opengarmin.app.coach.SportCategory
 import dev.opengarmin.app.coach.categoryForSport
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.RecordEntity
-import dev.opengarmin.app.formatDate
-import dev.opengarmin.app.formatDistance
-import dev.opengarmin.app.formatDuration
+import dev.opengarmin.app.util.formatHoursMinutes
+import dev.opengarmin.app.util.formatDate
+import dev.opengarmin.app.util.formatDistanceKm
+import dev.opengarmin.app.util.formatElapsedTime
 import dev.opengarmin.app.ui.components.ActivityTrace
 import dev.opengarmin.app.ui.components.CompactCard
 import dev.opengarmin.app.ui.components.EmptyState
@@ -113,7 +114,7 @@ fun ActivitiesScreen(
                     Text("Last 7 days", style = MaterialTheme.typography.labelMedium, color = PulseColors.TextMuted)
                     Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
                         TinyStat("workouts", "${week.size}", Modifier.weight(1f))
-                        TinyStat("active time", formatHoursMinutes(weekSeconds), Modifier.weight(1f))
+                        TinyStat("active time", formatHoursMinutes(weekSeconds.toLong()), Modifier.weight(1f))
                         TinyStat("kcal burned", "%,d".format(weekCalories), Modifier.weight(1f))
                     }
                 }
@@ -241,8 +242,8 @@ private fun FeaturedActivity(
                     verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
-                        TinyStat("Distance", formatDistance(activity.distanceMeters), Modifier.weight(1f))
-                        TinyStat("Duration", formatDuration(activity.durationSeconds), Modifier.weight(1f))
+                        TinyStat("Distance", formatDistanceKm(activity.distanceMeters), Modifier.weight(1f))
+                        TinyStat("Duration", formatElapsedTime(activity.durationSeconds), Modifier.weight(1f))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
                         TinyStat("Avg HR", activity.avgHeartRate?.let { "$it bpm" } ?: "—", Modifier.weight(1f))
@@ -318,7 +319,7 @@ private fun ActivityRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    "${formatDate(activity.startTime)} · ${formatDistance(activity.distanceMeters)} · ${formatDuration(activity.durationSeconds)}",
+                    "${formatDate(activity.startTime)} · ${formatDistanceKm(activity.distanceMeters)} · ${formatElapsedTime(activity.durationSeconds)}",
                     style = MaterialTheme.typography.labelMedium,
                     color = PulseColors.TextMuted,
                     maxLines = 1,
@@ -342,11 +343,4 @@ private fun ActivityRow(
             )
         }
     }
-}
-
-private fun formatHoursMinutes(seconds: Double): String {
-    val total = seconds.toLong().coerceAtLeast(0)
-    val hours = total / 3600
-    val minutes = (total % 3600) / 60
-    return if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
 }

@@ -62,9 +62,10 @@ import dev.opengarmin.app.data.LapEntity
 import dev.opengarmin.app.data.LapInsights
 import dev.opengarmin.app.data.RecordEntity
 import dev.opengarmin.app.data.RunWalkSplit
-import dev.opengarmin.app.formatDate
-import dev.opengarmin.app.formatDistance
-import dev.opengarmin.app.formatDuration
+import dev.opengarmin.app.util.formatPacePerKm
+import dev.opengarmin.app.util.formatDate
+import dev.opengarmin.app.util.formatDistanceKm
+import dev.opengarmin.app.util.formatElapsedTime
 import dev.opengarmin.app.ui.components.DividerLine
 import dev.opengarmin.app.ui.components.EmptyState
 import dev.opengarmin.app.ui.components.IconButtonRound
@@ -248,12 +249,12 @@ private fun ActivityOverview(
             verticalArrangement = Arrangement.spacedBy(PulseSpacing.lg),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
-                TinyStat("Distance", formatDistance(distance), Modifier.weight(1f))
-                TinyStat("Duration", formatDuration(timer), Modifier.weight(1f))
+                TinyStat("Distance", formatDistanceKm(distance), Modifier.weight(1f))
+                TinyStat("Duration", formatElapsedTime(timer), Modifier.weight(1f))
                 when {
                     isRide -> TinyStat("Avg speed", formatSpeed(avgSpeed), Modifier.weight(1f))
                     distance > 0.0 -> TinyStat("Avg pace", formatPaceSeconds(avgPace), Modifier.weight(1f))
-                    else -> TinyStat("Elapsed", formatDuration(elapsed), Modifier.weight(1f))
+                    else -> TinyStat("Elapsed", formatElapsedTime(elapsed), Modifier.weight(1f))
                 }
                 TinyStat("Calories", session?.totalCalories?.let { "$it kcal" } ?: activity.calories?.let { "$it kcal" } ?: "—", Modifier.weight(1f))
             }
@@ -265,8 +266,8 @@ private fun ActivityOverview(
             }
             if (moving != null || session?.maxSpeedKmh != null || session?.avgCadenceSpm != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
-                    TinyStat("Moving time", moving?.let { formatDuration(it) } ?: "—", Modifier.weight(1f))
-                    TinyStat("Elapsed", formatDuration(elapsed), Modifier.weight(1f))
+                    TinyStat("Moving time", moving?.let { formatElapsedTime(it) } ?: "—", Modifier.weight(1f))
+                    TinyStat("Elapsed", formatElapsedTime(elapsed), Modifier.weight(1f))
                     TinyStat(
                         "Max km/h",
                         session.maxSpeedKmh?.let { "%.1f".format(it) } ?: "—",
@@ -649,9 +650,9 @@ private fun buildStatGroups(
         "Time",
         PulseColors.Accent,
         listOf(
-            row("Total time", formatDuration(timer)),
-            row("Moving time", moving?.let { formatDuration(it) }),
-            row("Elapsed time", formatDuration(elapsed)),
+            row("Total time", formatElapsedTime(timer)),
+            row("Moving time", moving?.let { formatElapsedTime(it) }),
+            row("Elapsed time", formatElapsedTime(elapsed)),
         ),
     )
     if ((isRun || isWalk) && runWalk != null) {
@@ -659,9 +660,9 @@ private fun buildStatGroups(
             "Run / walk",
             PulseColors.Orange,
             listOf(
-                row("Running time", formatDuration(runWalk.runningSeconds)),
-                row("Walking time", formatDuration(runWalk.walkingSeconds)),
-                row("Idle time", formatDuration(runWalk.idleSeconds)),
+                row("Running time", formatElapsedTime(runWalk.runningSeconds)),
+                row("Walking time", formatElapsedTime(runWalk.walkingSeconds)),
+                row("Idle time", formatElapsedTime(runWalk.idleSeconds)),
             ),
         )
     }
@@ -754,8 +755,8 @@ private fun buildStatGroups(
             "Training intervals",
             PulseColors.Blue,
             listOf(
-                row("Run time", formatDuration(timer)),
-                row("Run distance", formatDistance(distance)),
+                row("Run time", formatElapsedTime(timer)),
+                row("Run distance", formatDistanceKm(distance)),
                 row("Run pace", formatPaceSeconds(avgPace)),
             ),
         )
@@ -831,9 +832,9 @@ private fun buildStatGroups(
             "Session",
             PulseColors.Accent,
             listOf(
-                row("Distance", formatDistance(distance)),
-                row("Total time", formatDuration(timer)),
-                row("Elapsed time", formatDuration(elapsed)),
+                row("Distance", formatDistanceKm(distance)),
+                row("Total time", formatElapsedTime(timer)),
+                row("Elapsed time", formatElapsedTime(elapsed)),
                 row("Average heart rate", activity.avgHeartRate?.let { "$it bpm" }),
                 row("Maximum heart rate", activity.maxHeartRate?.let { "$it bpm" }),
                 row("Calories", activity.calories?.let { "$it kcal" }),
@@ -855,7 +856,7 @@ private fun buildStatGroups(
                 row("Power", dynamics.powerW?.let { "$it W" }),
                 row("Training effect", dynamics.trainingEffect?.let { "%.1f".format(it) }),
                 row("Anaerobic TE", dynamics.anaerobicTrainingEffect?.let { "%.1f".format(it) }),
-                row("Moving time", dynamics.movingTimeSeconds?.let { formatDuration(it) }),
+                row("Moving time", dynamics.movingTimeSeconds?.let { formatElapsedTime(it) }),
             ),
         )
     }
@@ -995,9 +996,9 @@ private fun RunWalkCard(
         ) {
             Text("Run / walk", style = MaterialTheme.typography.titleSmall, color = PulseColors.Text)
             Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
-                TinyStat("Running", formatDuration(runWalk.runningSeconds), Modifier.weight(1f))
-                TinyStat("Walking", formatDuration(runWalk.walkingSeconds), Modifier.weight(1f))
-                TinyStat("Idle", formatDuration(runWalk.idleSeconds), Modifier.weight(1f))
+                TinyStat("Running", formatElapsedTime(runWalk.runningSeconds), Modifier.weight(1f))
+                TinyStat("Walking", formatElapsedTime(runWalk.walkingSeconds), Modifier.weight(1f))
+                TinyStat("Idle", formatElapsedTime(runWalk.idleSeconds), Modifier.weight(1f))
             }
             InteractiveMovementChart(
                 segments = segments,
@@ -1407,9 +1408,9 @@ private fun HeartRateZonesCard(
                     val source = if (zones.fromWatch) "Watch zones" else "Computed from your max HR"
                     Text(
                         if (basis != null) {
-                            "$source $basis bpm · total ${formatDuration(zones.totalSeconds)}"
+                            "$source $basis bpm · total ${formatElapsedTime(zones.totalSeconds)}"
                         } else {
-                            "$source · total ${formatDuration(zones.totalSeconds)}"
+                            "$source · total ${formatElapsedTime(zones.totalSeconds)}"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = PulseColors.TextMuted,
@@ -1495,8 +1496,8 @@ private fun PowerZonesCard(zones: ActivityZoneSet) {
             }
             Text(
                 zones.thresholdPowerW?.let {
-                    "Watch zones · FTP $it W · total ${formatDuration(zones.totalSeconds)}"
-                } ?: "Watch zones · total ${formatDuration(zones.totalSeconds)}",
+                    "Watch zones · FTP $it W · total ${formatElapsedTime(zones.totalSeconds)}"
+                } ?: "Watch zones · total ${formatElapsedTime(zones.totalSeconds)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = PulseColors.TextMuted,
             )
@@ -1537,7 +1538,7 @@ private fun ZoneRow(
             }
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text(formatDuration(zone.seconds), style = MaterialTheme.typography.bodySmall, color = PulseColors.Text)
+            Text(formatElapsedTime(zone.seconds), style = MaterialTheme.typography.bodySmall, color = PulseColors.Text)
             Text("${zone.percent.roundToInt()}%", style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted)
         }
     }
@@ -1626,8 +1627,8 @@ private fun ActivityLaps(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         LapCell("${lap.index + 1}", 34.dp)
-                        LapCell(formatDistance(lap.distanceMeters), 92.dp)
-                        LapCell(formatDuration(lap.durationSeconds), 74.dp)
+                        LapCell(formatDistanceKm(lap.distanceMeters), 92.dp)
+                        LapCell(formatElapsedTime(lap.durationSeconds), 74.dp)
                         LapCell(
                             if (isRide) {
                                 formatSpeed(
@@ -1710,14 +1711,12 @@ private fun formatMeters(value: Double?): String {
 
 private fun formatPaceSeconds(seconds: Double?): String {
     if (seconds == null || !seconds.isFinite() || seconds <= 0.0) return "—"
-    val total = seconds.roundToInt()
-    return "%d:%02d /km".format(total / 60, total % 60)
+    return "${formatPacePerKm(seconds.roundToInt())} /km"
 }
 
 private fun formatPaceAxis(seconds: Float): String {
     if (!seconds.isFinite() || seconds <= 0f) return "—"
-    val total = seconds.roundToInt()
-    return "%d:%02d".format(total / 60, total % 60)
+    return formatPacePerKm(seconds.roundToInt())
 }
 
 private fun formatElapsedTick(seconds: Float): String {

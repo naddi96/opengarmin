@@ -43,7 +43,8 @@ import dev.opengarmin.app.data.TrainingSummary
 import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessMetrics
 import dev.opengarmin.app.data.WellnessSampleEntity
-import dev.opengarmin.app.formatWellnessDate
+import dev.opengarmin.app.util.formatHoursMinutes
+import dev.opengarmin.app.util.formatWellnessDate
 import dev.opengarmin.app.ui.components.BarChart
 import dev.opengarmin.app.ui.components.CoachInsightCard
 import dev.opengarmin.app.ui.components.LineChart
@@ -405,7 +406,7 @@ private fun SleepCard(
                     Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.xxs)) {
                         val asleep = WellnessMetrics.sleepSeconds(day) ?: 0
                         Text(
-                            formatSleepDuration(asleep.coerceAtLeast(0)),
+                            formatHoursMinutes(asleep.coerceAtLeast(0).toLong()),
                             style = MaterialTheme.typography.headlineSmall,
                             color = PulseColors.Text,
                         )
@@ -431,7 +432,7 @@ private fun SleepCard(
                             Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(color))
                             Spacer(Modifier.width(PulseSpacing.md))
                             Text(name, style = MaterialTheme.typography.bodySmall, color = PulseColors.Text, modifier = Modifier.weight(1f))
-                            Text(formatSleepDuration(seconds), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = PulseColors.Text)
+                            Text(formatHoursMinutes(seconds.toLong()), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = PulseColors.Text)
                         }
                     }
                 }
@@ -812,12 +813,6 @@ private fun sleepWindow(start: Long?, end: Long?): String {
         Instant.ofEpochSecond(end).atZone(zone).format(formatter)
 }
 
-private fun formatSleepDuration(seconds: Int): String {
-    val total = seconds.coerceAtLeast(0)
-    val hours = total / 3600
-    val minutes = (total % 3600) / 60
-    return if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
-}
 
 private fun weekBuckets(days: List<WellnessDayEntity>): List<Pair<String, Int>> {
     val byDate = days.associateBy { it.date }

@@ -55,11 +55,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.osmdroid.config.Configuration
 import java.io.File
-import java.text.SimpleDateFormat
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Date
-import java.util.Locale
 
 private data class ActivityDetailLoad(
     val records: List<RecordEntity>,
@@ -529,10 +524,6 @@ class MainActivity : ComponentActivity() {
 }
 
 
-internal fun formatWellnessDate(date: String): String = runCatching {
-    LocalDate.parse(date).format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault()))
-}.getOrDefault(date)
-
 internal fun sportName(sport: Int): String = when (sport) {
     0 -> "Generic"
     1 -> "Running"
@@ -569,26 +560,4 @@ internal fun sportName(sport: Int): String = when (sport) {
     71 -> "Disc golf"
     79 -> "Mixed martial arts"
     else -> "Sport $sport"
-}
-
-internal fun formatDate(unixSeconds: Long): String =
-    SimpleDateFormat("EEE d MMM, HH:mm", Locale.getDefault()).format(Date(unixSeconds * 1000))
-
-internal fun formatDistance(meters: Double): String = "%.2f km".format(meters / 1000.0)
-
-
-internal fun formatDuration(seconds: Double): String {
-    val total = seconds.toLong().coerceAtLeast(0)
-    val hours = total / 3600
-    val minutes = (total % 3600) / 60
-    val secs = total % 60
-    return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, secs)
-    else "%d:%02d".format(minutes, secs)
-}
-
-internal fun formatPace(durationSeconds: Double, distanceMeters: Double): String {
-    if (distanceMeters <= 0.0) return "—"
-    val secondsPerKm = durationSeconds / (distanceMeters / 1000.0)
-    val total = secondsPerKm.toLong()
-    return "%d:%02d /km".format(total / 60, total % 60)
 }

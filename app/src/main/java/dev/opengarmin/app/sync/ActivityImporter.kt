@@ -5,7 +5,7 @@ import android.net.Uri
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.ActivityRepository
 import dev.opengarmin.app.data.WellnessFileTypes
-import dev.opengarmin.app.formatDate
+import dev.opengarmin.app.util.formatDate
 import dev.opengarmin.app.sportName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

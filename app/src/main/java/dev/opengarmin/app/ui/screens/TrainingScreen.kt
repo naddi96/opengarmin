@@ -38,9 +38,10 @@ import dev.opengarmin.app.data.PacePlanCalculator
 import dev.opengarmin.app.data.PaceRace
 import dev.opengarmin.app.data.TrainingSummary
 import dev.opengarmin.app.data.WellnessDayEntity
-import dev.opengarmin.app.formatDate
-import dev.opengarmin.app.formatDuration
-import dev.opengarmin.app.formatWellnessDate
+import dev.opengarmin.app.util.formatDate
+import dev.opengarmin.app.util.formatPacePerKm
+import dev.opengarmin.app.util.formatElapsedTime
+import dev.opengarmin.app.util.formatWellnessDate
 import dev.opengarmin.app.ui.components.CoachInsightCard
 import dev.opengarmin.app.ui.components.LineChart
 import dev.opengarmin.app.ui.components.PrimaryButton
@@ -184,7 +185,7 @@ fun TrainingScreen(
                 icon = Icons.Outlined.MonitorHeart,
                 iconColor = PulseColors.Coral,
                 modifier = Modifier.weight(1f),
-                footnote = summary.ltPaceSecondsPerKm?.let { "LTHR · ${formatPace(it)} /km" } ?: "Watch estimate",
+                footnote = summary.ltPaceSecondsPerKm?.let { "LTHR · ${formatPacePerKm(it)} /km" } ?: "Watch estimate",
             )
             StatTile(
                 label = "Performance",
@@ -264,7 +265,7 @@ fun TrainingScreen(
                             color = PulseColors.Text,
                         )
                         Text(
-                            "${formatWellnessDate(dateOf(latest.startTime))} · ${formatDuration(latest.durationSeconds)}",
+                            "${formatWellnessDate(dateOf(latest.startTime))} · ${formatElapsedTime(latest.durationSeconds)}",
                             style = MaterialTheme.typography.labelSmall,
                             color = PulseColors.TextMuted,
                         )
@@ -304,7 +305,7 @@ fun TrainingScreen(
                                 modifier = Modifier.weight(1f),
                             )
                             Text(
-                                "${formatPace(pace)} /km",
+                                "${formatPacePerKm(pace)} /km",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = PulseColors.TextMuted,
                             )
@@ -633,12 +634,6 @@ private fun formatRecovery(minutes: Int): String {
         hours > 0 -> "${hours}h"
         else -> "${mins}m"
     }
-}
-
-private fun formatPace(secondsPerKm: Int): String {
-    val minutes = secondsPerKm / 60
-    val seconds = secondsPerKm % 60
-    return "%d:%02d".format(minutes, seconds)
 }
 
 private fun signed(value: Int): String = if (value > 0) "+$value" else "$value"

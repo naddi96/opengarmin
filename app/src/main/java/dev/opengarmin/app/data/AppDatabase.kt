@@ -130,7 +130,7 @@ data class FitMessageEntity(
     val unitsJson: String,
 )
 
-data class MessageCount(val messageName: String, val cnt: Int)
+data class MessageCount(val messageName: String, val count: Int)
 
 data class DailySampleAverage(val date: String, val value: Double)
 
@@ -249,7 +249,7 @@ interface ActivityDao {
     @Query("SELECT * FROM records WHERE activityId = :activityId ORDER BY timestamp")
     suspend fun records(activityId: Long): List<RecordEntity>
 
-    @Query("SELECT messageName, COUNT(*) AS cnt FROM fit_messages WHERE activityId = :activityId GROUP BY messageName ORDER BY cnt DESC")
+    @Query("SELECT messageName, COUNT(*) AS count FROM fit_messages WHERE activityId = :activityId GROUP BY messageName ORDER BY count DESC")
     suspend fun messageCounts(activityId: Long): List<MessageCount>
 
     @Query("SELECT * FROM fit_messages WHERE activityId = :activityId ORDER BY orderIndex")

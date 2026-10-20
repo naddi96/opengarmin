@@ -3,6 +3,8 @@ package dev.opengarmin.app.data
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import dev.opengarmin.protocol.FitPaceBand
+import dev.opengarmin.app.util.formatElapsedTime
+import dev.opengarmin.app.util.formatPacePerKm
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -395,22 +397,9 @@ object PacePlanCalculator {
         return cumulativeGains[lower] + (cumulativeGains[upper] - cumulativeGains[lower]) * fraction
     }
 
-    fun formatClock(seconds: Int): String {
-        val safe = seconds.coerceAtLeast(0)
-        val hours = safe / 3600
-        val minutes = (safe % 3600) / 60
-        val secs = safe % 60
-        return if (hours > 0) {
-            "%d:%02d:%02d".format(Locale.US, hours, minutes, secs)
-        } else {
-            "%d:%02d".format(Locale.US, minutes, secs)
-        }
-    }
+    fun formatClock(seconds: Int): String = formatElapsedTime(seconds.toDouble())
 
-    fun formatPace(secondsPerKm: Int): String {
-        val safe = secondsPerKm.coerceAtLeast(0)
-        return "%d:%02d".format(Locale.US, safe / 60, safe % 60)
-    }
+    fun formatPace(secondsPerKm: Int): String = formatPacePerKm(secondsPerKm)
 
     /** Elevation gain per split for drawing the preview bars. */
     fun gainsFor(plan: PacePlanEntity): List<Double> = plan.splits.map { it.gainMeters }
