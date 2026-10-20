@@ -221,7 +221,12 @@ lease and skips that period. The activity also registers an
 `ACTION_ACL_CONNECTED` receiver to sync when the bonded watch reconnects while
 the app is visible.
 
-Transient/busy failures return `Result.retry()`; permanent setup problems
+Stalled sessions are recovered with the same bounded reconnect loop used by the
+visible sync. Periodic transient/busy failures return `Result.success()` and
+wait for the next interval; returning `Result.retry()` would put the unique
+periodic request into WorkManager backoff and delay the next 15-minute period by
+up to five hours. The one-time **Run background sync now** request may retry up
+to three times with the 10-minute linear backoff. Permanent setup problems
 (missing permission, no bonded watch) are recorded in Settings/Today and let the
 next periodic interval try again after the user fixes them. Last attempt,
 success, duration, trigger, kind, and user-safe error text are persisted in

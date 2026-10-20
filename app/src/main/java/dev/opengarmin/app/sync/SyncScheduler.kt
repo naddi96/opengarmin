@@ -11,6 +11,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequest
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import dev.opengarmin.app.settings.PulseSettings
 import java.util.concurrent.TimeUnit
 
@@ -25,6 +26,13 @@ object SyncScheduler {
     const val UNIQUE_WORK_NAME = "watch-periodic-sync"
     const val ONCE_WORK_NAME = "watch-sync-once"
     const val TAG = "watch-sync"
+
+    /**
+     * Marks the user-triggered "Run background sync now" request. Periodic
+     * work deliberately does not use WorkManager's retry/backoff path, so the
+     * worker needs to know which kind of request it is handling.
+     */
+    const val ONE_TIME_INPUT_KEY = "one_time_sync"
 
     fun apply(
         context: Context,
@@ -45,8 +53,11 @@ object SyncScheduler {
         val request: PeriodicWorkRequest =
             PeriodicWorkRequestBuilder<WatchSyncWorker>(interval.toLong(), TimeUnit.MINUTES)
                 .setConstraints(constraints)
+                // Periodic failures are not retried through WorkManager: the
+                // next interval is the retry. Linear backoff keeps the
+                // one-time request bounded if it ever does retry.
                 .setBackoffCriteria(
-                    BackoffPolicy.EXPONENTIAL,
+                    BackoffPolicy.LINEAR,
                     SyncPolicy.BACKOFF_MINUTES,
                     TimeUnit.MINUTES,
                 )
@@ -80,8 +91,9 @@ object SyncScheduler {
             .build()
         val request: OneTimeWorkRequest = OneTimeWorkRequestBuilder<WatchSyncWorker>()
             .setConstraints(constraints)
+            .setInputData(workDataOf(ONE_TIME_INPUT_KEY to true))
             .setBackoffCriteria(
-                BackoffPolicy.EXPONENTIAL,
+                BackoffPolicy.LINEAR,
                 SyncPolicy.BACKOFF_MINUTES,
                 TimeUnit.MINUTES,
             )

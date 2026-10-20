@@ -17,6 +17,12 @@ object SyncPolicy {
     /** WorkManager's minimum backoff is 10 minutes. */
     const val BACKOFF_MINUTES = 10L
 
+    /**
+     * A user-triggered one-time sync may retry a few times. Periodic work does
+     * not use WorkManager backoff at all; its next interval is the retry.
+     */
+    const val MAX_ONE_TIME_RETRIES = 3
+
     val INTERVAL_OPTIONS = listOf(15, 30, 60, 180, 360)
     val INTERVAL_LABELS = listOf("15m", "30m", "1h", "3h", "6h")
 
@@ -54,6 +60,17 @@ object SyncPolicy {
     }
 
     fun shouldRetry(kind: FailureKind): Boolean = kind != FailureKind.PERMANENT
+
+    /**
+     * Whether this particular run should return [androidx.work.Result.retry].
+     *
+     * Periodic work must never enter WorkManager's backoff path: a transient
+     * failure would delay the next 15-minute period by hours. It records the
+     * failure and returns success so Android runs it again at the requested
+     * interval. Only the explicit one-time request retries, with a small cap.
+     */
+    fun shouldRetryWork(oneTime: Boolean, kind: FailureKind, runAttemptCount: Int): Boolean =
+        oneTime && shouldRetry(kind) && runAttemptCount < MAX_ONE_TIME_RETRIES
 
     /**
      * Classifies a failure from the existing sync messages. The messages are

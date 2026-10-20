@@ -70,8 +70,10 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
 - **Background sync:** optional periodic sync through Android WorkManager
   (15 min–6 h, default 60 min and off) with battery-not-low and optional
   charging constraints. A process-wide lease keeps the worker, foreground sync,
-  and manual taps from opening competing BLE transfers. Transient failures retry
-  with exponential backoff; permanent setup problems surface an action. Last
+  and manual taps from opening competing BLE transfers. Stalled sessions are
+  reconnected automatically; periodic failures wait for the next interval
+  instead of entering multi-hour backoff, and permanent setup problems surface
+  an action. Last
   attempt/success, duration, trigger, and result are stored locally. See
   [`docs/background-sync.md`](docs/background-sync.md).
 - **Today:** steps ring and goal, resting/current heart rate with an intraday

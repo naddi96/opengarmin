@@ -30,6 +30,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -44,6 +45,10 @@ class WatchSyncWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
+        // "Run background sync now" is allowed to retry; periodic work is not.
+        // Retrying periodic work puts it in WorkManager's exponential backoff,
+        // which can delay the next 15-minute interval by five hours.
+        val oneTimeSync = inputData.getBoolean(SyncScheduler.ONE_TIME_INPUT_KEY, false)
         val settings = PulseSettings(applicationContext)
         if (!settings.periodicSyncEnabled) {
             Log.d(TAG, "skipped: periodic sync disabled")
@@ -125,29 +130,37 @@ class WatchSyncWorker(
                 trigger = "background",
                 kind = kindLabel,
             )
+            val kindForRetry = outcome.kind ?: SyncPolicy.FailureKind.TRANSIENT
+            val willRetry = SyncPolicy.shouldRetryWork(oneTimeSync, kindForRetry, runAttemptCount)
             // A missing watch/permission is an actionable setup problem. Keep
             // it in Settings/Today instead of posting the same notification on
-            // every interval. Transient failures get a dismissible retry note.
+            // every interval. Transient failures get a dismissible note.
             if (kind != SyncPolicy.FailureKind.PERMANENT) {
                 SyncNotifications.notifyFinal(
                     applicationContext,
                     "Background sync needs attention",
                     outcome.message,
-                    if (SyncPolicy.shouldRetry(kind)) {
-                        "Android will retry with backoff. You can also open the app and sync manually."
-                    } else {
-                        "Open OpenGarmin to review the sync status."
+                    when {
+                        willRetry ->
+                            "Android will retry with backoff. You can also open the app and sync manually."
+                        oneTimeSync ->
+                            "Open OpenGarmin to review the sync status."
+                        else ->
+                            "The next scheduled background sync will try again."
                     },
                 )
             }
         }
 
+        val kind = outcome.kind ?: SyncPolicy.FailureKind.TRANSIENT
         return when {
             outcome.success -> Result.success()
-            SyncPolicy.shouldRetry(outcome.kind ?: SyncPolicy.FailureKind.TRANSIENT) -> Result.retry()
-            // Periodic work should still run at the next interval after a
-            // permanent setup problem is fixed by the user.
-            else -> Result.success()
+            // Periodic failures intentionally return success. WorkManager's
+            // retry backoff would otherwise delay the next period by up to
+            // five hours after a few stalled attempts.
+            !oneTimeSync -> Result.success()
+            SyncPolicy.shouldRetryWork(oneTimeSync, kind, runAttemptCount) -> Result.retry()
+            else -> Result.failure()
         }
     }
 
@@ -165,27 +178,66 @@ class WatchSyncWorker(
         val deferred = CompletableDeferred<BackgroundSyncOutcome>()
         val connected = CompletableDeferred<Boolean>()
         val finishing = AtomicBoolean(false)
+        val lastProgressAt = AtomicLong(SystemClock.elapsedRealtime())
+        val mainHandler = Handler(Looper.getMainLooper())
+        var coordinatorRef: SyncCoordinator? = null
+        var sessionObserved = false
+
+        fun noteProgress() {
+            lastProgressAt.set(SystemClock.elapsedRealtime())
+        }
+
         val client = GarminBleClient(
             context = applicationContext,
             onLog = { /* background protocol logs are intentionally discarded */ },
             onDeviceFound = { _, _ -> },
             onStateChanged = { state ->
-                when (state) {
-                    "connected" -> {
-                        if (!connected.isCompleted) connected.complete(true)
-                        onStatus(
-                            ForegroundState("Reading watch data…", "Keep the watch nearby.", null),
-                        )
-                    }
-                    "disconnected" -> {
-                        if (!connected.isCompleted) connected.complete(false)
-                        if (!finishing.get() && !deferred.isCompleted) {
-                            deferred.complete(
-                                BackgroundSyncOutcome.failure(
-                                    SyncPolicy.FailureKind.TRANSIENT,
-                                    "The watch disconnected before the sync finished.",
+                // GATT callbacks arrive on a binder thread; coordinator state
+                // and the foreground status are main-thread state.
+                mainHandler.post {
+                    when (state) {
+                        "connected" -> {
+                            // A reconnect reopens the protocol session. Reset
+                            // the coordinator so the next GDI exchange starts
+                            // clean, just like the visible sync path.
+                            coordinatorRef?.reset()
+                            sessionObserved = false
+                            noteProgress()
+                            if (!connected.isCompleted) connected.complete(true)
+                            onStatus(
+                                ForegroundState(
+                                    "Reading watch data…",
+                                    "Keep the watch nearby.",
+                                    null,
                                 ),
                             )
+                        }
+                        "reconnecting" -> {
+                            // Abandon the stalled session immediately;
+                            // otherwise hasStarted() keeps returning true and
+                            // the watchdog would reconnect again before the
+                            // new session opens.
+                            coordinatorRef?.reset()
+                            sessionObserved = false
+                            noteProgress()
+                            onStatus(
+                                ForegroundState(
+                                    "Reconnecting to watch…",
+                                    "Keep the watch nearby.",
+                                    null,
+                                ),
+                            )
+                        }
+                        "disconnected" -> {
+                            if (!connected.isCompleted) connected.complete(false)
+                            if (!finishing.get() && !deferred.isCompleted) {
+                                deferred.complete(
+                                    BackgroundSyncOutcome.failure(
+                                        SyncPolicy.FailureKind.TRANSIENT,
+                                        "The watch disconnected before the sync finished.",
+                                    ),
+                                )
+                            }
                         }
                     }
                 }
@@ -251,11 +303,12 @@ class WatchSyncWorker(
         val coordinator = SyncCoordinator(
             session = client.session,
             filesDir = applicationContext.filesDir,
-            handler = Handler(Looper.getMainLooper()),
+            handler = mainHandler,
             log = { /* no background log: keep protocol/health payloads out of logs */ },
             isItemKnown = { uid -> uid.isNotEmpty() && uid in knownActivities },
             isWellnessItemKnown = { uid -> uid.isNotEmpty() && uid in knownWellness },
             onFinished = { _, decoded, itemUid ->
+                noteProgress()
                 if (itemUid.isNotEmpty()) knownActivities.add(itemUid)
                 pendingImports += importScope.launch {
                     runCatching {
@@ -268,6 +321,7 @@ class WatchSyncWorker(
                 }
             },
             onWellnessFile = { decoded, type, itemUid ->
+                noteProgress()
                 pendingImports += importScope.launch {
                     runCatching {
                         val days = repository.importWellness(decoded.readBytes())
@@ -284,9 +338,11 @@ class WatchSyncWorker(
                 }
             },
             onUpToDate = {
+                noteProgress()
                 finishWhenImportsDone(BackgroundSyncOutcome.success())
             },
             onActivityProgress = { progress ->
+                noteProgress()
                 val status = if (progress.total > 0 && progress.done < progress.total) {
                     "Syncing activity ${(progress.done + 1).coerceAtMost(progress.total)} of ${progress.total}"
                 } else {
@@ -295,6 +351,25 @@ class WatchSyncWorker(
                 onStatus(ForegroundState(status, "Keep the watch nearby.", progress))
             },
         )
+        coordinatorRef = coordinator
+
+        fun stalledOutcome(final: Boolean): BackgroundSyncOutcome {
+            val stalledBeforeSession =
+                !coordinator.hasStarted() || coordinator.stalledBeforeCapabilities()
+            val message = when {
+                stalledBeforeSession ->
+                    "The watch connected but did not open its GDI session. Close Garmin Connect and try again."
+                final ->
+                    "The watch kept stalling during sync. Keep it nearby and try again."
+                else ->
+                    "The watch did not finish syncing in time. Keep it nearby and charge it if needed."
+            }
+            return BackgroundSyncOutcome.failure(
+                if (stalledBeforeSession) SyncPolicy.FailureKind.BUSY
+                else SyncPolicy.FailureKind.TRANSIENT,
+                message,
+            )
+        }
 
         try {
             coordinator.reset()
@@ -307,31 +382,57 @@ class WatchSyncWorker(
                     "Could not connect to the watch. Keep it nearby, awake, and not connected to Garmin Connect.",
                 )
             }
+            noteProgress()
             // A GATT connection is not a sync: the watch must also open its
-            // GDI session. Fail fast instead of holding a wake lock for the
-            // whole transfer timeout when Garmin Connect owns that slot.
-            val sessionStarted = withTimeoutOrNull(SESSION_START_TIMEOUT_MS) {
-                while (!coordinator.hasStarted() && !deferred.isCompleted) {
-                    delay(200)
+            // GDI session and keep making progress. Mirror the visible sync
+            // watchdog and reconnect on stalls instead of waiting for the
+            // whole transfer budget to expire. Garmin Connect can hold the
+            // watch's single session, so a bounded reconnect also recovers
+            // after the user closes it.
+            withTimeoutOrNull(SYNC_TIMEOUT_MS) {
+                var reconnectAttempts = 0
+                while (!deferred.isCompleted) {
+                    // The watch work is done; only Room imports are still
+                    // running. Do not mistake a slow import for a BLE stall.
+                    if (finishing.get()) {
+                        deferred.await()
+                        break
+                    }
+                    if (!sessionObserved && coordinator.hasStarted()) {
+                        sessionObserved = true
+                        noteProgress()
+                    }
+                    val idleMs = SystemClock.elapsedRealtime() - lastProgressAt.get()
+                    val stallLimitMs = when {
+                        coordinator.isTransferring() -> TRANSFER_STALL_TIMEOUT_MS
+                        !coordinator.hasStarted() -> SESSION_START_TIMEOUT_MS
+                        else -> STALL_TIMEOUT_MS
+                    }
+                    if (idleMs >= stallLimitMs) {
+                        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                            return@withTimeoutOrNull stalledOutcome(final = true)
+                        }
+                        reconnectAttempts++
+                        Log.d(
+                            TAG,
+                            "stalled after ${idleMs}ms; reconnecting " +
+                                "($reconnectAttempts/$MAX_RECONNECT_ATTEMPTS)",
+                        )
+                        onStatus(
+                            ForegroundState(
+                                "Reconnecting to watch…",
+                                "Sync stalled; reconnecting " +
+                                    "($reconnectAttempts/$MAX_RECONNECT_ATTEMPTS).",
+                                null,
+                            ),
+                        )
+                        lastProgressAt.set(SystemClock.elapsedRealtime())
+                        client.reconnect()
+                    }
+                    delay(500)
                 }
-                true
-            } ?: false
-            if (deferred.isCompleted) return@withContext deferred.await()
-            if (!sessionStarted) {
-                return@withContext BackgroundSyncOutcome.failure(
-                    SyncPolicy.FailureKind.BUSY,
-                    "The watch connected but did not start its GDI session. Close Garmin Connect and try again.",
-                )
-            }
-            withTimeoutOrNull(SYNC_TIMEOUT_MS) { deferred.await() }
-                ?: BackgroundSyncOutcome.failure(
-                    SyncPolicy.FailureKind.TRANSIENT,
-                    if (coordinator.stalledBeforeCapabilities()) {
-                        "The watch did not open its GDI session. Close Garmin Connect and try again."
-                    } else {
-                        "The watch did not finish syncing in time. Keep it nearby and charge it if needed."
-                    },
-                )
+                deferred.await()
+            } ?: stalledOutcome(final = false)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } finally {
@@ -404,7 +505,20 @@ class WatchSyncWorker(
         /** Wait for the watch to open the GDI session after GATT connects. */
         private const val SESSION_START_TIMEOUT_MS = 45_000L
 
-        /** WorkManager's own limit is ~10 minutes; leave room to shut down cleanly. */
-        private const val SYNC_TIMEOUT_MS = 6 * 60 * 1000L
+        /** Reconnect when no sync progress arrives for this long. */
+        private const val STALL_TIMEOUT_MS = 20_000L
+
+        /** Transfers have no byte-level progress callback; allow longer. */
+        private const val TRANSFER_STALL_TIMEOUT_MS = 4 * 60 * 1000L
+
+        /** Same bounded recovery the visible sync uses. */
+        private const val MAX_RECONNECT_ATTEMPTS = 8
+
+        /**
+         * WorkManager's own limit is ~10 minutes; leave room for the bounded
+         * reconnect loop and a clean shutdown. The worker is in the foreground
+         * for this period, so it may exceed the normal 10-minute job window.
+         */
+        private const val SYNC_TIMEOUT_MS = 8 * 60 * 1000L
     }
 }

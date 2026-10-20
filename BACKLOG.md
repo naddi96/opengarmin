@@ -186,9 +186,10 @@ Shipped background and periodic sync:
 
 - **Scheduling:** optional WorkManager periodic sync behind a Settings toggle.
   Default **off**, default interval **60 minutes**, range 15 min–6 h, battery-not-
-  low always required and charging-only optional. The unique work request uses
-  exponential backoff starting at 10 minutes and is re-enqueued when the user
-  changes the interval or constraints.
+  low always required and charging-only optional. Periodic failures wait for the
+  next interval instead of entering WorkManager backoff; the one-time manual
+  request retries up to three times with linear 10-minute backoff. The work
+  request is re-enqueued when the user changes the interval or constraints.
 - **Single-flight:** a process-wide `SyncGate` lease is held by the visible app
   while its BLE client is connected and by the background worker while it runs.
   The activity disconnects/releases on stop, so the worker can take over; a
@@ -199,10 +200,13 @@ Shipped background and periodic sync:
   than five minutes), from the manual action, on bonded-watch ACL reconnect
   while visible, and from **Run background sync now**, which exercises the same
   worker path.
-- **Retry/classification:** transient/busy failures retry with backoff; missing
-  permissions, no bonded watch, and unsupported devices are recorded as
-  permanent setup problems with an action to fix them. The worker bounds the
-  connect (45 s), GDI session start (45 s), and transfer (6 min) stages.
+- **Retry/classification:** periodic transient/busy failures are recorded and
+  tried again at the next interval; a user-triggered one-time run retries up to
+  three times with linear backoff. Missing permissions, no bonded watch, and
+  unsupported devices are recorded as permanent setup problems with an action
+  to fix them. The worker bounds the connect (45 s), GDI session start (45 s),
+  per-stall progress (20 s; 4 min during transfers), and the overall run (8 min),
+  and reconnects up to 8 times like the visible sync.
 - **History:** last attempt, last success, duration, trigger, result kind, and a
   short error are persisted in `PulseSettings` and shown in Settings. The
   visible screen refreshes through a SharedPreferences listener when a worker
@@ -1111,8 +1115,9 @@ fighting the protocol.
 - [x] Sync still runs on launch, on watch reconnect, and from the manual action.
 - [x] Sync is single-flight: a worker, foreground service, and manual tap cannot
       start concurrent transfers.
-- [x] Transient failures (`NO_AVAILABLE_RESOURCES`, timeout, disconnect) retry
-      with backoff; permanent failures are classified and surface an action.
+- [x] Transient failures (`NO_AVAILABLE_RESOURCES`, timeout, disconnect) are
+      retried at the next periodic interval (or up to three times for a manual
+      one-time run); permanent failures are classified and surface an action.
 - [x] The foreground service and worker hand off cleanly; notifications show
       progress, completion, and failure without stale states.
 - [x] Last attempt/success, duration, and result are persisted and visible.

@@ -82,6 +82,28 @@ class SyncPolicyTest {
     }
 
     @Test
+    fun `periodic failures wait for the next interval instead of WorkManager backoff`() {
+        assertFalse(SyncPolicy.shouldRetryWork(oneTime = false, SyncPolicy.FailureKind.TRANSIENT, 0))
+        assertFalse(SyncPolicy.shouldRetryWork(oneTime = false, SyncPolicy.FailureKind.BUSY, 2))
+        assertTrue(SyncPolicy.shouldRetryWork(oneTime = true, SyncPolicy.FailureKind.TRANSIENT, 0))
+        assertTrue(
+            SyncPolicy.shouldRetryWork(
+                oneTime = true,
+                SyncPolicy.FailureKind.BUSY,
+                SyncPolicy.MAX_ONE_TIME_RETRIES - 1,
+            ),
+        )
+        assertFalse(
+            SyncPolicy.shouldRetryWork(
+                oneTime = true,
+                SyncPolicy.FailureKind.TRANSIENT,
+                SyncPolicy.MAX_ONE_TIME_RETRIES,
+            ),
+        )
+        assertFalse(SyncPolicy.shouldRetryWork(oneTime = true, SyncPolicy.FailureKind.PERMANENT, 0))
+    }
+
+    @Test
     fun `duration and trigger labels are human readable`() {
         assertEquals("—", SyncPolicy.formatDuration(null))
         assertEquals("250 ms", SyncPolicy.formatDuration(250))

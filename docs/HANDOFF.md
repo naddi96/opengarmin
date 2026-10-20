@@ -673,3 +673,32 @@ process-death recovery from a persisted `syncing` state, and a permanent
 Bluetooth-off failure without notification spam. Forced Doze/App Standby, a
 real out-of-range watch, and the ACL-reconnect trigger still need a dedicated
 device pass.
+
+## 2026-10-20 — Background sync stall/backoff fix
+
+Investigated a real Pixel 10a + FR255 report where periodic sync appeared dead.
+WorkManager showed 8 consecutive failed periods and a next run five hours away
+(`run_attempt_count=8`, exponential 10-minute backoff capped at 5 h). The last
+error text had been overwritten by a manual success. A foreground sync capture
+showed the watch stalling several times (`sync stalled; reconnecting (1/8)`,
+`(2/8)`, `(3/8)`) before finishing; the background worker had no equivalent
+reconnect loop, so it waited for the full 6-minute transfer budget and then
+entered WorkManager backoff.
+
+Changes:
+
+- `WatchSyncWorker` now mirrors the visible sync watchdog: 20 s without progress,
+  4 min during a transfer, up to 8 reconnects, resetting `SyncCoordinator` on
+  each new session. GATT callbacks are marshalled onto the main thread.
+- Periodic failures return `Result.success()` so the next interval is the retry;
+  they no longer use WorkManager's exponential backoff. The one-time
+  **Run background sync now** request uses linear 10-minute backoff and retries
+  at most 3 times (`SyncPolicy.shouldRetryWork`).
+- Overall worker budget is 8 minutes (foreground worker), with the existing 45 s
+  GATT and GDI-session stage limits.
+- `SyncPolicyTest` covers the periodic/one-time retry split; README,
+  background-sync, architecture, backlog, and this handoff were updated.
+
+The existing stuck periodic WorkSpec may still wait for its previously scheduled
+run; the next period after this build either succeeds or returns success and
+resets the attempt count.

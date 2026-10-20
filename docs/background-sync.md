@@ -50,22 +50,37 @@ flows.
 
 ## Retry and failure handling
 
-The unique periodic request uses exponential backoff with a 10-minute initial
-delay and the battery/charging constraints above.
+Periodic work **does not** use WorkManager's retry/backoff path. A failed period
+is recorded and returns `Result.success()`, so Android runs the next period at
+the requested interval. Using `Result.retry()` here would put the unique
+periodic request into exponential backoff; after a few failures WorkManager can
+delay the next 15-minute period by up to five hours. This was observed on device
+in October 2026 (8 consecutive failed periods, next run five hours away).
+
+The explicit **Run background sync now** one-time request is different: it may
+retry up to three times with WorkManager's 10-minute linear backoff, because a
+user is waiting for that specific attempt and there is no next interval to fall
+back on.
 
 | Class | Examples | Result |
 |---|---|---|
-| **Transient** | connect timeout, transfer timeout, `NO_AVAILABLE_RESOURCES`, watch disconnected, import failure | `Result.retry()` with WorkManager backoff; a dismissible notification says it will retry. |
-| **Busy** | Garmin Connect holds the GDI session | `Result.retry()`; the notification explains the contended session. |
+| **Transient** | connect timeout, transfer timeout, `NO_AVAILABLE_RESOURCES`, watch disconnected, import failure | Periodic: record and wait for the next interval. One-time: retry up to 3 times with linear backoff. |
+| **Busy** | Garmin Connect holds the GDI session | Same as transient; the notification explains the contended session. |
 | **Held lease** | A visible app owns the BLE connection | Skip this period with `Result.success()`; the next interval tries again. |
 | **Permanent** | Bluetooth permission denied, no bonded Garmin watch, unsupported device | Recorded in Settings/Today with an action to pair or grant permission; the next periodic interval still runs after the user fixes it. |
+
+Like the visible sync, the worker reconnects when a sync stalls: 20 s without
+progress, or 4 min during a file transfer. It allows up to 8 reconnects and
+resets the coordinator on each new session. Without this, a stalled session had
+to wait for the whole transfer budget and then entered the multi-hour backoff.
 
 The worker bounds each stage so a missing watch does not hold a wake lock for the
 full WorkManager window:
 
 - 45 s to connect over GATT;
 - 45 s for the watch to open its GDI session;
-- 6 min for the actual transfer.
+- 20 s without progress, or 4 min while a transfer is active, before reconnecting;
+- 8 min overall, including the bounded reconnects.
 
 ## Persisted history
 
@@ -95,7 +110,7 @@ content is hidden on the lock screen unless the user changes the system setting.
 Background sync is local-only: it uses BLE to the bonded watch and never sends
 health data to a server. The worker discards protocol logs, so FIT fields and
 health payloads do not appear in logcat. Only high-level lifecycle lines such as
-`BG sync started`/`finished` are emitted under the `OpenGarminBg` tag.
+`started`, `stalled`, and `finished` are emitted under the `OpenGarminBg` tag.
 
 ## Android lifecycle notes
 
@@ -104,8 +119,8 @@ health payloads do not appear in logcat. Only high-level lifecycle lines such as
 - WorkManager persists the request across process death and reboot.
 - Force-stopping the app from Android Settings suspends its jobs until the app is
   opened again. This is an Android rule, not an app failure.
-- A watch that is out of range fails the connect stage and is retried with
-  backoff.
+- A watch that is out of range fails the connect stage; the next scheduled
+  interval tries again (periodic work does not enter WorkManager backoff).
 - Only one bonded watch is supported today. Pairing multiple watches remains a
   later item (G4/P2).
 
