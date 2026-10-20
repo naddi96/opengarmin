@@ -5,11 +5,16 @@ import dev.opengarmin.app.coach.ChartPoint
 import dev.opengarmin.app.coach.ChartSeries
 import dev.opengarmin.app.coach.ChartSpec
 import dev.opengarmin.app.coach.ChartType
+import dev.opengarmin.app.coach.GpsSummary
 import dev.opengarmin.app.coach.HealthDataSource
 import dev.opengarmin.app.coach.LOCAL_PROFILE_ID
+import dev.opengarmin.app.coach.LapDynamics
+import dev.opengarmin.app.coach.LapInfo
 import dev.opengarmin.app.coach.RecordPoint
+import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.coach.SportCategory
 import dev.opengarmin.app.coach.ToolScope
+import dev.opengarmin.app.coach.WorkoutDetail
 import dev.opengarmin.app.coach.WorkoutWriter
 import dev.opengarmin.app.coach.categoryForSport
 import dev.opengarmin.app.coach.epochRange
@@ -812,16 +817,7 @@ private class RenderChartTool(
     }
 
     private suspend fun activityChart(scope: ToolScope, args: JSONObject): ToolResult {
-        val idsArray = args.optJSONArray("activity_ids") ?: args.optJSONArray("ids")
-            ?: throw ToolException("activity_ids is required for source=activities")
-        val ids = buildList {
-            for (index in 0 until idsArray.length()) {
-                val id = idsArray.optLong(index, -1)
-                if (id > 0 && id !in this) add(id)
-            }
-        }.take(5)
-        if (ids.isEmpty()) throw ToolException("activity_ids must contain at least one workout id")
-
+        val ids = parseActivityIds(args)
         val metricKey = normalizeActivityMetric(args.optString("metric"))
         val xAxis = if (args.optString("x_axis").lowercase() in setOf("distance", "km", "distance_km")) {
             "distance"
@@ -830,7 +826,7 @@ private class RenderChartTool(
         }
         val maxPoints = args.optInt("max_points", 60).coerceIn(8, 120)
 
-        val details = mutableListOf<dev.opengarmin.app.coach.WorkoutDetail>()
+        val details = mutableListOf<WorkoutDetail>()
         val unavailable = mutableListOf<Long>()
         for (id in ids) {
             val detail = dataSource.workout(scope, id)
@@ -851,31 +847,104 @@ private class RenderChartTool(
         if (metricKey == "cadence" && anyRunning && !allRunning) {
             throw ToolException("Cadence charts need activities from the same sport category")
         }
+        val metric = activityMetricSpec(metricKey, allRunning)
+        val (series, summaries, skipped) = buildActivitySeries(details, metric, xAxis, maxPoints)
+        if (series.isEmpty()) {
+            throw ToolException(
+                "Not enough ${metric.label} data to chart those activities. " +
+                    "Ask for another metric or choose activities with recorded data.",
+            )
+        }
+
+        val requestedTitle = args.optString("title").takeIf { it.isNotBlank() }?.take(120)
+        val defaultTitle = if (series.size == 1) {
+            "${metric.label} · ${series.first().name}"
+        } else {
+            "${metric.label} · ${series.size} activities"
+        }
+        val title = prefixedTitle(metric.label, requestedTitle, defaultTitle)
+        val chart = ChartSpec(
+            type = ChartType.Line,
+            title = title,
+            xLabel = if (xAxis == "distance") "Distance (km)" else "Elapsed (min)",
+            yLabel = metric.yLabel,
+            unit = metric.unit,
+            series = series,
+        )
+        return ToolResult(
+            json = activityChartJson(metric, xAxis, summaries, unavailable, skipped).toString(),
+            evidence = listOf(
+                "Chart · ${metric.label} · ${series.size} ${if (series.size == 1) "activity" else "activities"}",
+            ),
+            charts = listOf(chart),
+        )
+    }
+
+    private fun parseActivityIds(args: JSONObject): List<Long> {
+        val idsArray = args.optJSONArray("activity_ids") ?: args.optJSONArray("ids")
+            ?: throw ToolException("activity_ids is required for source=activities")
+        val ids = buildList {
+            for (index in 0 until idsArray.length()) {
+                val id = idsArray.optLong(index, -1)
+                if (id > 0 && id !in this) add(id)
+            }
+        }.take(5)
+        if (ids.isEmpty()) throw ToolException("activity_ids must contain at least one workout id")
+        return ids
+    }
+
+    private fun activityMetricSpec(metricKey: String, allRunning: Boolean): ActivityMetricSpec {
         val cadenceScale = if (allRunning) 2 else 1
         val cadenceUnit = if (allRunning) "spm" else "rpm"
+        return when (metricKey) {
+            "heart_rate" -> ActivityMetricSpec(
+                label = "Heart rate",
+                unit = "bpm",
+                value = { record, _ -> record.heartRate?.toDouble()?.takeIf { it in 20.0..250.0 } },
+            )
 
-        val metricLabel = when (metricKey) {
-            "heart_rate" -> "Heart rate"
-            "speed" -> "Speed"
-            "pace" -> "Pace"
-            "cadence" -> "Cadence"
-            "altitude" -> "Altitude"
-            else -> "Body Battery"
-        }
-        val unit = when (metricKey) {
-            "heart_rate" -> "bpm"
-            "speed" -> "km/h"
-            "pace" -> "min/km"
-            "cadence" -> cadenceUnit
-            "altitude" -> "m"
-            else -> "%"
-        }
-        val yLabel = when (metricKey) {
-            "pace" -> "Pace (lower is faster)"
-            "body_battery" -> "Body Battery"
-            else -> metricLabel
-        }
+            "speed" -> ActivityMetricSpec(
+                label = "Speed",
+                unit = "km/h",
+                value = { _, speed -> speed?.times(3.6)?.takeIf { it in 0.0..100.0 } },
+            )
 
+            "pace" -> ActivityMetricSpec(
+                label = "Pace",
+                unit = "min/km",
+                yLabel = "Pace (lower is faster)",
+                value = { _, speed -> speed?.times(3.6)?.takeIf { it >= 1.0 }?.let { 60.0 / it } },
+            )
+
+            "cadence" -> ActivityMetricSpec(
+                label = "Cadence",
+                unit = cadenceUnit,
+                value = { record, _ ->
+                    record.cadence?.toDouble()?.times(cadenceScale)?.takeIf { it in 0.0..300.0 }
+                },
+            )
+
+            "altitude" -> ActivityMetricSpec(
+                label = "Altitude",
+                unit = "m",
+                value = { record, _ -> record.altitudeMeters?.takeIf { it in -500.0..9000.0 } },
+            )
+
+            else -> ActivityMetricSpec(
+                label = "Body Battery",
+                unit = "%",
+                yLabel = "Body Battery",
+                value = { record, _ -> record.bodyBattery?.toDouble()?.takeIf { it in 0.0..100.0 } },
+            )
+        }
+    }
+
+    private fun buildActivitySeries(
+        details: List<WorkoutDetail>,
+        metric: ActivityMetricSpec,
+        xAxis: String,
+        maxPoints: Int,
+    ): ActivitySeriesResult {
         val series = mutableListOf<ChartSeries>()
         val summaries = JSONArray()
         val skipped = mutableListOf<Long>()
@@ -898,14 +967,7 @@ private class RenderChartTool(
                     else -> (record.timestamp - origin) / 60.0
                 } ?: return@forEachIndexed
                 if (!x.isFinite() || x < 0) return@forEachIndexed
-                val y = when (metricKey) {
-                    "heart_rate" -> record.heartRate?.toDouble()?.takeIf { it in 20.0..250.0 }
-                    "speed" -> speeds[index]?.times(3.6)?.takeIf { it in 0.0..100.0 }
-                    "pace" -> speeds[index]?.times(3.6)?.takeIf { it >= 1.0 }?.let { 60.0 / it }
-                    "cadence" -> record.cadence?.toDouble()?.times(cadenceScale)?.takeIf { it in 0.0..300.0 }
-                    "altitude" -> record.altitudeMeters?.takeIf { it in -500.0..9000.0 }
-                    else -> record.bodyBattery?.toDouble()?.takeIf { it in 0.0..100.0 }
-                } ?: return@forEachIndexed
+                val y = metric.value(record, speeds[index]) ?: return@forEachIndexed
                 if (!y.isFinite()) return@forEachIndexed
                 points += ChartPoint(x.toFloat(), y.toFloat())
             }
@@ -936,45 +998,24 @@ private class RenderChartTool(
                 },
             )
         }
-        if (series.isEmpty()) {
-            throw ToolException(
-                "Not enough $metricLabel data to chart those activities. " +
-                    "Ask for another metric or choose activities with recorded data.",
-            )
-        }
+        return ActivitySeriesResult(series, summaries, skipped)
+    }
 
-        val requestedTitle = args.optString("title").takeIf { it.isNotBlank() }?.take(120)
-        val defaultTitle = if (series.size == 1) {
-            "$metricLabel · ${series.first().name}"
-        } else {
-            "$metricLabel · ${series.size} activities"
-        }
-        val title = prefixedTitle(metricLabel, requestedTitle, defaultTitle)
-        val chart = ChartSpec(
-            type = ChartType.Line,
-            title = title,
-            xLabel = if (xAxis == "distance") "Distance (km)" else "Elapsed (min)",
-            yLabel = yLabel,
-            unit = unit,
-            series = series,
-        )
-        val json = JSONObject().apply {
-            put("chart", metricLabel)
-            put("source", "activities")
-            put("xAxis", xAxis)
-            put("unit", unit)
-            put("series", summaries)
-            if (unavailable.isNotEmpty()) put("unavailableIds", JSONArray(unavailable))
-            if (skipped.isNotEmpty()) put("skippedIds", JSONArray(skipped))
-            put("note", "The chart is displayed with the answer. Compare the lines in prose; do not invent gaps.")
-        }
-        return ToolResult(
-            json = json.toString(),
-            evidence = listOf(
-                "Chart · $metricLabel · ${series.size} ${if (series.size == 1) "activity" else "activities"}",
-            ),
-            charts = listOf(chart),
-        )
+    private fun activityChartJson(
+        metric: ActivityMetricSpec,
+        xAxis: String,
+        summaries: JSONArray,
+        unavailable: List<Long>,
+        skipped: List<Long>,
+    ): JSONObject = JSONObject().apply {
+        put("chart", metric.label)
+        put("source", "activities")
+        put("xAxis", xAxis)
+        put("unit", metric.unit)
+        put("series", summaries)
+        if (unavailable.isNotEmpty()) put("unavailableIds", JSONArray(unavailable))
+        if (skipped.isNotEmpty()) put("skippedIds", JSONArray(skipped))
+        put("note", "The chart is displayed with the answer. Compare the lines in prose; do not invent gaps.")
     }
 
     private fun normalizeActivityMetric(raw: String): String = when (raw.lowercase()) {
@@ -1026,6 +1067,19 @@ private class RenderChartTool(
         val unit: String,
         val defaultType: ChartType,
         val value: (DailyHealth) -> Double?,
+    )
+
+    private data class ActivityMetricSpec(
+        val label: String,
+        val unit: String,
+        val value: (RecordPoint, Double?) -> Double?,
+        val yLabel: String = label,
+    )
+
+    private data class ActivitySeriesResult(
+        val series: List<ChartSeries>,
+        val summaries: JSONArray,
+        val skipped: List<Long>,
     )
 }
 
@@ -1352,7 +1406,7 @@ private fun zonePercentages(records: List<RecordPoint>, maxHr: Int): ZoneResult?
     )?.let { ZoneResult(maxHr, it) }
 
 private fun workoutDetailJson(
-    detail: dev.opengarmin.app.coach.WorkoutDetail,
+    detail: WorkoutDetail,
     includeRoute: Boolean,
 ): JSONObject {
     val summary = detail.summary
@@ -1370,99 +1424,43 @@ private fun workoutDetailJson(
         putNumber("calories", summary.calories)
         putNumber("ascentM", summary.ascentMeters)
         putNumber("descentM", summary.descentMeters)
+        put("gps", gpsJson(detail.gps, includeRoute))
+        put("runningDynamics", runningDynamicsJson(detail.dynamics))
+        put("laps", lapsJson(detail.laps, detail.lapDynamics))
+    }
+}
 
-        val gps = detail.gps
+private fun gpsJson(gps: GpsSummary?, includeRoute: Boolean): JSONObject = JSONObject().apply {
+    put("available", gps?.available == true)
+    put("pointCount", gps?.pointCount ?: 0)
+    gps?.start?.let {
+        put("startLat", round6(it.latitude))
+        put("startLon", round6(it.longitude))
+    }
+    gps?.end?.let {
+        put("endLat", round6(it.latitude))
+        put("endLon", round6(it.longitude))
+    }
+    gps?.bounds?.let {
         put(
-            "gps",
+            "bounds",
             JSONObject().apply {
-                put("available", gps?.available == true)
-                put("pointCount", gps?.pointCount ?: 0)
-                gps?.start?.let {
-                    put("startLat", round6(it.latitude))
-                    put("startLon", round6(it.longitude))
-                }
-                gps?.end?.let {
-                    put("endLat", round6(it.latitude))
-                    put("endLon", round6(it.longitude))
-                }
-                gps?.bounds?.let {
-                    put(
-                        "bounds",
-                        JSONObject().apply {
-                            put("north", round6(it.north))
-                            put("south", round6(it.south))
-                            put("east", round6(it.east))
-                            put("west", round6(it.west))
-                        },
-                    )
-                }
-                if (includeRoute && gps != null && gps.route.isNotEmpty()) {
-                    put(
-                        "route",
-                        JSONArray().apply {
-                            gps.route.forEach { point ->
-                                put(
-                                    JSONObject().apply {
-                                        put("lat", round6(point.latitude))
-                                        put("lon", round6(point.longitude))
-                                    },
-                                )
-                            }
-                        },
-                    )
-                }
+                put("north", round6(it.north))
+                put("south", round6(it.south))
+                put("east", round6(it.east))
+                put("west", round6(it.west))
             },
         )
-
-        val dynamics = detail.dynamics
+    }
+    if (includeRoute && gps != null && gps.route.isNotEmpty()) {
         put(
-            "runningDynamics",
-            JSONObject().apply {
-                put("available", dynamics?.available == true)
-                if (dynamics == null) {
-                    put("reason", "No running-dynamics fields in this activity")
-                } else {
-                    putNumber("cadenceSpm", dynamics.cadenceSpm?.let(::round1))
-                    putNumber("cadenceRaw", dynamics.cadenceRaw?.let(::round1))
-                    putNumber("maxCadenceSpm", dynamics.maxCadenceSpm?.let(::round1))
-                    putNumber("groundContactTimeMs", dynamics.groundContactTimeMs?.let(::round1))
-                    putNumber("groundContactPercent", dynamics.groundContactPercent?.let(::round1))
-                    putNumber("groundContactBalanceLeftPct", dynamics.groundContactBalanceLeftPct?.let(::round1))
-                    putNumber("verticalOscillationMm", dynamics.verticalOscillationMm?.let(::round1))
-                    putNumber("verticalOscillationCm", dynamics.verticalOscillationMm?.let { round1(it / 10.0) })
-                    putNumber("verticalRatioPct", dynamics.verticalRatioPct?.let(::round1))
-                    putNumber("strideLengthMm", dynamics.strideLengthMm?.let(::round1))
-                    putNumber("strideLengthM", dynamics.strideLengthMm?.let { round1(it / 1000.0) })
-                    putNumber("powerW", dynamics.powerW)
-                    putNumber("trainingEffect", dynamics.trainingEffect)
-                    putNumber("anaerobicTrainingEffect", dynamics.anaerobicTrainingEffect)
-                    putNumber("trainingLoadPeak", dynamics.trainingLoadPeak)
-                    putNumber("movingTimeSeconds", dynamics.movingTimeSeconds)
-                    putNumber("standingTimeSeconds", dynamics.standingTimeSeconds)
-                    putNumber("avgSpeedKmh", dynamics.avgSpeedKmh?.let(::round1))
-                    putNumber("maxSpeedKmh", dynamics.maxSpeedKmh?.let(::round1))
-                    putNumber("avgRespiration", dynamics.avgRespiration)
-                    putNumber("avgStress", dynamics.avgStress)
-                    putNumber("avgSpo2", dynamics.avgSpo2)
-                }
-            },
-        )
-
-        put(
-            "laps",
+            "route",
             JSONArray().apply {
-                detail.laps.forEach { lap ->
-                    val lapDynamics = detail.lapDynamics.firstOrNull { it.index == lap.index }
+                gps.route.forEach { point ->
                     put(
                         JSONObject().apply {
-                            put("index", lap.index + 1)
-                            put("distanceKm", round1(lap.distanceMeters / 1000.0))
-                            put("durationMin", (lap.durationSeconds / 60.0).roundToInt())
-                            putNumber("avgHr", lap.avgHeartRate)
-                            putNumber("cadenceSpm", lapDynamics?.cadenceSpm?.let(::round1))
-                            putNumber("groundContactTimeMs", lapDynamics?.groundContactTimeMs?.let(::round1))
-                            putNumber("verticalOscillationMm", lapDynamics?.verticalOscillationMm?.let(::round1))
-                            putNumber("strideLengthMm", lapDynamics?.strideLengthMm?.let(::round1))
+                            put("lat", round6(point.latitude))
+                            put("lon", round6(point.longitude))
                         },
                     )
                 }
@@ -1470,6 +1468,56 @@ private fun workoutDetailJson(
         )
     }
 }
+
+private fun runningDynamicsJson(dynamics: RunningDynamicsSummary?): JSONObject =
+    JSONObject().apply {
+        put("available", dynamics?.available == true)
+        if (dynamics == null) {
+            put("reason", "No running-dynamics fields in this activity")
+        } else {
+            putNumber("cadenceSpm", dynamics.cadenceSpm?.let(::round1))
+            putNumber("cadenceRaw", dynamics.cadenceRaw?.let(::round1))
+            putNumber("maxCadenceSpm", dynamics.maxCadenceSpm?.let(::round1))
+            putNumber("groundContactTimeMs", dynamics.groundContactTimeMs?.let(::round1))
+            putNumber("groundContactPercent", dynamics.groundContactPercent?.let(::round1))
+            putNumber("groundContactBalanceLeftPct", dynamics.groundContactBalanceLeftPct?.let(::round1))
+            putNumber("verticalOscillationMm", dynamics.verticalOscillationMm?.let(::round1))
+            putNumber("verticalOscillationCm", dynamics.verticalOscillationMm?.let { round1(it / 10.0) })
+            putNumber("verticalRatioPct", dynamics.verticalRatioPct?.let(::round1))
+            putNumber("strideLengthMm", dynamics.strideLengthMm?.let(::round1))
+            putNumber("strideLengthM", dynamics.strideLengthMm?.let { round1(it / 1000.0) })
+            putNumber("powerW", dynamics.powerW)
+            putNumber("trainingEffect", dynamics.trainingEffect)
+            putNumber("anaerobicTrainingEffect", dynamics.anaerobicTrainingEffect)
+            putNumber("trainingLoadPeak", dynamics.trainingLoadPeak)
+            putNumber("movingTimeSeconds", dynamics.movingTimeSeconds)
+            putNumber("standingTimeSeconds", dynamics.standingTimeSeconds)
+            putNumber("avgSpeedKmh", dynamics.avgSpeedKmh?.let(::round1))
+            putNumber("maxSpeedKmh", dynamics.maxSpeedKmh?.let(::round1))
+            putNumber("avgRespiration", dynamics.avgRespiration)
+            putNumber("avgStress", dynamics.avgStress)
+            putNumber("avgSpo2", dynamics.avgSpo2)
+        }
+    }
+
+private fun lapsJson(laps: List<LapInfo>, lapDynamics: List<LapDynamics>): JSONArray =
+    JSONArray().apply {
+        laps.forEach { lap ->
+            val dynamics = lapDynamics.firstOrNull { it.index == lap.index }
+            put(
+                JSONObject().apply {
+                    put("index", lap.index + 1)
+                    put("distanceKm", round1(lap.distanceMeters / 1000.0))
+                    put("durationMin", (lap.durationSeconds / 60.0).roundToInt())
+                    putNumber("avgHr", lap.avgHeartRate)
+                    putNumber("cadenceSpm", dynamics?.cadenceSpm?.let(::round1))
+                    putNumber("groundContactTimeMs", dynamics?.groundContactTimeMs?.let(::round1))
+                    putNumber("verticalOscillationMm", dynamics?.verticalOscillationMm?.let(::round1))
+                    putNumber("strideLengthMm", dynamics?.strideLengthMm?.let(::round1))
+                },
+            )
+        }
+    }
 
 private fun JSONObject.putNumber(key: String, value: Number?) {
     if (value != null) put(key, value)
