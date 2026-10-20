@@ -168,15 +168,59 @@ object ActivityAnalysis {
         // Session-level zone records use reference_mesg 18. Lap zone records
         // (reference_mesg 19) describe only one lap and would be misleading.
         val zoneMessage = zoneMessages.lastOrNull { it.num("reference_mesg")?.roundToInt() == 18 }
-        val zoneSource = zoneMessage ?: session
         val samples = buildSamples(
             records = records,
             recordMessages = messages.filter { it.messageName == "record" },
             isRunning = isRunning,
         )
         val runWalkResult = buildRunWalk(samples)
-        val runWalk = runWalkResult?.first
-        val derivedMoving = runWalk?.let {
+        val context = AnalysisContext(
+            activity = activity,
+            session = session,
+            metrics = metrics,
+            user = user,
+            zoneMessage = zoneMessage,
+            samples = samples,
+            runWalk = runWalkResult?.first,
+            isRunning = isRunning,
+        )
+
+        val sessionMetrics = buildSessionMetrics(context)
+
+        val hrZones = buildZoneSet(
+            context.zoneSource,
+            "time_in_hr_zone",
+            "hr_zone_high_boundary",
+            HR_ZONE_LABELS,
+            maxHeartRate = zoneMessage.num("max_heart_rate")?.roundToInt()
+                ?: user.num("max_hr")?.roundToInt(),
+            thresholdPowerW = null,
+        )
+        val powerZones = buildZoneSet(
+            context.zoneSource,
+            "time_in_power_zone",
+            "power_zone_high_boundary",
+            POWER_ZONE_LABELS,
+            maxHeartRate = null,
+            thresholdPowerW = zoneMessage.num("functional_threshold_power")?.roundToInt(),
+        )
+
+        return ActivityInsights(
+            samples = samples,
+            session = sessionMetrics,
+            hrZones = hrZones,
+            powerZones = powerZones,
+            runWalk = context.runWalk,
+            movementSegments = runWalkResult?.second.orEmpty(),
+            laps = buildLaps(laps, messages.filter { it.messageName == "lap" }, isRunning),
+        )
+    }
+
+    private fun buildSessionMetrics(context: AnalysisContext): ActivitySessionMetrics {
+        val session = context.session
+        val samples = context.samples
+        val activity = context.activity
+        val derivedMoving = context.runWalk?.let {
             (it.runningSeconds + it.walkingSeconds).takeIf { seconds -> seconds > 0.0 }
         }
 
@@ -187,23 +231,12 @@ object ActivityAnalysis {
         val moving = recordedMoving ?: derivedMoving
         val movingDerived = recordedMoving == null && derivedMoving != null
 
-        val avgSpeed = (session.num("enhanced_avg_speed") ?: session.num("avg_speed"))
-            ?.takeIf { it > 0.0 }
-            ?: distance.takeIf { it > 0.0 && timer > 0.0 }?.let { it / timer }
-        val maxSpeed = (session.num("enhanced_max_speed") ?: session.num("max_speed"))
-            ?.takeIf { it > 0.0 }
-            ?: samples.mapNotNull { it.speedMps }.maxOrNull()?.takeIf { it > 0.0 }
-        val avgCadenceRaw = session.num("avg_cadence")
-            ?.plus(session.num("avg_fractional_cadence") ?: 0.0)
-            ?.takeIf { it > 0.0 }
-        val maxCadenceRaw = session.num("max_cadence")
-            ?.plus(session.num("max_fractional_cadence") ?: 0.0)
-            ?.takeIf { it > 0.0 }
-        val cadenceFactor = if (isRunning) 2.0 else 1.0
-        val avgCadence = avgCadenceRaw?.times(cadenceFactor)
-            ?: samples.mapNotNull { it.cadenceSpm }.filter { it > 0.0 }.averageOrNull()
-        val maxCadence = maxCadenceRaw?.times(cadenceFactor)
-            ?: samples.mapNotNull { it.cadenceSpm }.maxOrNull()
+        val speed = speedMetrics(session, samples, timer, distance)
+        val cadence = cadenceMetrics(session, samples, context.isRunning)
+        val elevation = elevationMetrics(session, samples, activity)
+        val training = trainingMetrics(context)
+        val bodyBattery = bodyBatteryMetrics(context.metrics, context.user, samples)
+        val temperature = temperatureMetrics(session, samples)
 
         val avgStride = (session.num("avg_step_length")?.div(1000.0)
             ?: samples.mapNotNull { it.strideLengthM }.filter { it > 0.0 }.averageOrNull())
@@ -225,59 +258,15 @@ object ActivityAnalysis {
             ?: samples.mapNotNull { it.powerW }.maxOrNull())?.takeIf { it > 0.0 }
         val normalizedPower = session.num("normalized_power")?.takeIf { it > 0.0 }
 
-        val derivedElevation = derivedElevation(samples)
-        val ascent = session.num("total_ascent")
-            ?: activity.ascentMeters?.toDouble()
-            ?: derivedElevation.ascent
-        val descent = session.num("total_descent")
-            ?: activity.descentMeters?.toDouble()
-            ?: derivedElevation.descent
-        val minAltitude = session.num("enhanced_min_altitude")
-            ?: session.num("min_altitude")
-            ?: samples.mapNotNull { it.altitudeMeters }.minOrNull()
-        val maxAltitude = session.num("enhanced_max_altitude")
-            ?: session.num("max_altitude")
-            ?: samples.mapNotNull { it.altitudeMeters }.maxOrNull()
-
-        val aerobic = metrics.num("aerobic_training_effect")
-            ?: session.num("total_training_effect")
-        val anaerobic = metrics.num("anaerobic_training_effect")
-            ?: session.num("total_anaerobic_training_effect")
-        val exerciseLoad = metrics.num("training_load_peak_1")
-            ?: metrics.num("training_load_peak_2")
-            ?: session.num("training_load_peak")
-        val recovery = metrics.num("recovery_time")?.roundToInt()
-        val primaryBenefit = primaryBenefitLabel(metrics.num("primary_benefit")?.roundToInt())
-        val performanceCondition = metrics.num("final_performance_condition")?.roundToInt()
-            ?: samples.lastOrNull { it.performanceCondition != null }?.performanceCondition
-        val vo2Max = metrics.num("vo2_max") ?: user.num("vo2_max")
-
-        val bodyBatteryStart = user.num("initial_body_battery")?.roundToInt()
-            ?: samples.firstNotNullOfOrNull { it.bodyBattery }
-        val bodyBatteryEnd = metrics.num("final_body_battery")?.roundToInt()
-            ?: samples.lastOrNull { it.bodyBattery != null }?.bodyBattery
-        val bodyBatteryNet = if (bodyBatteryStart != null && bodyBatteryEnd != null) {
-            bodyBatteryEnd - bodyBatteryStart
-        } else {
-            null
-        }
-
         val totalCalories = session.num("total_calories")?.roundToInt()?.takeIf { it > 0 }
             ?: activity.calories
         val fatCalories = session.num("total_fat_calories")?.roundToInt()
-        val activeCalories = metrics.num("active_calories")?.roundToInt()
-            ?: metrics.num("active_calorie")?.roundToInt()
-        val restingCalories = metrics.num("resting_calories")?.roundToInt()
-            ?: metrics.num("resting_calorie")?.roundToInt()
+        val activeCalories = context.metrics.num("active_calories")?.roundToInt()
+            ?: context.metrics.num("active_calorie")?.roundToInt()
+        val restingCalories = context.metrics.num("resting_calories")?.roundToInt()
+            ?: context.metrics.num("resting_calorie")?.roundToInt()
 
-        val avgTemperature = session.num("avg_temperature")
-            ?: samples.mapNotNull { it.temperatureC }.averageOrNull()
-        val minTemperature = session.num("min_temperature")
-            ?: samples.mapNotNull { it.temperatureC }.minOrNull()
-        val maxTemperature = session.num("max_temperature")
-            ?: samples.mapNotNull { it.temperatureC }.maxOrNull()
-
-        val sessionMetrics = ActivitySessionMetrics(
+        return ActivitySessionMetrics(
             timerSeconds = timer,
             elapsedSeconds = elapsed,
             movingSeconds = moving,
@@ -285,18 +274,18 @@ object ActivityAnalysis {
             distanceMeters = distance,
             avgPaceSecondsPerKm = pace(timer, distance),
             movingPaceSecondsPerKm = moving?.let { pace(it, distance) },
-            bestPaceSecondsPerKm = maxSpeed?.takeIf { it > 0.1 }?.let { 1000.0 / it },
-            avgSpeedKmh = avgSpeed?.times(3.6),
+            bestPaceSecondsPerKm = speed.maxSpeed?.takeIf { it > 0.1 }?.let { 1000.0 / it },
+            avgSpeedKmh = speed.avgSpeed?.times(3.6),
             movingSpeedKmh = moving?.takeIf { it > 0.0 && distance > 0.0 }?.let { distance / it * 3.6 },
-            maxSpeedKmh = maxSpeed?.times(3.6),
+            maxSpeedKmh = speed.maxSpeed?.times(3.6),
             avgHeartRate = session.num("avg_heart_rate")?.roundToInt()?.takeIf { it in 1..250 }
                 ?: activity.avgHeartRate?.takeIf { it in 1..250 },
             maxHeartRate = session.num("max_heart_rate")?.roundToInt()?.takeIf { it in 1..250 }
                 ?: activity.maxHeartRate?.takeIf { it in 1..250 },
             minHeartRate = session.num("min_heart_rate")?.roundToInt()?.takeIf { it in 1..250 }
                 ?: samples.mapNotNull { it.heartRate }.minOrNull(),
-            avgCadenceSpm = avgCadence,
-            maxCadenceSpm = maxCadence,
+            avgCadenceSpm = cadence.avgCadence,
+            maxCadenceSpm = cadence.maxCadence,
             avgStrideLengthM = avgStride,
             avgVerticalOscillationMm = avgVerticalOscillation,
             avgVerticalRatioPct = avgVerticalRatio,
@@ -308,59 +297,179 @@ object ActivityAnalysis {
             fatCalories = fatCalories,
             activeCalories = activeCalories,
             restingCalories = restingCalories,
-            ascentMeters = ascent,
-            descentMeters = descent,
-            minAltitudeMeters = minAltitude,
-            maxAltitudeMeters = maxAltitude,
-            avgTemperatureC = avgTemperature,
-            minTemperatureC = minTemperature,
-            maxTemperatureC = maxTemperature,
-            aerobicTrainingEffect = aerobic,
-            anaerobicTrainingEffect = anaerobic,
-            exerciseLoad = exerciseLoad,
-            recoveryMinutes = recovery,
-            primaryBenefit = primaryBenefit,
-            performanceCondition = performanceCondition,
-            vo2Max = vo2Max,
-            bodyBatteryStart = bodyBatteryStart,
-            bodyBatteryEnd = bodyBatteryEnd,
-            bodyBatteryNet = bodyBatteryNet,
+            ascentMeters = elevation.ascent,
+            descentMeters = elevation.descent,
+            minAltitudeMeters = elevation.minAltitude,
+            maxAltitudeMeters = elevation.maxAltitude,
+            avgTemperatureC = temperature.avg,
+            minTemperatureC = temperature.min,
+            maxTemperatureC = temperature.max,
+            aerobicTrainingEffect = training.aerobic,
+            anaerobicTrainingEffect = training.anaerobic,
+            exerciseLoad = training.exerciseLoad,
+            recoveryMinutes = training.recoveryMinutes,
+            primaryBenefit = training.primaryBenefit,
+            performanceCondition = training.performanceCondition,
+            vo2Max = training.vo2Max,
+            bodyBatteryStart = bodyBattery.start,
+            bodyBatteryEnd = bodyBattery.end,
+            bodyBatteryNet = bodyBattery.net,
             avgRespiration = (session.num("enhanced_avg_respiration_rate")
                 ?: session.num("avg_respiration_rate"))?.takeIf { it > 0.0 },
             avgSpo2 = session.num("avg_spo2")?.roundToInt()?.takeIf { it in 1..100 },
             avgStress = session.num("avg_stress")?.roundToInt()?.takeIf { it in 0..100 },
         )
+    }
 
-        val maxHr = zoneMessage.num("max_heart_rate")?.roundToInt()
-            ?: user.num("max_hr")?.roundToInt()
-        val thresholdPower = zoneMessage.num("functional_threshold_power")?.roundToInt()
-        val hrZones = buildZoneSet(
-            zoneSource,
-            "time_in_hr_zone",
-            "hr_zone_high_boundary",
-            HR_ZONE_LABELS,
-            maxHr,
-            null,
-        )
-        val powerZones = buildZoneSet(
-            zoneSource,
-            "time_in_power_zone",
-            "power_zone_high_boundary",
-            POWER_ZONE_LABELS,
-            null,
-            thresholdPower,
-        )
+    private fun speedMetrics(
+        session: JSONObject?,
+        samples: List<ActivitySample>,
+        timerSeconds: Double,
+        distanceMeters: Double,
+    ): SpeedMetrics {
+        val avgSpeed = (session.num("enhanced_avg_speed") ?: session.num("avg_speed"))
+            ?.takeIf { it > 0.0 }
+            ?: distanceMeters.takeIf { it > 0.0 && timerSeconds > 0.0 }?.let { it / timerSeconds }
+        val maxSpeed = (session.num("enhanced_max_speed") ?: session.num("max_speed"))
+            ?.takeIf { it > 0.0 }
+            ?: samples.mapNotNull { it.speedMps }.maxOrNull()?.takeIf { it > 0.0 }
+        return SpeedMetrics(avgSpeed = avgSpeed, maxSpeed = maxSpeed)
+    }
 
-        return ActivityInsights(
-            samples = samples,
-            session = sessionMetrics,
-            hrZones = hrZones,
-            powerZones = powerZones,
-            runWalk = runWalk,
-            movementSegments = runWalkResult?.second.orEmpty(),
-            laps = buildLaps(laps, messages.filter { it.messageName == "lap" }, isRunning),
+    private fun cadenceMetrics(
+        session: JSONObject?,
+        samples: List<ActivitySample>,
+        isRunning: Boolean,
+    ): CadenceMetrics {
+        val avgCadenceRaw = session.num("avg_cadence")
+            ?.plus(session.num("avg_fractional_cadence") ?: 0.0)
+            ?.takeIf { it > 0.0 }
+        val maxCadenceRaw = session.num("max_cadence")
+            ?.plus(session.num("max_fractional_cadence") ?: 0.0)
+            ?.takeIf { it > 0.0 }
+        val cadenceFactor = if (isRunning) 2.0 else 1.0
+        val avgCadence = avgCadenceRaw?.times(cadenceFactor)
+            ?: samples.mapNotNull { it.cadenceSpm }.filter { it > 0.0 }.averageOrNull()
+        val maxCadence = maxCadenceRaw?.times(cadenceFactor)
+            ?: samples.mapNotNull { it.cadenceSpm }.maxOrNull()
+        return CadenceMetrics(avgCadence = avgCadence, maxCadence = maxCadence)
+    }
+
+    private fun elevationMetrics(
+        session: JSONObject?,
+        samples: List<ActivitySample>,
+        activity: ActivityEntity,
+    ): ElevationMetrics {
+        val derived = derivedElevation(samples)
+        val ascent = session.num("total_ascent")
+            ?: activity.ascentMeters?.toDouble()
+            ?: derived.ascent
+        val descent = session.num("total_descent")
+            ?: activity.descentMeters?.toDouble()
+            ?: derived.descent
+        val minAltitude = session.num("enhanced_min_altitude")
+            ?: session.num("min_altitude")
+            ?: samples.mapNotNull { it.altitudeMeters }.minOrNull()
+        val maxAltitude = session.num("enhanced_max_altitude")
+            ?: session.num("max_altitude")
+            ?: samples.mapNotNull { it.altitudeMeters }.maxOrNull()
+        return ElevationMetrics(
+            ascent = ascent,
+            descent = descent,
+            minAltitude = minAltitude,
+            maxAltitude = maxAltitude,
         )
     }
+
+    private fun trainingMetrics(context: AnalysisContext): TrainingMetrics {
+        val metrics = context.metrics
+        val session = context.session
+        val aerobic = metrics.num("aerobic_training_effect")
+            ?: session.num("total_training_effect")
+        val anaerobic = metrics.num("anaerobic_training_effect")
+            ?: session.num("total_anaerobic_training_effect")
+        val exerciseLoad = metrics.num("training_load_peak_1")
+            ?: metrics.num("training_load_peak_2")
+            ?: session.num("training_load_peak")
+        val recovery = metrics.num("recovery_time")?.roundToInt()
+        val primaryBenefit = primaryBenefitLabel(metrics.num("primary_benefit")?.roundToInt())
+        val performanceCondition = metrics.num("final_performance_condition")?.roundToInt()
+            ?: context.samples.lastOrNull { it.performanceCondition != null }?.performanceCondition
+        val vo2Max = metrics.num("vo2_max") ?: context.user.num("vo2_max")
+        return TrainingMetrics(
+            aerobic = aerobic,
+            anaerobic = anaerobic,
+            exerciseLoad = exerciseLoad,
+            recoveryMinutes = recovery,
+            primaryBenefit = primaryBenefit,
+            performanceCondition = performanceCondition,
+            vo2Max = vo2Max,
+        )
+    }
+
+    private fun bodyBatteryMetrics(
+        metrics: JSONObject?,
+        user: JSONObject?,
+        samples: List<ActivitySample>,
+    ): BodyBatteryMetrics {
+        val start = user.num("initial_body_battery")?.roundToInt()
+            ?: samples.firstNotNullOfOrNull { it.bodyBattery }
+        val end = metrics.num("final_body_battery")?.roundToInt()
+            ?: samples.lastOrNull { it.bodyBattery != null }?.bodyBattery
+        val net = if (start != null && end != null) end - start else null
+        return BodyBatteryMetrics(start = start, end = end, net = net)
+    }
+
+    private fun temperatureMetrics(
+        session: JSONObject?,
+        samples: List<ActivitySample>,
+    ): TemperatureMetrics {
+        val avg = session.num("avg_temperature")
+            ?: samples.mapNotNull { it.temperatureC }.averageOrNull()
+        val min = session.num("min_temperature")
+            ?: samples.mapNotNull { it.temperatureC }.minOrNull()
+        val max = session.num("max_temperature")
+            ?: samples.mapNotNull { it.temperatureC }.maxOrNull()
+        return TemperatureMetrics(avg = avg, min = min, max = max)
+    }
+
+    private class AnalysisContext(
+        val activity: ActivityEntity,
+        val session: JSONObject?,
+        val metrics: JSONObject?,
+        val user: JSONObject?,
+        val zoneMessage: JSONObject?,
+        val samples: List<ActivitySample>,
+        val runWalk: RunWalkSplit?,
+        val isRunning: Boolean,
+    ) {
+        val zoneSource: JSONObject? get() = zoneMessage ?: session
+    }
+
+    private data class SpeedMetrics(val avgSpeed: Double?, val maxSpeed: Double?)
+
+    private data class CadenceMetrics(val avgCadence: Double?, val maxCadence: Double?)
+
+    private data class ElevationMetrics(
+        val ascent: Double?,
+        val descent: Double?,
+        val minAltitude: Double?,
+        val maxAltitude: Double?,
+    )
+
+    private data class TrainingMetrics(
+        val aerobic: Double?,
+        val anaerobic: Double?,
+        val exerciseLoad: Double?,
+        val recoveryMinutes: Int?,
+        val primaryBenefit: String?,
+        val performanceCondition: Int?,
+        val vo2Max: Double?,
+    )
+
+    private data class BodyBatteryMetrics(val start: Int?, val end: Int?, val net: Int?)
+
+    private data class TemperatureMetrics(val avg: Double?, val min: Double?, val max: Double?)
 
     private fun buildSamples(
         records: List<RecordEntity>,
