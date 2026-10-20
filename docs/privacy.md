@@ -10,6 +10,9 @@ Only when the coach is used:
 
 - The chat message you type.
 - The system prompt and recent chat history.
+- The optional profile you save in Settings: max heart rate, height, weight,
+  year of birth, biological sex, imported resting heart rate, and training
+  limitations. Unset fields and "Prefer not to say" are omitted.
 - The results of the tools the model calls. This is compact JSON: wellness
   aggregates, workout summaries, running dynamics, and—only when the user asks
   about a route and the model requests it—up to 60 sampled GPS points. It never

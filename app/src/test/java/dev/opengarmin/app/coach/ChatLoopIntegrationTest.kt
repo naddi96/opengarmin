@@ -287,6 +287,10 @@ class ChatLoopIntegrationTest {
             maxHeartRate = 190,
             heightCm = 180,
             weightKg = 75.0,
+            birthYear = 1990,
+            biologicalSex = "female",
+            restingHeartRate = 52,
+            trainingLimitations = "Left knee pain",
         )
         loop.run(
             client = client(),
@@ -304,6 +308,10 @@ class ChatLoopIntegrationTest {
         assertTrue(systemText.contains("max heart rate 190 bpm"))
         assertTrue(systemText.contains("height 180 cm"))
         assertTrue(systemText.contains("weight 75.0 kg"))
+        assertTrue(systemText.contains("birth year 1990"))
+        assertTrue(systemText.contains("biological sex female"))
+        assertTrue(systemText.contains("resting heart rate 52 bpm"))
+        assertTrue(systemText.contains("Left knee pain"))
         assertTrue(systemText.contains("configured max heart rate is 190 bpm"))
     }
 

@@ -37,6 +37,7 @@ import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivitySyncProgress
 import dev.opengarmin.app.sync.SyncPolicy
 import dev.opengarmin.app.ui.components.IconButtonRound
+import dev.opengarmin.app.ui.components.PillChip
 import dev.opengarmin.app.ui.components.PrimaryButton
 import dev.opengarmin.app.ui.components.PulseCard
 import dev.opengarmin.app.ui.components.SectionLabel
@@ -79,6 +80,15 @@ fun SettingsScreen(
                 else "%.1f".format(value)
             } ?: "",
         )
+    }
+    var birthYearText by remember(settings.birthYear) {
+        mutableStateOf(settings.birthYear?.toString() ?: "")
+    }
+    var biologicalSex by remember(settings.biologicalSex) {
+        mutableStateOf(settings.biologicalSex ?: "prefer_not_to_say")
+    }
+    var limitationsText by remember(settings.trainingLimitations) {
+        mutableStateOf(settings.trainingLimitations ?: "")
     }
     var savedMessage by remember { mutableStateOf<String?>(null) }
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
@@ -153,8 +163,85 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f),
                     )
                 }
+                OutlinedTextField(
+                    value = birthYearText,
+                    onValueChange = { birthYearText = it.filter(Char::isDigit).take(4) },
+                    label = { Text("Year of birth (optional)") },
+                    supportingText = { Text("Used for age context. No full date of birth is stored.") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 Text(
-                    "Height and weight are used only by the AI coach to personalize advice. They are sent only when you chat with your configured provider.",
+                    "Biological sex",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PulseColors.TextMuted,
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.xs)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
+                        listOf(
+                            "female" to "Female",
+                            "male" to "Male",
+                            "intersex" to "Intersex",
+                        ).forEach { (value, label) ->
+                            PillChip(
+                                label = label,
+                                selected = biologicalSex == value,
+                                onClick = { biologicalSex = value },
+                            )
+                        }
+                    }
+                    PillChip(
+                        label = "Prefer not to say",
+                        selected = biologicalSex == "prefer_not_to_say",
+                        onClick = { biologicalSex = "prefer_not_to_say" },
+                    )
+                }
+                Text(
+                    "Optional; used for metabolic and training-load context.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                )
+                OutlinedTextField(
+                    value = limitationsText,
+                    onValueChange = { limitationsText = it.take(500) },
+                    label = { Text("Training limitations or injuries (optional)") },
+                    supportingText = {
+                        Text("Stored locally. Shared with the coach only while you chat, to avoid unsafe suggestions.")
+                    },
+                    minLines = 2,
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Resting heart rate",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PulseColors.TextMuted,
+                        )
+                        Text(
+                            settings.importedRestingHeartRate?.let { "$it bpm" } ?: "Not imported yet",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = PulseColors.Text,
+                        )
+                    }
+                    Text(
+                        "From watch",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+                Text(
+                    "Imported automatically from the latest watch wellness data. Used for recovery and heart-rate-reserve context.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                )
+                Text(
+                    "Height, weight, year of birth, sex, training limitations and the imported resting heart rate are stored only on this device. This profile is sent to the coach only when you chat with your configured provider.",
                     style = MaterialTheme.typography.labelSmall,
                     color = PulseColors.TextMuted,
                 )
@@ -164,6 +251,8 @@ fun SettingsScreen(
                         val maxHr = maxHrText.toIntOrNull()
                         val height = heightText.toIntOrNull()
                         val weight = weightText.replace(',', '.').toDoubleOrNull()
+                        val birthYear = birthYearText.toIntOrNull()
+                        val maxBirthYear = java.time.Year.now().value - 10
                         when {
                             goal == null || goal !in 1_000..100_000 ->
                                 savedMessage = "Step goal must be between 1,000 and 100,000."
@@ -173,11 +262,19 @@ fun SettingsScreen(
                                 savedMessage = "Height must be between 100 and 250 cm."
                             weightText.isNotBlank() && (weight == null || weight !in 30.0..300.0) ->
                                 savedMessage = "Weight must be between 30 and 300 kg."
+                            birthYearText.isNotBlank() &&
+                                (birthYear == null || birthYear !in 1900..maxBirthYear) ->
+                                savedMessage = "Year of birth must be between 1900 and $maxBirthYear."
                             else -> {
                                 settings.updateStepGoal(goal)
                                 settings.updateMaxHeartRate(maxHr)
                                 settings.updateHeightCm(height)
                                 settings.updateWeightKg(weight)
+                                settings.updateBirthYear(birthYear)
+                                settings.updateBiologicalSex(
+                                    biologicalSex.takeIf { it != "prefer_not_to_say" },
+                                )
+                                settings.updateTrainingLimitations(limitationsText)
                                 focusManager.clearFocus()
                                 savedMessage = "Profile saved."
                             }

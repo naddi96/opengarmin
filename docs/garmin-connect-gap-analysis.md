@@ -67,7 +67,7 @@ parsed into `fit_messages` but has no screen, tool, or action is marked partial.
 | **PacePro** | 5K/10K/half/marathon/custom distance, Riegel prediction, recent-run elevation profile, split/hill sliders, saved plans, watch upload, phone-GPS preview run with manual laps | No GPX/course import, no live HR, no watch-native navigation, no weather/race-day integration |
 | **Coach** | OpenAI-compatible presets, encrypted key, model management, streaming Markdown, cancel, read-only health tools, evidence chips, inline charts, coach-created workouts, 50 conversations | Opt-in only; no proactive insights, no on-device model, no long-term memory beyond chat, no plan adaptation, only one write path (create workout) |
 | **Trends** | 7D/30D/90D/1Y/All/custom ranges, 11 metrics, averages, daily/weekly/monthly buckets, partial-history labels | Fixed metrics and chart types; no custom dashboards or cross-metric correlation |
-| **Settings and data** | Step goal, max HR, height/weight, provider management, sync/scan/disconnect, device log, FIT import, ZIP database + chat backup/restore, per-activity FIT/GPX/TCX/CSV export | No age/sex/units, no goals beyond steps, no encrypted backup, no multi-profile |
+| **Settings and data** | Step goal, max HR, height/weight, year of birth, biological sex, training limitations, imported resting HR, provider management, sync/scan/disconnect, device log, FIT import, ZIP database + chat backup/restore, per-activity FIT/GPX/TCX/CSV export | No units, no goals beyond steps, no encrypted backup, no multi-profile |
 | **Quality and security** | JVM tests for protocol/app, CI, Keystore-encrypted provider key, privacy docs, no account/telemetry | No Compose UI, migration, or end-to-end backup tests; cleartext HTTP is app-wide with a warning |
 
 Coverage at a glance:
@@ -166,7 +166,7 @@ funds**. The app should not pretend to have them.
 | Blood pressure / glucose | Via partners/devices | No | ❌ | P3 | C |
 | Manual metric and activity entry | Yes | No | ❌ | P1 | A |
 | Reports | Web reports | No PDF/CSV report | ❌ | P2 | A |
-| Units, profile, and non-step goals | Full | Step goal, max HR and height/weight only | 🟡 | P0 | A |
+| Units, profile, and non-step goals | Full | Step goal, max HR, height, weight, birth year, sex and training limitations only | 🟡 | P0 | A |
 
 ### 4.2 Training and planning
 

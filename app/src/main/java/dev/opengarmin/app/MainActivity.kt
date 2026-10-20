@@ -693,6 +693,9 @@ class MainActivity : ComponentActivity() {
             repository.wellnessDays.collect { list ->
                 wellnessDays.clear()
                 wellnessDays.addAll(list)
+                settings.updateImportedRestingHeartRate(
+                    dev.opengarmin.app.data.WellnessMetrics.latestRestingHeartRate(list),
+                )
                 val latest = dev.opengarmin.app.data.WellnessMetrics.latestDay(list)
                 if (latest != null) {
                     val (samples, stages) = withContext(Dispatchers.IO) {

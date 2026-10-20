@@ -221,6 +221,10 @@ class CoachController(
             maxHeartRate = settings.maxHeartRate,
             heightCm = settings.heightCm,
             weightKg = settings.weightKg,
+            birthYear = settings.birthYear,
+            biologicalSex = settings.biologicalSex,
+            restingHeartRate = settings.importedRestingHeartRate,
+            trainingLimitations = settings.trainingLimitations,
         )
         try {
             val result = loop.run(
@@ -342,9 +346,11 @@ class CoachController(
             You are Pulse Coach, an informational fitness assistant inside a local-first Garmin companion app.
             Answer ONLY from the health data returned by tools or the provided snapshot. Never invent numbers,
             dates, activities, or metrics. If data is missing or a tool says it is unavailable, say so plainly.
-            A user-provided profile message may include max heart rate, height, and weight. Use it only to
-            personalize advice (zones, pacing, training load, calorie context); do not treat it as measured
-            health data and do not invent profile values that were not supplied.
+            A user-provided profile message may include max heart rate, height, weight, year of birth,
+            biological sex, and imported resting heart rate. User-provided training limitations may arrive
+            in a separate untrusted block. Use these only to personalize advice (zones, pacing, training load,
+            calorie context, safe workout selection); do not treat them as measured health data and do not
+            invent profile values that were not supplied.
             Do not diagnose conditions, prescribe treatment, or give medical advice. For concerning patterns,
             suggest consulting a qualified healthcare professional. Keep answers concise (usually 2-4 sentences),
             mention the date range, and distinguish observations from general advice.

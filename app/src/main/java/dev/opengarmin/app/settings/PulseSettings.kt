@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import java.time.Year
 
 /**
  * Local-only user preferences. Health data lives in Room; this holds the small
@@ -26,6 +27,22 @@ class PulseSettings(context: Context) {
         private set
     var weightKg by mutableStateOf(
         prefs.getFloat(KEY_WEIGHT_KG, 0f).takeIf { it in 30f..300f }?.toDouble(),
+    )
+        private set
+    var biologicalSex by mutableStateOf(
+        prefs.getString(KEY_BIOLOGICAL_SEX, null)?.takeIf { it in SEX_VALUES },
+    )
+        private set
+    var birthYear by mutableStateOf(
+        prefs.getInt(KEY_BIRTH_YEAR, 0).takeIf { it in 1900..(Year.now().value - 10) },
+    )
+        private set
+    var trainingLimitations by mutableStateOf(
+        prefs.getString(KEY_TRAINING_LIMITATIONS, null)?.takeIf { it.isNotBlank() },
+    )
+        private set
+    var importedRestingHeartRate by mutableStateOf(
+        prefs.getInt(KEY_IMPORTED_RESTING_HR, 0).takeIf { it in 30..120 },
     )
         private set
     var lastSyncAt by mutableStateOf(prefs.getLong(KEY_LAST_SYNC, 0L).takeIf { it > 0L })
@@ -79,6 +96,14 @@ class PulseSettings(context: Context) {
             KEY_HEIGHT_CM -> heightCm = prefs.getInt(KEY_HEIGHT_CM, 0).takeIf { it in 100..250 }
             KEY_WEIGHT_KG -> weightKg = prefs.getFloat(KEY_WEIGHT_KG, 0f)
                 .takeIf { it in 30f..300f }?.toDouble()
+            KEY_BIOLOGICAL_SEX -> biologicalSex = prefs.getString(KEY_BIOLOGICAL_SEX, null)
+                ?.takeIf { it in SEX_VALUES }
+            KEY_BIRTH_YEAR -> birthYear = prefs.getInt(KEY_BIRTH_YEAR, 0)
+                .takeIf { it in 1900..(Year.now().value - 10) }
+            KEY_TRAINING_LIMITATIONS -> trainingLimitations = prefs.getString(KEY_TRAINING_LIMITATIONS, null)
+                ?.takeIf { it.isNotBlank() }
+            KEY_IMPORTED_RESTING_HR -> importedRestingHeartRate = prefs.getInt(KEY_IMPORTED_RESTING_HR, 0)
+                .takeIf { it in 30..120 }
             KEY_LAST_SYNC -> lastSyncAt = prefs.getLong(KEY_LAST_SYNC, 0L).takeIf { it > 0L }
             KEY_LAST_STATUS -> lastSyncStatus = prefs.getString(KEY_LAST_STATUS, "") ?: ""
             KEY_LAST_ERROR -> lastSyncError = prefs.getString(KEY_LAST_ERROR, "") ?: ""
@@ -146,6 +171,50 @@ class PulseSettings(context: Context) {
             val safe = value.coerceIn(30.0, 300.0)
             weightKg = safe
             prefs.edit().putFloat(KEY_WEIGHT_KG, safe.toFloat()).apply()
+        }
+    }
+
+    fun updateBiologicalSex(value: String?) {
+        val safe = value?.lowercase()?.takeIf { it in SEX_VALUES }
+        if (safe == null) {
+            biologicalSex = null
+            prefs.edit().remove(KEY_BIOLOGICAL_SEX).apply()
+        } else {
+            biologicalSex = safe
+            prefs.edit().putString(KEY_BIOLOGICAL_SEX, safe).apply()
+        }
+    }
+
+    fun updateBirthYear(value: Int?) {
+        val safe = value?.coerceIn(1900, Year.now().value - 10)
+        if (safe == null) {
+            birthYear = null
+            prefs.edit().remove(KEY_BIRTH_YEAR).apply()
+        } else {
+            birthYear = safe
+            prefs.edit().putInt(KEY_BIRTH_YEAR, safe).apply()
+        }
+    }
+
+    fun updateTrainingLimitations(value: String?) {
+        val safe = value?.trim()?.take(500)?.takeIf { it.isNotBlank() }
+        if (safe == null) {
+            trainingLimitations = null
+            prefs.edit().remove(KEY_TRAINING_LIMITATIONS).apply()
+        } else {
+            trainingLimitations = safe
+            prefs.edit().putString(KEY_TRAINING_LIMITATIONS, safe).apply()
+        }
+    }
+
+    fun updateImportedRestingHeartRate(value: Int?) {
+        val safe = value?.takeIf { it in 30..120 }
+        if (importedRestingHeartRate == safe) return
+        importedRestingHeartRate = safe
+        if (safe == null) {
+            prefs.edit().remove(KEY_IMPORTED_RESTING_HR).apply()
+        } else {
+            prefs.edit().putInt(KEY_IMPORTED_RESTING_HR, safe).apply()
         }
     }
 
@@ -217,6 +286,11 @@ class PulseSettings(context: Context) {
         private const val KEY_MAX_HR = "max_heart_rate"
         private const val KEY_HEIGHT_CM = "height_cm"
         private const val KEY_WEIGHT_KG = "weight_kg"
+        private const val KEY_BIOLOGICAL_SEX = "biological_sex"
+        private const val KEY_BIRTH_YEAR = "birth_year"
+        private const val KEY_TRAINING_LIMITATIONS = "training_limitations"
+        private const val KEY_IMPORTED_RESTING_HR = "imported_resting_hr"
+        private val SEX_VALUES = setOf("female", "male", "intersex")
         private const val KEY_LAST_SYNC = "last_sync_at"
         private const val KEY_LAST_STATUS = "last_sync_status"
         private const val KEY_LAST_ERROR = "last_sync_error"

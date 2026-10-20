@@ -111,10 +111,11 @@ Venu/Venu 2/3, Instinct 2 and others, with small differences.
   the archive and schema version, then replaces the local data; a raw SQLite
   database exported earlier is also accepted. Provider settings and API keys are
   not included. The archive is unencrypted, so store it somewhere you trust.
-- **Profile:** Settings stores the step goal, max heart rate, height and weight.
-  The configured max HR drives the activity heart-rate zones, and height/weight
-  are sent to the coach only as part of a chat so advice can account for body
-  size.
+- **Profile:** Settings stores the step goal, max heart rate, height, weight,
+  optional year of birth, biological sex and training limitations. Resting HR
+  is imported automatically from the watch. The configured max HR drives the
+  activity heart-rate zones; the profile is sent to the coach only during chat
+  so advice can account for body size and training constraints.
 - **Activities:** weekly summary, sport filters (Run, Ride, Cardio, Strength,
   Walk, and an Other bucket for every remaining sport), row-to-featured
   selection, real GPS/HR trace with a speed-coloured track (blue slower,

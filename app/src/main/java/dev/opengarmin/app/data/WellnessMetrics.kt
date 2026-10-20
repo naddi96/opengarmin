@@ -20,6 +20,15 @@ object WellnessMetrics {
     }
 
     /**
+     * Newest valid resting heart rate. Days without a resting HR are skipped so
+     * a partially imported day does not erase the last value from the watch.
+     */
+    fun latestRestingHeartRate(days: List<WellnessDayEntity>): Int? =
+        days
+            .sortedByDescending { it.date }
+            .firstNotNullOfOrNull { it.restingHeartRate?.takeIf { hr -> hr in 30..120 } }
+
+    /**
      * Sleep time from the recorded stages. Returns null when no stage was
      * imported so the UI can show an honest empty state instead of 0 h.
      */

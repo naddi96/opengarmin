@@ -26,6 +26,23 @@ class WellnessMetricsTest {
     }
 
     @Test
+    fun `resting heart rate uses the newest valid day`() {
+        val days = listOf(
+            day("2026-10-17").copy(restingHeartRate = 49),
+            day("2026-10-18").copy(restingHeartRate = 51),
+            day("2026-10-19"),
+            day("2026-10-20").copy(restingHeartRate = 10),
+        )
+
+        assertEquals(51, WellnessMetrics.latestRestingHeartRate(days))
+    }
+
+    @Test
+    fun `resting heart rate is null without a valid value`() {
+        assertNull(WellnessMetrics.latestRestingHeartRate(listOf(day("2026-10-18"))))
+    }
+
+    @Test
     fun `sleep duration sums recorded stages and stays null with no stages`() {
         val day = day("2026-10-18").copy(
             deepSleepSeconds = 3600,
