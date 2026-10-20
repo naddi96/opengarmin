@@ -74,8 +74,14 @@ class SyncCoordinator(
     }
 
     private enum class Stage { CREATE, UPLOAD, DATA }
+
+    /** Which kind of pull is currently in flight; routes pull responses. */
+    private enum class PullKind { Activity, Wellness }
+
     private val wellnessQueue = ArrayDeque<Gdi.ItemReference>()
     private var wellnessTransfer = false
+    private var activePull: PullKind? = null
+    /** Wellness type label for the active pull; used for logging only. */
     private var pulledWellnessType = ""
     private var inFlightWellness: Gdi.ItemReference? = null
     private val activityQueue = ArrayDeque<Gdi.ItemReference>()
@@ -150,6 +156,8 @@ class SyncCoordinator(
                 inFlightWellness?.let { retry ->
                     inFlightWellness = null
                     wellnessTransfer = false
+                    activePull = null
+                    pulledWellnessType = ""
                     wellnessQueue.addFirst(retry)
                 }
                 activityPullNotBefore = SystemClock.uptimeMillis() + READY_GRACE_MS
@@ -160,6 +168,8 @@ class SyncCoordinator(
                     if (retry != null) {
                         inFlightWellness = null
                         wellnessTransfer = false
+                        activePull = null
+                        pulledWellnessType = ""
                         wellnessQueue.addFirst(retry)
                         handler.postDelayed({ pullNextWellness() }, 800)
                     } else if (wellnessQueue.isNotEmpty() && !wellnessTransfer) {
@@ -196,6 +206,7 @@ class SyncCoordinator(
         gdxmlLookup.clear()
         wellnessQueue.clear()
         wellnessTransfer = false
+        activePull = null
         pulledWellnessType = ""
         inFlightWellness = null
         activityQueue.clear()
@@ -419,6 +430,7 @@ class SyncCoordinator(
 
     private fun startWellnessPull(item: Gdi.ItemReference) {
         wellnessTransfer = true
+        activePull = PullKind.Wellness
         pulledWellnessType = gdxmlLookup.typeOf(item) ?: "unknown"
         inFlightWellness = item
         log("WELLNESS PULL request type=$pulledWellnessType size=${item.dataSize} left=${wellnessQueue.size}")
@@ -669,27 +681,7 @@ class SyncCoordinator(
         }
 
         if (listPagePending) {
-            listPagePending = false
-            val seen = listItems.mapNotNull { it.uid?.hex() }.toHashSet()
-            var added = 0
-            for (item in list.items) {
-                val uid = item.uid?.hex() ?: continue
-                if (uid !in seen) {
-                    listItems.add(item)
-                    seen.add(uid)
-                    added++
-                }
-            }
-            val previousCursor = listCursor
-            val pageMax = list.items.maxOfOrNull { it.transactionId } ?: previousCursor
-            listCursor = maxOf(listCursor, pageMax)
-            log("FILE LIST page tx=$previousCursor..$listCursor added=$added total=${listItems.size}")
-            if (list.items.size >= 100 && listCursor > previousCursor) {
-                requestListPage(listCursor)
-                return
-            }
-            listReceived = true
-            processListItems(listItems.toList())
+            handleListPage(list)
             return
         }
 
@@ -700,6 +692,31 @@ class SyncCoordinator(
         }
         listReceived = true
         processListItems(list.items)
+    }
+
+    /** Accumulates one paged directory response and requests the next page. */
+    private fun handleListPage(list: Gdi.ItemListResponse) {
+        listPagePending = false
+        val seen = listItems.mapNotNull { it.uid?.hex() }.toHashSet()
+        var added = 0
+        for (item in list.items) {
+            val uid = item.uid?.hex() ?: continue
+            if (uid !in seen) {
+                listItems.add(item)
+                seen.add(uid)
+                added++
+            }
+        }
+        val previousCursor = listCursor
+        val pageMax = list.items.maxOfOrNull { it.transactionId } ?: previousCursor
+        listCursor = maxOf(listCursor, pageMax)
+        log("FILE LIST page tx=$previousCursor..$listCursor added=$added total=${listItems.size}")
+        if (list.items.size >= 100 && listCursor > previousCursor) {
+            requestListPage(listCursor)
+            return
+        }
+        listReceived = true
+        processListItems(listItems.toList())
     }
 
     private fun processListItems(items: List<Gdi.ItemReference>) {
@@ -802,6 +819,7 @@ class SyncCoordinator(
             return
         }
         requestedPull = true
+        activePull = PullKind.Activity
         pulledWellnessType = ""
         reportActivityProgress()
         log(
@@ -832,8 +850,9 @@ class SyncCoordinator(
             if (pr.result != 0) {
                 log("PULL failed: ${pullResultName(pr.result)} (${pr.result})")
             }
-            if (pulledWellnessType.isNotEmpty()) {
+            if (activePull == PullKind.Wellness) {
                 val retry = inFlightWellness
+                activePull = null
                 pulledWellnessType = ""
                 wellnessTransfer = false
                 inFlightWellness = null
@@ -843,6 +862,7 @@ class SyncCoordinator(
                     handler.postDelayed({ pullNextWellness() }, RETRY_DELAY_MS)
                 }
             } else {
+                activePull = null
                 requestedPull = false
                 if (pr.result == RESULT_NO_RESOURCES && activityPullAttempts < MAX_PULL_RETRIES) {
                     activityPullAttempts++
@@ -873,44 +893,10 @@ class SyncCoordinator(
                 pipe = null
                 handler.post {
                     log("DOWNLOAD raw=${compressed.size} decoded=${decoded.size} -> ${decFile.absolutePath}")
-                    if (pulledWellnessType.isNotEmpty()) {
-                        val type = pulledWellnessType
-                        val wellnessUid = inFlightWellness?.uid?.hex().orEmpty()
-                        pulledWellnessType = ""
-                        wellnessTransfer = false
-                        inFlightWellness = null
-                        log("WELLNESS complete type=$type decoded=${decoded.size}")
-                        onWellnessFile(decFile, type, wellnessUid)
-                        if (pendingActivityItem != null && !done) {
-                            activityPullNotBefore = SystemClock.uptimeMillis() + ACTIVITY_GRACE_MS
-                        }
-                        pullNextWellness()
+                    if (activePull == PullKind.Wellness) {
+                        completeWellnessTransfer(raw, decoded, decFile)
                     } else {
-                        pendingActivityItem = null
-                        if (pulledItemUid.isNotEmpty()) completedActivityUids += pulledItemUid
-                        activityDone++
-                        onFinished(raw, decFile, pulledItemUid)
-                        val next = activityQueue.removeFirstOrNull()
-                        if (next != null) {
-                            pendingActivityItem = next
-                            pulledItemUid = next.uid?.hex().orEmpty()
-                            requestedPull = false
-                            activitiesUpToDate = false
-                            done = false
-                            activityTotal = activityDone + activityQueue.size + 1
-                            activityPullNotBefore = SystemClock.uptimeMillis() + ACTIVITY_GRACE_MS
-                            log(
-                                "SYNC: next activity queued uid=${next.uid?.hex()} " +
-                                    "type=${gdxmlLookup.typeOf(next)} remaining=${activityQueue.size}",
-                            )
-                            reportActivityProgress()
-                            tryStartActivityPull()
-                        } else {
-                            activityTotal = activityDone
-                            reportActivityProgress()
-                            done = true
-                            if (wellnessQueue.isNotEmpty()) pullNextWellness()
-                        }
+                        completeActivityTransfer(raw, decoded, decFile, pulledItemUid)
                     }
                 }
             },
@@ -919,6 +905,60 @@ class SyncCoordinator(
         )
         pipe = p
         p.start()
+    }
+
+    /**
+     * Finishes a wellness transfer: clears the transfer slot, hands the decoded
+     * file to the importer and continues the wellness queue.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun completeWellnessTransfer(raw: File, decoded: ByteArray, decFile: File) {
+        val type = pulledWellnessType
+        val wellnessUid = inFlightWellness?.uid?.hex().orEmpty()
+        activePull = null
+        pulledWellnessType = ""
+        wellnessTransfer = false
+        inFlightWellness = null
+        log("WELLNESS complete type=$type decoded=${decoded.size}")
+        onWellnessFile(decFile, type, wellnessUid)
+        if (pendingActivityItem != null && !done) {
+            activityPullNotBefore = SystemClock.uptimeMillis() + ACTIVITY_GRACE_MS
+        }
+        pullNextWellness()
+    }
+
+    /**
+     * Finishes an activity transfer: records the completed UID, reports it to
+     * the importer and schedules the next queued activity, if any.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun completeActivityTransfer(raw: File, decoded: ByteArray, decFile: File, pulledUid: String) {
+        activePull = null
+        pendingActivityItem = null
+        if (pulledUid.isNotEmpty()) completedActivityUids += pulledUid
+        activityDone++
+        onFinished(raw, decFile, pulledUid)
+        val next = activityQueue.removeFirstOrNull()
+        if (next != null) {
+            pendingActivityItem = next
+            pulledItemUid = next.uid?.hex().orEmpty()
+            requestedPull = false
+            activitiesUpToDate = false
+            done = false
+            activityTotal = activityDone + activityQueue.size + 1
+            activityPullNotBefore = SystemClock.uptimeMillis() + ACTIVITY_GRACE_MS
+            log(
+                "SYNC: next activity queued uid=${next.uid?.hex()} " +
+                    "type=${gdxmlLookup.typeOf(next)} remaining=${activityQueue.size}",
+            )
+            reportActivityProgress()
+            tryStartActivityPull()
+        } else {
+            activityTotal = activityDone
+            reportActivityProgress()
+            done = true
+            if (wellnessQueue.isNotEmpty()) pullNextWellness()
+        }
     }
 
     private fun handlePushResponse(pr: Gdi.PushItemResponse) {
