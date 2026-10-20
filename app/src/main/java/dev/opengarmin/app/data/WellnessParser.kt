@@ -82,12 +82,32 @@ object WellnessParser {
 
     fun parse(messages: List<Fit.Message>, zone: ZoneId = ZoneId.systemDefault()): List<WellnessDayDraft> {
         if (messages.isEmpty()) return emptyList()
+        val raw = collectRawWellness(messages, zone) ?: return emptyList()
+        val monitoring = aggregateMonitoring(raw.monitoringByDate)
+        val sleep = buildSleepSessions(raw.sleepTransitions, raw.sleepAssessments, zone)
+        return buildDailyDrafts(raw, monitoring, sleep)
+    }
+
+    /** Per-date buckets gathered from a single pass over the FIT messages. */
+    private class RawWellness(
+        val samplesByDate: Map<String, MutableList<WellnessSampleDraft>>,
+        val monitoringByDate: Map<String, MutableList<Fit.Message>>,
+        val restingHrByDate: Map<String, Int>,
+        val intensityByDate: Map<String, Pair<Int?, Int?>>,
+        val bodyBatteryByDate: Map<String, MutableList<Int>>,
+        val hrvSummaryByDate: Map<String, Fit.Message>,
+        val lhaByDate: Map<String, Fit.Message>,
+        val sleepTransitions: List<Pair<Long, Stage>>,
+        val sleepAssessments: List<Pair<Long, Int?>>,
+    )
+
+    private fun collectRawWellness(messages: List<Fit.Message>, zone: ZoneId): RawWellness? {
         // Keep FIT file order: `timestamp_16` is only meaningful relative to
         // the previous full timestamp. Sorting null-timestamp messages to the
         // end would resolve them against the newest time in the file and can
         // push early-day samples into the next day.
         val ordered = messages
-        val fallbackTimestamp = ordered.mapNotNull { it.timestamp }.maxOrNull() ?: return emptyList()
+        val fallbackTimestamp = ordered.mapNotNull { it.timestamp }.maxOrNull() ?: return null
 
         val samplesByDate = LinkedHashMap<String, MutableList<WellnessSampleDraft>>()
         val monitoringByDate = LinkedHashMap<String, MutableList<Fit.Message>>()
@@ -104,18 +124,8 @@ object WellnessParser {
             message.timestamp?.let { referenceTimestamp = it }
             when (message.name) {
                 "monitoring" -> {
-                    val timestamp = message.timestamp
-                        ?: int(message, "timestamp_16")?.let { resolveTimestamp16(referenceTimestamp, it) }
-                        ?: referenceTimestamp
-                    // Monitoring files carry both UTC `timestamp` and a
-                    // `local_timestamp` wall clock. Prefer the watch's own
-                    // local date: it avoids the date shifting when the phone
-                    // and watch are in different zones (and keeps a midnight
-                    // rollover from becoming a phantom "tomorrow" row).
-                    val date = long(message, "local_timestamp")
-                        ?.takeIf { it in 1 until 0xFFFFFFFFL }
-                        ?.let { dateOfWallClock(it) }
-                        ?: dateOf(timestamp, zone)
+                    val timestamp = messageTimestamp(message, referenceTimestamp)
+                    val date = messageDate(message, referenceTimestamp, zone)
                     monitoringByDate.getOrPut(date) { ArrayList() }.add(message)
                     int(message, "heart_rate")?.takeIf { it in 1..250 }?.let {
                         addSample(samplesByDate, date, timestamp, "hr", it.toDouble())
@@ -131,18 +141,15 @@ object WellnessParser {
                 }
 
                 "monitoring_hr_data" -> {
-                    val timestamp = message.timestamp ?: referenceTimestamp
-                    val date = dateOf(timestamp, zone)
+                    val date = messageDate(message, referenceTimestamp, zone)
                     val resting = int(message, "current_day_resting_heart_rate")
                         ?: int(message, "resting_heart_rate")
                     if (resting != null && resting in 1..250) restingHrByDate[date] = resting
                 }
 
                 "stress_level" -> {
-                    val timestamp = int(message, "stress_level_time")?.toLong()
-                        ?: message.timestamp
-                        ?: referenceTimestamp
-                    val date = dateOf(timestamp, zone)
+                    val timestamp = messageTimestamp(message, referenceTimestamp)
+                    val date = messageDate(message, referenceTimestamp, zone)
                     int(message, "stress_level_value")?.takeIf { it in 0..100 }?.let {
                         addSample(samplesByDate, date, timestamp, "stress", it.toDouble())
                     }
@@ -153,51 +160,49 @@ object WellnessParser {
                 }
 
                 "spo2_data" -> {
-                    val timestamp = message.timestamp ?: referenceTimestamp
-                    val date = dateOf(timestamp, zone)
+                    val timestamp = messageTimestamp(message, referenceTimestamp)
+                    val date = messageDate(message, referenceTimestamp, zone)
                     int(message, "reading_spo2")?.takeIf { it in 1..100 }?.let {
                         addSample(samplesByDate, date, timestamp, "spo2", it.toDouble())
                     }
                 }
 
                 "respiration_rate" -> {
-                    val timestamp = message.timestamp ?: referenceTimestamp
-                    val date = dateOf(timestamp, zone)
+                    val timestamp = messageTimestamp(message, referenceTimestamp)
+                    val date = messageDate(message, referenceTimestamp, zone)
                     double(message, "respiration_rate")?.takeIf { it > 0.0 }?.let {
                         addSample(samplesByDate, date, timestamp, "respiration", it)
                     }
                 }
 
                 "hrv_value" -> {
-                    val timestamp = message.timestamp ?: referenceTimestamp
-                    val date = dateOf(timestamp, zone)
+                    val timestamp = messageTimestamp(message, referenceTimestamp)
+                    val date = messageDate(message, referenceTimestamp, zone)
                     double(message, "value")?.takeIf { it > 0.0 }?.let {
                         addSample(samplesByDate, date, timestamp, "hrv", it)
                     }
                 }
 
                 "hrv_status_summary" -> {
-                    val timestamp = message.timestamp ?: referenceTimestamp
-                    val date = dateOf(timestamp, zone)
+                    val date = messageDate(message, referenceTimestamp, zone)
                     hrvSummaryByDate[date] = message
                 }
 
                 // Firstbeat daily analytics. The FR255 writes the overnight
                 // rMSSD here (field 7) instead of a HRV_STATUS_SUMMARY.
                 "fbt_lha_daily_data" -> {
-                    val timestamp = message.timestamp ?: referenceTimestamp
-                    val date = dateOf(timestamp, zone)
+                    val date = messageDate(message, referenceTimestamp, zone)
                     lhaByDate[date] = message
                 }
 
                 "sleep_level" -> {
-                    val timestamp = message.timestamp ?: referenceTimestamp
+                    val timestamp = messageTimestamp(message, referenceTimestamp)
                     val stage = stageOf(int(message, "sleep_level")) ?: continue
                     sleepTransitions.add(timestamp to stage)
                 }
 
                 "sleep_assessment" -> {
-                    val timestamp = message.timestamp ?: referenceTimestamp
+                    val timestamp = messageTimestamp(message, referenceTimestamp)
                     val score = int(message, "overall_sleep_score")
                         ?: int(message, "sleep_quality_score")
                     sleepAssessments.add(timestamp to score)
@@ -205,8 +210,24 @@ object WellnessParser {
             }
         }
 
-        // Monitoring totals are cumulative, so keep the last message per
-        // activity type for each day and sum those.
+        return RawWellness(
+            samplesByDate = samplesByDate,
+            monitoringByDate = monitoringByDate,
+            restingHrByDate = restingHrByDate,
+            intensityByDate = intensityByDate,
+            bodyBatteryByDate = bodyBatteryByDate,
+            hrvSummaryByDate = hrvSummaryByDate,
+            lhaByDate = lhaByDate,
+            sleepTransitions = sleepTransitions,
+            sleepAssessments = sleepAssessments,
+        )
+    }
+
+    // Monitoring totals are cumulative, so keep the last message per
+    // activity type for each day and sum those.
+    private fun aggregateMonitoring(
+        monitoringByDate: Map<String, List<Fit.Message>>,
+    ): Map<String, MonitoringTotals> {
         val monitoringTotals = HashMap<String, MonitoringTotals>()
         for ((date, messagesForDay) in monitoringByDate) {
             val lastByType = LinkedHashMap<Int, Fit.Message>()
@@ -228,31 +249,36 @@ object WellnessParser {
             }
             monitoringTotals[date] = totals
         }
+        return monitoringTotals
+    }
 
-        val sleepByDate = buildSleepSessions(sleepTransitions, sleepAssessments, zone)
-
+    private fun buildDailyDrafts(
+        raw: RawWellness,
+        monitoringTotals: Map<String, MonitoringTotals>,
+        sleepByDate: Map<String, SleepDraft>,
+    ): List<WellnessDayDraft> {
         val dates = LinkedHashSet<String>()
-        dates.addAll(monitoringByDate.keys)
-        dates.addAll(samplesByDate.keys)
-        dates.addAll(bodyBatteryByDate.keys)
-        dates.addAll(hrvSummaryByDate.keys)
-        dates.addAll(lhaByDate.keys)
+        dates.addAll(raw.monitoringByDate.keys)
+        dates.addAll(raw.samplesByDate.keys)
+        dates.addAll(raw.bodyBatteryByDate.keys)
+        dates.addAll(raw.hrvSummaryByDate.keys)
+        dates.addAll(raw.lhaByDate.keys)
         dates.addAll(sleepByDate.keys)
 
         return dates.sorted().mapNotNull { date ->
             val totals = monitoringTotals[date]
-            val samples = samplesByDate[date].orEmpty().sortedBy { it.timestamp }
+            val samples = raw.samplesByDate[date].orEmpty().sortedBy { it.timestamp }
             val stress = samples.filter { it.kind == "stress" }.map { it.value }
             val spo2 = samples.filter { it.kind == "spo2" }.map { it.value }
             val respiration = samples.filter { it.kind == "respiration" }.map { it.value }
             val hr = samples.filter { it.kind == "hr" }.map { it.value }
-            val bodyBattery = bodyBatteryByDate[date].orEmpty()
+            val bodyBattery = raw.bodyBatteryByDate[date].orEmpty()
             val sleep = sleepByDate[date]?.resolve(samples)
-            val hrvSummary = hrvSummaryByDate[date]
-            val lha = lhaByDate[date]
+            val hrvSummary = raw.hrvSummaryByDate[date]
+            val lha = raw.lhaByDate[date]
             val lhaSleepScore = lha?.let { int(it, "sleep_score") }
             val hrvSamples = samples.filter { it.kind == "hrv" }.map { it.value }
-            val intensity = intensityByDate[date]
+            val intensity = raw.intensityByDate[date]
 
             if (totals == null && samples.isEmpty() && sleep == null && hrvSummary == null && lha == null) {
                 return@mapNotNull null
@@ -271,7 +297,7 @@ object WellnessParser {
                 distanceMeters = totals?.distance ?: 0.0,
                 activeCalories = totals?.activeCalories ?: 0,
                 activeSeconds = totals?.activeSeconds ?: 0,
-                restingHeartRate = restingHrByDate[date],
+                restingHeartRate = raw.restingHrByDate[date],
                 avgHeartRate = hr.takeIf { it.isNotEmpty() }?.average()?.roundToInt(),
                 maxHeartRate = hr.maxOrNull()?.roundToInt(),
                 stressAvg = stress.takeIf { it.isNotEmpty() }?.average()?.roundToInt(),
@@ -306,6 +332,39 @@ object WellnessParser {
                 sleepStages = sleep?.stages.orEmpty(),
             )
         }
+    }
+
+    /**
+     * Resolves a message's effective timestamp. Monitoring files may omit the
+     * full timestamp and carry only `timestamp_16`, and stress samples use
+     * their own `stress_level_time`.
+     */
+    private fun messageTimestamp(message: Fit.Message, referenceTimestamp: Long): Long = when (message.name) {
+        "monitoring" -> message.timestamp
+            ?: int(message, "timestamp_16")?.let { resolveTimestamp16(referenceTimestamp, it) }
+            ?: referenceTimestamp
+
+        "stress_level" -> int(message, "stress_level_time")?.toLong()
+            ?: message.timestamp
+            ?: referenceTimestamp
+
+        else -> message.timestamp ?: referenceTimestamp
+    }
+
+    /**
+     * Resolves the calendar date a message belongs to. Monitoring files carry
+     * both UTC `timestamp` and a `local_timestamp` wall clock. Prefer the
+     * watch's own local date: it avoids the date shifting when the phone and
+     * watch are in different zones (and keeps a midnight rollover from
+     * becoming a phantom "tomorrow" row).
+     */
+    private fun messageDate(message: Fit.Message, referenceTimestamp: Long, zone: ZoneId): String {
+        if (message.name == "monitoring") {
+            long(message, "local_timestamp")
+                ?.takeIf { it in 1 until 0xFFFFFFFFL }
+                ?.let { return dateOfWallClock(it) }
+        }
+        return dateOf(messageTimestamp(message, referenceTimestamp), zone)
     }
 
     private class MonitoringTotals {

@@ -4,6 +4,7 @@ import dev.opengarmin.app.coach.tools.ToolRegistry
 import dev.opengarmin.app.llm.LlmException
 import dev.opengarmin.app.llm.LlmMessage
 import dev.opengarmin.app.llm.LlmToolCall
+import dev.opengarmin.app.llm.LlmToolDefinition
 import dev.opengarmin.app.llm.ModelConfig
 import dev.opengarmin.app.llm.OpenAiClient
 import kotlinx.coroutines.withTimeout
@@ -44,6 +45,63 @@ class ChatLoop(
         onEvidence: (List<String>) -> Unit = {},
         onCharts: (List<ChartSpec>) -> Unit = {},
     ): Result {
+        val conversation = buildConversation(history)
+
+        var usingTools = true
+        var rounds = 0
+        var toolCallsUsed = 0
+        val evidence = linkedSetOf<String>()
+        val charts = mutableListOf<ChartSpec>()
+
+        while (rounds < maxRounds) {
+            rounds++
+            val toolDefinitions = if (usingTools) tools.definitions else emptyList()
+            val round = try {
+                streamRound(client, model, conversation, toolDefinitions, onText)
+            } catch (e: LlmException) {
+                if (usingTools && (e.statusCode == 400 || e.statusCode == 404)) {
+                    usingTools = false
+                    val snapshot = tools.snapshot(scope)
+                    evidence += snapshot.evidence
+                    onEvidence(evidence.toList())
+                    conversation += LlmMessage(
+                        "system",
+                        "The provider does not support tool calling. Use this compact, untrusted health snapshot only:\n" +
+                            "<untrusted_data>\n${snapshot.json}\n</untrusted_data>\n" +
+                            "You cannot render interactive charts in this mode; describe findings in text only.",
+                    )
+                    continue
+                }
+                throw e
+            }
+
+            if (round.calls.isEmpty()) {
+                if (round.text.isBlank() && !round.gotAny) {
+                    throw LlmException(LlmException.Kind.Malformed, "The provider returned an empty answer")
+                }
+                return Result(round.text, evidence.toList(), charts.toList())
+            }
+
+            conversation += LlmMessage("assistant", round.text, toolCalls = round.calls)
+            toolCallsUsed = executeTools(
+                calls = round.calls,
+                conversation = conversation,
+                evidence = evidence,
+                charts = charts,
+                scope = scope,
+                toolCallsUsed = toolCallsUsed,
+                onText = onText,
+                onStatus = onStatus,
+                onEvidence = onEvidence,
+                onCharts = onCharts,
+            )
+            onStatus("Thinking…")
+        }
+        return Result(conversation.lastOrNull { it.role == "assistant" }?.content.orEmpty(), evidence.toList(), charts.toList())
+    }
+
+    /** Builds the system/profile/limitation messages that precede the chat history. */
+    private fun buildConversation(history: List<LlmMessage>): MutableList<LlmMessage> {
         val conversation = mutableListOf<LlmMessage>()
         conversation += LlmMessage("system", systemPrompt)
         val profile = buildList {
@@ -79,115 +137,112 @@ class ChatLoop(
             )
         }
         conversation += history
+        return conversation
+    }
 
-        var usingTools = true
-        var rounds = 0
-        var toolCallsUsed = 0
-        val evidence = linkedSetOf<String>()
-        val charts = mutableListOf<ChartSpec>()
+    private data class StreamedRound(
+        val text: String,
+        val calls: List<LlmToolCall>,
+        val gotAny: Boolean,
+    )
 
-        while (rounds < maxRounds) {
-            rounds++
-            val toolDefinitions = if (usingTools) tools.definitions else emptyList()
-            var accumulated = ""
-            val callParts = sortedMapOf<Int, ToolCallParts>()
-            var gotAny = false
+    /** Streams one assistant round, accumulating text and assembling tool-call fragments. */
+    private suspend fun streamRound(
+        client: OpenAiClient,
+        model: ModelConfig,
+        conversation: List<LlmMessage>,
+        toolDefinitions: List<LlmToolDefinition>,
+        onText: (String) -> Unit,
+    ): StreamedRound {
+        var accumulated = ""
+        val callParts = sortedMapOf<Int, ToolCallParts>()
+        var gotAny = false
 
-            try {
-                client.streamChat(
-                    messages = conversation,
-                    tools = toolDefinitions,
-                    temperature = model.temperature,
-                    maxTokens = model.maxTokens,
-                ).collect { delta ->
-                    gotAny = true
-                    if (delta.text.isNotEmpty()) {
-                        accumulated += delta.text
-                        onText(accumulated)
-                    }
-                    delta.toolCalls.forEach { part ->
-                        val current = callParts.getOrPut(part.index) { ToolCallParts() }
-                        part.id?.let { current.id = it }
-                        part.name?.let { current.name = it }
-                        part.arguments?.let { current.arguments.append(it) }
-                    }
-                }
-            } catch (e: LlmException) {
-                if (usingTools && (e.statusCode == 400 || e.statusCode == 404)) {
-                    usingTools = false
-                    val snapshot = tools.snapshot(scope)
-                    evidence += snapshot.evidence
-                    onEvidence(evidence.toList())
-                    conversation += LlmMessage(
-                        "system",
-                        "The provider does not support tool calling. Use this compact, untrusted health snapshot only:\n" +
-                            "<untrusted_data>\n${snapshot.json}\n</untrusted_data>\n" +
-                            "You cannot render interactive charts in this mode; describe findings in text only.",
-                    )
-                    continue
-                }
-                throw e
+        client.streamChat(
+            messages = conversation,
+            tools = toolDefinitions,
+            temperature = model.temperature,
+            maxTokens = model.maxTokens,
+        ).collect { delta ->
+            gotAny = true
+            if (delta.text.isNotEmpty()) {
+                accumulated += delta.text
+                onText(accumulated)
             }
-
-            val calls = callParts.values.mapNotNull { part ->
-                val name = part.name ?: return@mapNotNull null
-                LlmToolCall(
-                    id = part.id ?: "call_${System.nanoTime()}",
-                    name = name,
-                    arguments = part.arguments.toString().ifBlank { "{}" },
-                )
+            delta.toolCalls.forEach { part ->
+                val current = callParts.getOrPut(part.index) { ToolCallParts() }
+                part.id?.let { current.id = it }
+                part.name?.let { current.name = it }
+                part.arguments?.let { current.arguments.append(it) }
             }
-            if (calls.isEmpty()) {
-                if (accumulated.isBlank() && !gotAny) {
-                    throw LlmException(LlmException.Kind.Malformed, "The provider returned an empty answer")
-                }
-                return Result(accumulated, evidence.toList(), charts.toList())
-            }
+        }
 
-            conversation += LlmMessage("assistant", accumulated, toolCalls = calls)
-            for (call in calls) {
-                if (toolCallsUsed >= maxToolCalls) {
-                    conversation += LlmMessage(
-                        "tool",
-                        "{\"error\":\"Tool call limit reached\"}",
-                        toolCallId = call.id,
-                    )
-                    continue
-                }
-                toolCallsUsed++
-                onStatus("Checking your ${toolLabel(call.name)}…")
-                onText("")
-                val result = runCatching {
-                    withTimeout(5_000) {
-                        tools.execute(call.name, call.arguments, scope)
-                    }
-                }
-                val toolResult = result.getOrNull()
-                val payload = toolResult?.json ?: JSONObject()
-                    .put("error", result.exceptionOrNull()?.message ?: "Tool failed")
-                    .toString()
-                toolResult?.let {
-                    evidence += it.evidence
-                    onEvidence(evidence.toList())
-                    var chartsChanged = false
-                    for (chart in it.charts) {
-                        val key = chart.key()
-                        if (charts.size < 3 && charts.none { existing -> existing.key() == key }) {
-                            charts += chart
-                            chartsChanged = true
-                        }
-                    }
-                    if (chartsChanged) onCharts(charts.toList())
-                }
+        val calls = callParts.values.mapNotNull { part ->
+            val name = part.name ?: return@mapNotNull null
+            LlmToolCall(
+                id = part.id ?: "call_${System.nanoTime()}",
+                name = name,
+                arguments = part.arguments.toString().ifBlank { "{}" },
+            )
+        }
+        return StreamedRound(accumulated, calls, gotAny)
+    }
+
+    /** Executes one round of tool calls, appending their results and evidence/charts. */
+    private suspend fun executeTools(
+        calls: List<LlmToolCall>,
+        conversation: MutableList<LlmMessage>,
+        evidence: MutableSet<String>,
+        charts: MutableList<ChartSpec>,
+        scope: ToolScope,
+        toolCallsUsed: Int,
+        onText: (String) -> Unit,
+        onStatus: (String?) -> Unit,
+        onEvidence: (List<String>) -> Unit,
+        onCharts: (List<ChartSpec>) -> Unit,
+    ): Int {
+        var used = toolCallsUsed
+        for (call in calls) {
+            if (used >= maxToolCalls) {
                 conversation += LlmMessage(
                     "tool",
-                    "<untrusted_data tool=\"${call.name}\">\n$payload\n</untrusted_data>",
+                    "{\"error\":\"Tool call limit reached\"}",
                     toolCallId = call.id,
                 )
+                continue
             }
-            onStatus("Thinking…")
+            used++
+            onStatus("Checking your ${toolLabel(call.name)}…")
+            onText("")
+            val result = runCatching {
+                withTimeout(5_000) {
+                    tools.execute(call.name, call.arguments, scope)
+                }
+            }
+            val toolResult = result.getOrNull()
+            val payload = toolResult?.json ?: JSONObject()
+                .put("error", result.exceptionOrNull()?.message ?: "Tool failed")
+                .toString()
+            toolResult?.let {
+                evidence += it.evidence
+                onEvidence(evidence.toList())
+                var chartsChanged = false
+                for (chart in it.charts) {
+                    val key = chart.key()
+                    if (charts.size < 3 && charts.none { existing -> existing.key() == key }) {
+                        charts += chart
+                        chartsChanged = true
+                    }
+                }
+                if (chartsChanged) onCharts(charts.toList())
+            }
+            conversation += LlmMessage(
+                "tool",
+                "<untrusted_data tool=\"${call.name}\">\n$payload\n</untrusted_data>",
+                toolCallId = call.id,
+            )
         }
-        return Result(conversation.lastOrNull { it.role == "assistant" }?.content.orEmpty(), evidence.toList(), charts.toList())
+        return used
     }
 
     private fun toolLabel(name: String): String = when (name) {
