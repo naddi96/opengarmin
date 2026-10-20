@@ -68,6 +68,76 @@ private val SleepLight = Color(0xFF9DB4FF)
 private val SleepRem = Color(0xFFD79BFF)
 private val SleepAwake = Color(0xFFFFB45E)
 
+/**
+ * Values derived from the raw wellness rows for [HealthScreen].
+ *
+ * The selection and filtering rules live in one place so the screen reads as
+ * layout and the section composables stay free of data preparation.
+ */
+private data class HealthScreenState(
+    val day: WellnessDayEntity?,
+    val dateLabel: String,
+    val hrvValue: Double?,
+    val hrvWeekly: Double?,
+    val hrvSamples: List<WellnessSampleEntity>,
+    val bodyBattery: List<WellnessSampleEntity>,
+    val stress: List<WellnessSampleEntity>,
+    val spo2: List<WellnessSampleEntity>,
+    val currentBodyBattery: Int?,
+    val bodyBatteryStart: Int?,
+    val bodyBatteryDelta: Pair<Int?, Int?>,
+    val overnight: Int?,
+    val sleepStages: List<SleepStageEntity>,
+) {
+    companion object {
+        fun from(
+            days: List<WellnessDayEntity>,
+            samples: List<WellnessSampleEntity>,
+            sleepStages: List<SleepStageEntity>,
+        ): HealthScreenState {
+            val day = WellnessMetrics.latestDay(days)
+            val dateLabel = day?.let { formatWellnessDate(it.date) }
+                ?: LocalDateTime.now().format(DateTimeFormatter.ofPattern("EEEE, d MMM", Locale.getDefault()))
+            val hrvValue = WellnessMetrics.hrvMs(day, samples)
+            val hrvWeekly = WellnessMetrics.hrvWeeklyAverage(days, samples, sampleDate = day?.date)
+            val hrvSamples = samples.filter { it.kind == "hrv" && it.value > 0.0 }.sortedBy { it.timestamp }
+            val bodyBattery = samples
+                .filter { it.kind == "body_battery" && it.value in 1.0..100.0 }
+                .sortedBy { it.timestamp }
+            val stress = samples
+                .filter { it.kind == "stress" && it.value in 0.0..100.0 }
+                .sortedBy { it.timestamp }
+            val spo2 = samples.filter { it.kind == "spo2" && it.value in 1.0..100.0 }
+            val currentBodyBattery = day?.bodyBatteryLatest ?: bodyBattery.lastOrNull()?.value?.roundToInt()
+            val bodyBatteryStart = day?.bodyBatteryStart ?: bodyBattery.firstOrNull()?.value?.roundToInt()
+            val delta = bodyBatteryDeltas(bodyBattery.map { it.value })
+            val previousDay = day?.let { latest ->
+                days.filter { it.date < latest.date }.maxByOrNull { it.date }
+            }
+            val overnight = if (previousDay?.bodyBatteryLatest != null && bodyBatteryStart != null) {
+                bodyBatteryStart - previousDay.bodyBatteryLatest
+            } else {
+                null
+            }
+            return HealthScreenState(
+                day = day,
+                dateLabel = dateLabel,
+                hrvValue = hrvValue,
+                hrvWeekly = hrvWeekly,
+                hrvSamples = hrvSamples,
+                bodyBattery = bodyBattery,
+                stress = stress,
+                spo2 = spo2,
+                currentBodyBattery = currentBodyBattery,
+                bodyBatteryStart = bodyBatteryStart,
+                bodyBatteryDelta = delta,
+                overnight = overnight,
+                sleepStages = sleepStages,
+            )
+        }
+    }
+}
+
 @Composable
 fun HealthScreen(
     days: List<WellnessDayEntity>,
@@ -80,30 +150,8 @@ fun HealthScreen(
     onSync: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val day = WellnessMetrics.latestDay(days)
-    val dateLabel = day?.let { formatWellnessDate(it.date) }
-        ?: LocalDateTime.now().format(DateTimeFormatter.ofPattern("EEEE, d MMM", Locale.getDefault()))
-    val hrvValue = WellnessMetrics.hrvMs(day, samples)
-    val hrvWeekly = WellnessMetrics.hrvWeeklyAverage(days, samples, sampleDate = day?.date)
-    val hrvSamples = samples.filter { it.kind == "hrv" && it.value > 0.0 }.sortedBy { it.timestamp }
-    val bodyBattery = samples
-        .filter { it.kind == "body_battery" && it.value in 1.0..100.0 }
-        .sortedBy { it.timestamp }
-    val stress = samples
-        .filter { it.kind == "stress" && it.value in 0.0..100.0 }
-        .sortedBy { it.timestamp }
-    val spo2 = samples.filter { it.kind == "spo2" && it.value in 1.0..100.0 }
-    val currentBodyBattery = day?.bodyBatteryLatest ?: bodyBattery.lastOrNull()?.value?.roundToInt()
-    val bodyBatteryStart = day?.bodyBatteryStart ?: bodyBattery.firstOrNull()?.value?.roundToInt()
-    val delta = bodyBatteryDeltas(bodyBattery.map { it.value })
-    val previousDay = day?.let { latest ->
-        days.filter { it.date < latest.date }.maxByOrNull { it.date }
-    }
-    val overnight = if (previousDay?.bodyBatteryLatest != null && bodyBatteryStart != null) {
-        bodyBatteryStart - previousDay.bodyBatteryLatest
-    } else {
-        null
-    }
+    val state = HealthScreenState.from(days, samples, sleepStages)
+    val day = state.day
 
     Column(
         modifier = modifier
@@ -112,371 +160,455 @@ fun HealthScreen(
             .padding(start = PulseSpacing.xxl, end = PulseSpacing.xxl, top = PulseSpacing.screenTop),
         verticalArrangement = Arrangement.spacedBy(PulseSpacing.lg),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+        HealthHeader(dateLabel = state.dateLabel, onOpenTrends = onOpenTrends)
+
+        if (day == null) {
+            EmptyHealthCard(onSync = onSync)
+            return@Column
+        }
+
+        BodyBatteryCard(
+            day = day,
+            bodyBattery = state.bodyBattery,
+            currentBodyBattery = state.currentBodyBattery,
+            bodyBatteryStart = state.bodyBatteryStart,
+            delta = state.bodyBatteryDelta,
+            overnight = state.overnight,
+        )
+        StressCard(day = day, stress = state.stress)
+        SleepCard(day = day, sleepStages = state.sleepStages)
+        HrvCard(
+            day = day,
+            hrvValue = state.hrvValue,
+            hrvWeekly = state.hrvWeekly,
+            hrvSamples = state.hrvSamples,
+        )
+        VitalTiles(
+            day = day,
+            spo2 = state.spo2,
+            training = training,
+            onOpenTraining = onOpenTraining,
+        )
+        MovementCard(day = day)
+        ActiveMinutesCard(days = days, day = day)
+        CoachInsightCard(
+            text = healthInsight(
+                day = day,
+                current = state.currentBodyBattery,
+                start = state.bodyBatteryStart,
+                stress = state.stress,
+                training = training,
+                hrvValue = state.hrvValue,
+            ),
+            onAskCoach = onAskCoach,
+        )
+        Spacer(Modifier.height(PulseSpacing.lg))
+    }
+}
+
+@Composable
+private fun HealthHeader(
+    dateLabel: String,
+    onOpenTrends: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Health", style = MaterialTheme.typography.headlineLarge, color = PulseColors.Text)
+            Text(
+                "$dateLabel · from your watch",
+                style = MaterialTheme.typography.bodySmall,
+                color = PulseColors.TextMuted,
+            )
+        }
+        PillChip(
+            label = "Trends",
+            selected = false,
+            onClick = onOpenTrends,
+            leading = Icons.Outlined.TrendingUp,
+        )
+    }
+}
+
+@Composable
+private fun EmptyHealthCard(onSync: () -> Unit) {
+    PulseCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(PulseSpacing.xlPlus),
+            verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Health", style = MaterialTheme.typography.headlineLarge, color = PulseColors.Text)
+            Text("No health data yet", style = MaterialTheme.typography.titleMedium, color = PulseColors.Text)
+            Text(
+                "Sync your watch to import steps, heart rate, Body Battery, stress, SpO₂ and respiration. Nothing is estimated or zero-filled.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = PulseColors.TextMuted,
+            )
+            PrimaryButton("Sync watch", onSync)
+        }
+    }
+}
+
+@Composable
+private fun BodyBatteryCard(
+    day: WellnessDayEntity,
+    bodyBattery: List<WellnessSampleEntity>,
+    currentBodyBattery: Int?,
+    bodyBatteryStart: Int?,
+    delta: Pair<Int?, Int?>,
+    overnight: Int?,
+) {
+    PulseCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(start = PulseSpacing.xlPlus, end = PulseSpacing.xlPlus, top = PulseSpacing.xl, bottom = PulseSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+        ) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
+                        Icon(Icons.Outlined.Bolt, null, tint = PulseColors.Teal, modifier = Modifier.size(16.dp))
+                        Text("Body Battery", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
+                    }
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            currentBodyBattery?.toString() ?: "—",
+                            style = MaterialTheme.typography.displayMedium,
+                            color = PulseColors.Teal,
+                        )
+                        Text(
+                            " / 100 · ${bodyBatteryLabel(currentBodyBattery)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PulseColors.TextMuted,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        )
+                    }
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        if (day.sleepStart != null) "Woke up at" else "First reading",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PulseColors.TextMuted,
+                    )
+                    Text(
+                        bodyBatteryStart?.toString() ?: "—",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = PulseColors.Text,
+                    )
+                }
+            }
+            if (bodyBattery.size >= 2) {
+                LineChart(
+                    values = bodyBattery.map { it.value.toFloat() },
+                    labels = chartLabels(bodyBattery.map { it.timestamp }),
+                    color = PulseColors.Teal,
+                    contentDescription = "Body Battery through the day, current ${currentBodyBattery ?: "unknown"}",
+                    height = 100.dp,
+                )
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    TinyStat(
+                        "Overnight",
+                        overnight?.let { if (it >= 0) "+$it" else "−${-it}" } ?: "—",
+                        Modifier.weight(1f),
+                    )
+                    TinyStat("Drained", delta.first?.let { "−$it" } ?: "—", Modifier.weight(1f))
+                    TinyStat("Recharged", delta.second?.let { "+$it" } ?: "—", Modifier.weight(1f))
+                }
+            } else {
                 Text(
-                    "$dateLabel · from your watch",
+                    "Body Battery needs a few stress readings. Leave the watch on and sync again later.",
                     style = MaterialTheme.typography.bodySmall,
                     color = PulseColors.TextMuted,
                 )
             }
-            PillChip(
-                label = "Trends",
-                selected = false,
-                onClick = onOpenTrends,
-                leading = Icons.Outlined.TrendingUp,
-            )
         }
+    }
+}
 
-        if (day == null) {
-            PulseCard(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(PulseSpacing.xlPlus),
-                    verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
-                ) {
-                    Text("No health data yet", style = MaterialTheme.typography.titleMedium, color = PulseColors.Text)
-                    Text(
-                        "Sync your watch to import steps, heart rate, Body Battery, stress, SpO₂ and respiration. Nothing is estimated or zero-filled.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = PulseColors.TextMuted,
-                    )
-                    PrimaryButton("Sync watch", onSync)
-                }
+@Composable
+private fun StressCard(
+    day: WellnessDayEntity,
+    stress: List<WellnessSampleEntity>,
+) {
+    PulseCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(start = PulseSpacing.xlPlus, end = PulseSpacing.xlPlus, top = PulseSpacing.xl, bottom = PulseSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
+                Icon(Icons.Outlined.MonitorHeart, null, tint = PulseColors.Yellow, modifier = Modifier.size(16.dp))
+                Text("Stress", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
             }
-            return@Column
-        }
-
-        // Body Battery -------------------------------------------------------
-        PulseCard(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(start = PulseSpacing.xlPlus, end = PulseSpacing.xlPlus, top = PulseSpacing.xl, bottom = PulseSpacing.lg),
-                verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
-            ) {
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
-                            Icon(Icons.Outlined.Bolt, null, tint = PulseColors.Teal, modifier = Modifier.size(16.dp))
-                            Text("Body Battery", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
-                        }
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                currentBodyBattery?.toString() ?: "—",
-                                style = MaterialTheme.typography.displayMedium,
-                                color = PulseColors.Teal,
-                            )
-                            Text(
-                                " / 100 · ${bodyBatteryLabel(currentBodyBattery)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = PulseColors.TextMuted,
-                                modifier = Modifier.padding(bottom = 6.dp),
-                            )
-                        }
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            if (day.sleepStart != null) "Woke up at" else "First reading",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = PulseColors.TextMuted,
-                        )
-                        Text(
-                            bodyBatteryStart?.toString() ?: "—",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = PulseColors.Text,
-                        )
-                    }
-                }
-                if (bodyBattery.size >= 2) {
-                    LineChart(
-                        values = bodyBattery.map { it.value.toFloat() },
-                        labels = chartLabels(bodyBattery.map { it.timestamp }),
-                        color = PulseColors.Teal,
-                        contentDescription = "Body Battery through the day, current ${currentBodyBattery ?: "unknown"}",
-                        height = 100.dp,
-                    )
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        TinyStat(
-                            "Overnight",
-                            overnight?.let { if (it >= 0) "+$it" else "−${-it}" } ?: "—",
-                            Modifier.weight(1f),
-                        )
-                        TinyStat("Drained", delta.first?.let { "−$it" } ?: "—", Modifier.weight(1f))
-                        TinyStat("Recharged", delta.second?.let { "+$it" } ?: "—", Modifier.weight(1f))
-                    }
-                } else {
-                    Text(
-                        "Body Battery needs a few stress readings. Leave the watch on and sync again later.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = PulseColors.TextMuted,
-                    )
-                }
-            }
-        }
-
-        // Stress -------------------------------------------------------------
-        PulseCard(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(start = PulseSpacing.xlPlus, end = PulseSpacing.xlPlus, top = PulseSpacing.xl, bottom = PulseSpacing.lg),
-                verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
-                    Icon(Icons.Outlined.MonitorHeart, null, tint = PulseColors.Yellow, modifier = Modifier.size(16.dp))
-                    Text("Stress", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
-                }
-                if (stress.isEmpty() && day.stressAvg == null) {
-                    Text("No stress readings yet.", style = MaterialTheme.typography.bodyMedium, color = PulseColors.TextMuted)
-                } else {
-                    val avg = day.stressAvg ?: stress.map { it.value }.average().roundToInt()
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text("$avg", style = MaterialTheme.typography.displaySmall, color = PulseColors.Text)
-                        Text(
-                            " avg · ${stressLabel(avg)} (0–100)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = PulseColors.TextMuted,
-                            modifier = Modifier.padding(bottom = 4.dp),
-                        )
-                    }
-                    StressDistribution(stress.map { it.value })
-                    if (stress.size >= 2) {
-                        val buckets = hourlyBuckets(stress)
-                        BarChart(
-                            values = buckets,
-                            labels = emptyList(),
-                            goal = null,
-                            color = PulseColors.Yellow,
-                            selectedIndex = null,
-                            contentDescription = "Stress through the day",
-                            height = 64.dp,
-                        )
-                    }
-                }
-            }
-        }
-
-        // Sleep --------------------------------------------------------------
-        PulseCard(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(start = PulseSpacing.xlPlus, end = PulseSpacing.xlPlus, top = PulseSpacing.xl, bottom = PulseSpacing.lg),
-                verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
-                    Icon(Icons.Outlined.Bedtime, null, tint = PulseColors.Blue, modifier = Modifier.size(16.dp))
-                    Text("Sleep", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
-                }
-                if (day.sleepScore == null && day.sleepStart == null) {
-                    Text("Sleep not synced yet", style = MaterialTheme.typography.titleSmall, color = PulseColors.Text)
-                    Text(
-                        "The watch writes sleep to a SLEEP_DATA file. Sync after waking with the watch nearby; this app never estimates sleep from heart rate.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = PulseColors.TextMuted,
-                    )
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PulseSpacing.xl)) {
-                        ProgressRing(
-                            progress = ((day.sleepScore ?: 0) / 100f).coerceIn(0f, 1f),
-                            label = day.sleepScore?.toString() ?: "—",
-                            caption = "score",
-                            color = PulseColors.Blue,
-                            size = 76.dp,
-                            strokeWidth = 7.dp,
-                            contentDescription = "Sleep score ${day.sleepScore ?: "unknown"}",
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.xxs)) {
-                            val asleep = WellnessMetrics.sleepSeconds(day) ?: 0
-                            Text(
-                                formatSleepDuration(asleep.coerceAtLeast(0)),
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = PulseColors.Text,
-                            )
-                            Text(
-                                "${day.sleepQuality ?: "Sleep"} · ${sleepWindow(day.sleepStart, day.sleepEnd)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = PulseColors.TextMuted,
-                            )
-                        }
-                    }
-                    if (sleepStages.isNotEmpty()) {
-                        SleepStageChart(sleepStages)
-                    }
-                    val stages = listOf(
-                        Triple("Deep", day.deepSleepSeconds, SleepDeep),
-                        Triple("Light", day.lightSleepSeconds, SleepLight),
-                        Triple("REM", day.remSleepSeconds, SleepRem),
-                        Triple("Awake", day.awakeSleepSeconds, SleepAwake),
-                    )
-                    stages.forEach { (name, seconds, color) ->
-                        if (seconds != null) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(color))
-                                Spacer(Modifier.width(PulseSpacing.md))
-                                Text(name, style = MaterialTheme.typography.bodySmall, color = PulseColors.Text, modifier = Modifier.weight(1f))
-                                Text(formatSleepDuration(seconds), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = PulseColors.Text)
-                            }
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
-                        TinyStat("Avg SpO₂", day.sleepAvgSpo2?.let { "$it%" } ?: "—", Modifier.weight(1f))
-                        TinyStat("Respiration", day.sleepAvgRespiration?.let { "%.0f /min".format(it) } ?: "—", Modifier.weight(1f))
-                        TinyStat("Lowest HR", day.sleepLowestHeartRate?.let { "$it bpm" } ?: "—", Modifier.weight(1f))
-                    }
-                }
-            }
-        }
-
-        // HRV ----------------------------------------------------------------
-        PulseCard(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(start = PulseSpacing.xlPlus, end = PulseSpacing.xlPlus, top = PulseSpacing.xl, bottom = PulseSpacing.lg),
-                verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
-            ) {
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
-                        Icon(Icons.Outlined.FavoriteBorder, null, tint = PulseColors.Teal, modifier = Modifier.size(16.dp))
-                        Text("HRV status", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
-                    }
-                    Spacer(Modifier.weight(1f))
-                    day.hrvStatus?.let { StatusLabel(it) }
-                }
-                if (hrvValue == null) {
-                    Text("HRV not synced yet", style = MaterialTheme.typography.titleSmall, color = PulseColors.Text)
-                    Text(
-                        "HRV comes from the watch's overnight recording. It will appear after a night with the watch worn and a sync.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = PulseColors.TextMuted,
-                    )
-                } else {
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            "%.0f".format(hrvValue),
-                            style = MaterialTheme.typography.displaySmall,
-                            color = PulseColors.Text,
-                        )
-                        Text(
-                            " ms last night",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = PulseColors.TextMuted,
-                            modifier = Modifier.padding(bottom = 4.dp),
-                        )
-                    }
-                    hrvWeekly?.let {
-                        Text("7-day average %.0f ms".format(it), style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted)
-                    }
-                    if (hrvSamples.size >= 2) {
-                        LineChart(
-                            values = hrvSamples.map { it.value.toFloat() },
-                            labels = chartLabels(hrvSamples.map { it.timestamp }),
-                            color = PulseColors.Teal,
-                            contentDescription = "HRV through the night, average %.0f milliseconds".format(hrvValue),
-                            height = 64.dp,
-                        )
-                    }
-                    HrvBaseline(day.hrvBaselineLow, day.hrvBaselineHigh, hrvValue)
-                }
-            }
-        }
-
-        // Tiles --------------------------------------------------------------
-        Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
-            StatTile(
-                label = "Resting HR",
-                value = day.restingHeartRate?.toString() ?: "—",
-                unit = "bpm",
-                icon = Icons.Outlined.FavoriteBorder,
-                iconColor = PulseColors.Coral,
-                modifier = Modifier.weight(1f),
-                footnote = day.avgHeartRate?.let { "Avg $it bpm" },
-            )
-            StatTile(
-                label = "Pulse Ox",
-                value = day.spo2Avg?.toString() ?: "—",
-                unit = "% SpO₂",
-                icon = Icons.Outlined.Bloodtype,
-                iconColor = PulseColors.Blue,
-                modifier = Modifier.weight(1f),
-                footnote = spo2.minOfOrNull { it.value }?.let { "Low %.0f%%".format(it) },
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
-            StatTile(
-                label = "Respiration",
-                value = day.respirationAvg?.let { "%.0f".format(it) } ?: "—",
-                unit = "brpm",
-                icon = Icons.Outlined.Air,
-                iconColor = PulseColors.Blue,
-                modifier = Modifier.weight(1f),
-                footnote = "All-day average",
-            )
-            StatTile(
-                label = "VO₂ max",
-                value = training.latestVo2Max?.let { "%.1f".format(it) } ?: "—",
-                unit = "ml/kg/min",
-                icon = Icons.Outlined.Speed,
-                iconColor = PulseColors.Accent,
-                modifier = Modifier.weight(1f).clickable(onClick = onOpenTraining),
-                footnote = if (training.latestVo2Max != null) "Tap Training for the trend" else "Not synced",
-            )
-        }
-
-        // Movement -----------------------------------------------------------
-        PulseCard(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(PulseSpacing.xlPlus),
-                verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
-            ) {
-                Text("Daily movement", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
-                Row {
-                    TinyStat("steps", "%,d".format(day.steps), Modifier.weight(1f))
-                    TinyStat("distance", "%.1f km".format(day.distanceMeters / 1000.0), Modifier.weight(1f))
-                    TinyStat("active kcal", "%,d".format(day.activeCalories), Modifier.weight(1f))
-                }
-            }
-        }
-
-        // Active minutes -----------------------------------------------------
-        PulseCard(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(start = PulseSpacing.xlPlus, end = PulseSpacing.xlPlus, top = PulseSpacing.xl, bottom = PulseSpacing.lg),
-                verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
-            ) {
-                Text("Active minutes · this week", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
-                val week = weekBuckets(days)
-                val total = week.sumOf { it.second }
+            if (stress.isEmpty() && day.stressAvg == null) {
+                Text("No stress readings yet.", style = MaterialTheme.typography.bodyMedium, color = PulseColors.TextMuted)
+            } else {
+                val avg = day.stressAvg ?: stress.map { it.value }.average().roundToInt()
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text("$total", style = MaterialTheme.typography.displaySmall, color = PulseColors.Accent)
+                    Text("$avg", style = MaterialTheme.typography.displaySmall, color = PulseColors.Text)
                     Text(
-                        " min · from your watch",
+                        " avg · ${stressLabel(avg)} (0–100)",
                         style = MaterialTheme.typography.bodySmall,
                         color = PulseColors.TextMuted,
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
-                BarChart(
-                    values = week.map { it.second.toFloat() },
-                    labels = week.map { it.first },
-                    goal = null,
-                    color = PulseColors.Accent,
-                    selectedIndex = null,
-                    contentDescription = "Active minutes for each of the last seven days",
-                    height = 76.dp,
-                )
-                day.moderateMinutes?.let { moderate ->
-                    Text(
-                        "Moderate $moderate min · Vigorous ${day.vigorousMinutes ?: 0} min (vigorous counts double)",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = PulseColors.TextMuted,
+                StressDistribution(stress.map { it.value })
+                if (stress.size >= 2) {
+                    val buckets = hourlyBuckets(stress)
+                    BarChart(
+                        values = buckets,
+                        labels = emptyList(),
+                        goal = null,
+                        color = PulseColors.Yellow,
+                        selectedIndex = null,
+                        contentDescription = "Stress through the day",
+                        height = 64.dp,
                     )
                 }
             }
         }
+    }
+}
 
-        CoachInsightCard(
-            text = healthInsight(day, currentBodyBattery, bodyBatteryStart, stress, training, hrvValue),
-            onAskCoach = onAskCoach,
+@Composable
+private fun SleepCard(
+    day: WellnessDayEntity,
+    sleepStages: List<SleepStageEntity>,
+) {
+    PulseCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(start = PulseSpacing.xlPlus, end = PulseSpacing.xlPlus, top = PulseSpacing.xl, bottom = PulseSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
+                Icon(Icons.Outlined.Bedtime, null, tint = PulseColors.Blue, modifier = Modifier.size(16.dp))
+                Text("Sleep", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
+            }
+            if (day.sleepScore == null && day.sleepStart == null) {
+                Text("Sleep not synced yet", style = MaterialTheme.typography.titleSmall, color = PulseColors.Text)
+                Text(
+                    "The watch writes sleep to a SLEEP_DATA file. Sync after waking with the watch nearby; this app never estimates sleep from heart rate.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PulseColors.TextMuted,
+                )
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PulseSpacing.xl)) {
+                    ProgressRing(
+                        progress = ((day.sleepScore ?: 0) / 100f).coerceIn(0f, 1f),
+                        label = day.sleepScore?.toString() ?: "—",
+                        caption = "score",
+                        color = PulseColors.Blue,
+                        size = 76.dp,
+                        strokeWidth = 7.dp,
+                        contentDescription = "Sleep score ${day.sleepScore ?: "unknown"}",
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.xxs)) {
+                        val asleep = WellnessMetrics.sleepSeconds(day) ?: 0
+                        Text(
+                            formatSleepDuration(asleep.coerceAtLeast(0)),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = PulseColors.Text,
+                        )
+                        Text(
+                            "${day.sleepQuality ?: "Sleep"} · ${sleepWindow(day.sleepStart, day.sleepEnd)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PulseColors.TextMuted,
+                        )
+                    }
+                }
+                if (sleepStages.isNotEmpty()) {
+                    SleepStageChart(sleepStages)
+                }
+                val stages = listOf(
+                    Triple("Deep", day.deepSleepSeconds, SleepDeep),
+                    Triple("Light", day.lightSleepSeconds, SleepLight),
+                    Triple("REM", day.remSleepSeconds, SleepRem),
+                    Triple("Awake", day.awakeSleepSeconds, SleepAwake),
+                )
+                stages.forEach { (name, seconds, color) ->
+                    if (seconds != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(color))
+                            Spacer(Modifier.width(PulseSpacing.md))
+                            Text(name, style = MaterialTheme.typography.bodySmall, color = PulseColors.Text, modifier = Modifier.weight(1f))
+                            Text(formatSleepDuration(seconds), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = PulseColors.Text)
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+                    TinyStat("Avg SpO₂", day.sleepAvgSpo2?.let { "$it%" } ?: "—", Modifier.weight(1f))
+                    TinyStat("Respiration", day.sleepAvgRespiration?.let { "%.0f /min".format(it) } ?: "—", Modifier.weight(1f))
+                    TinyStat("Lowest HR", day.sleepLowestHeartRate?.let { "$it bpm" } ?: "—", Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HrvCard(
+    day: WellnessDayEntity,
+    hrvValue: Double?,
+    hrvWeekly: Double?,
+    hrvSamples: List<WellnessSampleEntity>,
+) {
+    PulseCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(start = PulseSpacing.xlPlus, end = PulseSpacing.xlPlus, top = PulseSpacing.xl, bottom = PulseSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+        ) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
+                    Icon(Icons.Outlined.FavoriteBorder, null, tint = PulseColors.Teal, modifier = Modifier.size(16.dp))
+                    Text("HRV status", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
+                }
+                Spacer(Modifier.weight(1f))
+                day.hrvStatus?.let { StatusLabel(it) }
+            }
+            if (hrvValue == null) {
+                Text("HRV not synced yet", style = MaterialTheme.typography.titleSmall, color = PulseColors.Text)
+                Text(
+                    "HRV comes from the watch's overnight recording. It will appear after a night with the watch worn and a sync.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PulseColors.TextMuted,
+                )
+            } else {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        "%.0f".format(hrvValue),
+                        style = MaterialTheme.typography.displaySmall,
+                        color = PulseColors.Text,
+                    )
+                    Text(
+                        " ms last night",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+                hrvWeekly?.let {
+                    Text("7-day average %.0f ms".format(it), style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted)
+                }
+                if (hrvSamples.size >= 2) {
+                    LineChart(
+                        values = hrvSamples.map { it.value.toFloat() },
+                        labels = chartLabels(hrvSamples.map { it.timestamp }),
+                        color = PulseColors.Teal,
+                        contentDescription = "HRV through the night, average %.0f milliseconds".format(hrvValue),
+                        height = 64.dp,
+                    )
+                }
+                HrvBaseline(day.hrvBaselineLow, day.hrvBaselineHigh, hrvValue)
+            }
+        }
+    }
+}
+
+@Composable
+private fun VitalTiles(
+    day: WellnessDayEntity,
+    spo2: List<WellnessSampleEntity>,
+    training: TrainingSummary,
+    onOpenTraining: () -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+        StatTile(
+            label = "Resting HR",
+            value = day.restingHeartRate?.toString() ?: "—",
+            unit = "bpm",
+            icon = Icons.Outlined.FavoriteBorder,
+            iconColor = PulseColors.Coral,
+            modifier = Modifier.weight(1f),
+            footnote = day.avgHeartRate?.let { "Avg $it bpm" },
         )
-        Spacer(Modifier.height(PulseSpacing.lg))
+        StatTile(
+            label = "Pulse Ox",
+            value = day.spo2Avg?.toString() ?: "—",
+            unit = "% SpO₂",
+            icon = Icons.Outlined.Bloodtype,
+            iconColor = PulseColors.Blue,
+            modifier = Modifier.weight(1f),
+            footnote = spo2.minOfOrNull { it.value }?.let { "Low %.0f%%".format(it) },
+        )
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+        StatTile(
+            label = "Respiration",
+            value = day.respirationAvg?.let { "%.0f".format(it) } ?: "—",
+            unit = "brpm",
+            icon = Icons.Outlined.Air,
+            iconColor = PulseColors.Blue,
+            modifier = Modifier.weight(1f),
+            footnote = "All-day average",
+        )
+        StatTile(
+            label = "VO₂ max",
+            value = training.latestVo2Max?.let { "%.1f".format(it) } ?: "—",
+            unit = "ml/kg/min",
+            icon = Icons.Outlined.Speed,
+            iconColor = PulseColors.Accent,
+            modifier = Modifier.weight(1f).clickable(onClick = onOpenTraining),
+            footnote = if (training.latestVo2Max != null) "Tap Training for the trend" else "Not synced",
+        )
+    }
+}
+
+@Composable
+private fun MovementCard(day: WellnessDayEntity) {
+    PulseCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(PulseSpacing.xlPlus),
+            verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+        ) {
+            Text("Daily movement", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
+            Row {
+                TinyStat("steps", "%,d".format(day.steps), Modifier.weight(1f))
+                TinyStat("distance", "%.1f km".format(day.distanceMeters / 1000.0), Modifier.weight(1f))
+                TinyStat("active kcal", "%,d".format(day.activeCalories), Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActiveMinutesCard(
+    days: List<WellnessDayEntity>,
+    day: WellnessDayEntity,
+) {
+    PulseCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(start = PulseSpacing.xlPlus, end = PulseSpacing.xlPlus, top = PulseSpacing.xl, bottom = PulseSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+        ) {
+            Text("Active minutes · this week", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
+            val week = weekBuckets(days)
+            val total = week.sumOf { it.second }
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text("$total", style = MaterialTheme.typography.displaySmall, color = PulseColors.Accent)
+                Text(
+                    " min · from your watch",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PulseColors.TextMuted,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
+            BarChart(
+                values = week.map { it.second.toFloat() },
+                labels = week.map { it.first },
+                goal = null,
+                color = PulseColors.Accent,
+                selectedIndex = null,
+                contentDescription = "Active minutes for each of the last seven days",
+                height = 76.dp,
+            )
+            day.moderateMinutes?.let { moderate ->
+                Text(
+                    "Moderate $moderate min · Vigorous ${day.vigorousMinutes ?: 0} min (vigorous counts double)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                )
+            }
+        }
     }
 }
 
