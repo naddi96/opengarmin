@@ -70,12 +70,7 @@ class CoachController(
     init {
         val stored = chatStore.loadAll()
         conversations.addAll(chatStore.summaries())
-        val latest = stored.firstOrNull()
-        if (latest != null) {
-            restore(latest)
-        } else {
-            messages.add(welcomeMessage())
-        }
+        resetConversationState(stored.firstOrNull())
         refreshProvider()
     }
 
@@ -92,13 +87,7 @@ class CoachController(
     fun startNewChat() {
         cancel()
         generation++
-        currentConversationId = null
-        currentTitle = ""
-        currentCreatedAt = System.currentTimeMillis()
-        messages.clear()
-        messages.add(welcomeMessage())
-        lastError = null
-        draft = ""
+        resetConversationState()
     }
 
     /** Opens a stored conversation and makes it the active one. */
@@ -107,9 +96,7 @@ class CoachController(
         val stored = chatStore.load(id) ?: return
         cancel()
         generation++
-        restore(stored)
-        lastError = null
-        draft = ""
+        resetConversationState(stored)
     }
 
     fun deleteConversation(id: String) {
@@ -119,13 +106,7 @@ class CoachController(
         chatStore.delete(id)
         refreshConversations()
         if (wasCurrent) {
-            currentConversationId = null
-            currentTitle = ""
-            currentCreatedAt = System.currentTimeMillis()
-            messages.clear()
-            messages.add(welcomeMessage())
-            lastError = null
-            draft = ""
+            resetConversationState()
         }
     }
 
@@ -135,31 +116,29 @@ class CoachController(
         job?.cancel()
         job = null
         isStreaming = false
-        statusText = null
-        lastError = null
-        draft = ""
         conversations.clear()
-        val stored = chatStore.loadAll()
         conversations.addAll(chatStore.summaries())
-        val latest = stored.firstOrNull()
-        if (latest != null) {
-            restore(latest)
-        } else {
-            currentConversationId = null
-            currentTitle = ""
-            currentCreatedAt = System.currentTimeMillis()
-            messages.clear()
-            messages.add(welcomeMessage())
-        }
+        resetConversationState(chatStore.loadAll().firstOrNull())
     }
 
-    private fun restore(stored: StoredConversation) {
-        currentConversationId = stored.id
-        currentTitle = stored.title
-        currentCreatedAt = stored.createdAt
+    /**
+     * Replaces the active conversation with [stored], or starts a fresh one
+     * when [stored] is null. This is the single place that resets
+     * per-conversation state.
+     */
+    private fun resetConversationState(stored: StoredConversation? = null) {
+        currentConversationId = stored?.id
+        currentTitle = stored?.title.orEmpty()
+        currentCreatedAt = stored?.createdAt ?: System.currentTimeMillis()
         messages.clear()
-        messages.addAll(stored.messages)
-        if (messages.isEmpty()) messages.add(welcomeMessage())
+        if (stored == null || stored.messages.isEmpty()) {
+            messages.add(welcomeMessage())
+        } else {
+            messages.addAll(stored.messages)
+        }
+        lastError = null
+        draft = ""
+        statusText = null
     }
 
     fun send(text: String) {

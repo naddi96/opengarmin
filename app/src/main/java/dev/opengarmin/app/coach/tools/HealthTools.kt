@@ -162,8 +162,6 @@ private abstract class BaseTool(
 
     protected suspend fun samples(scope: ToolScope, kind: String, from: LocalDate, to: LocalDate) =
         dataSource.samples(scope, kind, epochRange(from, to).first, epochRange(from, to).last)
-
-    protected fun round1(value: Double): Double = (value * 10.0).roundToInt() / 10.0
 }
 
 private class DailySummaryTool(
@@ -295,7 +293,7 @@ private class HeartRateTool(
         val averages = available.mapNotNull { it.avgHeartRate }
         val maxima = available.mapNotNull { it.maxHeartRate }
         val sampleList = if (args.optBoolean("include_samples", false)) {
-            downSample(samples(scope, "hr", from, to), 168)
+            samples(scope, "hr", from, to).sampleEvenly(168)
         } else {
             emptyList()
         }
@@ -339,15 +337,6 @@ private class HeartRateTool(
             }
         }
         return ToolResult(json.toString(), listOf("Heart rate · ${available.size} ${dayWord(available.size)}"))
-    }
-
-    private fun downSample(
-        values: List<dev.opengarmin.app.coach.HealthSample>,
-        maxPoints: Int,
-    ): List<dev.opengarmin.app.coach.HealthSample> {
-        if (values.size <= maxPoints) return values
-        val step = values.size.toDouble() / maxPoints
-        return (0 until maxPoints).map { values[(it * step).toInt().coerceAtMost(values.lastIndex)] }
     }
 }
 
@@ -920,7 +909,7 @@ private class RenderChartTool(
                 if (!y.isFinite()) return@forEachIndexed
                 points += ChartPoint(x.toFloat(), y.toFloat())
             }
-            val sampled = downsample(points, maxPoints)
+            val sampled = points.sampleEvenly(maxPoints)
             if (sampled.size < 2) {
                 skipped += summary.id
                 continue
@@ -1021,14 +1010,6 @@ private class RenderChartTool(
             previous = record
         }
         return result
-    }
-
-    private fun downsample(points: List<ChartPoint>, maxPoints: Int): List<ChartPoint> {
-        if (points.size <= maxPoints) return points
-        val last = points.lastIndex
-        return (0 until maxPoints)
-            .map { index -> points[(index.toDouble() * last / (maxPoints - 1)).roundToInt()] }
-            .distinct()
     }
 
     private fun dateLabel(date: LocalDate): String =
@@ -1546,5 +1527,14 @@ private fun enumProp(description: String, values: List<String>, default: String?
     }
 
 private fun round1(value: Double): Double = (value * 10.0).roundToInt() / 10.0
+
+/** Evenly samples at most [maxPoints] values, keeping the first and last. */
+private fun <T> List<T>.sampleEvenly(maxPoints: Int): List<T> {
+    if (size <= maxPoints) return this
+    val last = lastIndex
+    return (0 until maxPoints)
+        .map { index -> this[(index.toDouble() * last / (maxPoints - 1)).roundToInt()] }
+        .distinct()
+}
 
 private fun dayWord(count: Int): String = if (count == 1) "day" else "days"

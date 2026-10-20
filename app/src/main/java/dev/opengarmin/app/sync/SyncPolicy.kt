@@ -29,15 +29,15 @@ object SyncPolicy {
     /** Battery-not-low is always required; charging is optional. */
     const val REQUIRES_BATTERY_NOT_LOW = true
 
-    enum class FailureKind {
+    enum class FailureKind(val storageKey: String) {
         /** Watch out of range, disconnect, transfer timeout, slot busy. Retry with backoff. */
-        TRANSIENT,
+        TRANSIENT("transient"),
 
         /** Another sync owns the BLE connection/transfer slot. Retry later. */
-        BUSY,
+        BUSY("busy"),
 
         /** Missing permission, no bonded watch, unsupported device. Show an action. */
-        PERMANENT,
+        PERMANENT("permanent"),
     }
 
     fun normalizeInterval(minutes: Int): Int =

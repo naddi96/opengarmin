@@ -47,7 +47,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import dev.opengarmin.app.RouteMap
 import dev.opengarmin.app.coach.ChartPoint
 import dev.opengarmin.app.coach.GpsSummary
 import dev.opengarmin.app.coach.RunningDynamicsSummary
@@ -74,6 +73,7 @@ import dev.opengarmin.app.ui.components.InteractiveChartStyle
 import dev.opengarmin.app.ui.components.InteractiveMovementChart
 import dev.opengarmin.app.ui.components.InteractiveSeries
 import dev.opengarmin.app.ui.components.PrimaryButton
+import dev.opengarmin.app.ui.components.RouteMap
 import dev.opengarmin.app.ui.components.PulseCard
 import dev.opengarmin.app.ui.components.SegmentedControl
 import dev.opengarmin.app.ui.components.TinyStat

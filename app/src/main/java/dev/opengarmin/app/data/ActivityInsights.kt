@@ -225,12 +225,13 @@ object ActivityAnalysis {
             ?: samples.mapNotNull { it.powerW }.maxOrNull())?.takeIf { it > 0.0 }
         val normalizedPower = session.num("normalized_power")?.takeIf { it > 0.0 }
 
+        val derivedElevation = derivedElevation(samples)
         val ascent = session.num("total_ascent")
             ?: activity.ascentMeters?.toDouble()
-            ?: derivedAscent(samples)
+            ?: derivedElevation.ascent
         val descent = session.num("total_descent")
             ?: activity.descentMeters?.toDouble()
-            ?: derivedDescent(samples)
+            ?: derivedElevation.descent
         val minAltitude = session.num("enhanced_min_altitude")
             ?: session.num("min_altitude")
             ?: samples.mapNotNull { it.altitudeMeters }.minOrNull()
@@ -586,26 +587,23 @@ object ActivityAnalysis {
     private fun pace(seconds: Double, meters: Double): Double? =
         if (seconds > 0.0 && meters > 0.0) seconds / (meters / 1000.0) else null
 
-    private fun derivedAscent(samples: List<ActivitySample>): Double? {
-        var total = 0.0
-        var previous: Double? = null
-        for (sample in samples) {
-            val altitude = sample.altitudeMeters ?: continue
-            previous?.let { if (altitude > it) total += altitude - it }
-            previous = altitude
-        }
-        return total.takeIf { it > 0.0 }
-    }
+    private data class ElevationChange(val ascent: Double?, val descent: Double?)
 
-    private fun derivedDescent(samples: List<ActivitySample>): Double? {
-        var total = 0.0
+    private fun derivedElevation(samples: List<ActivitySample>): ElevationChange {
+        var ascent = 0.0
+        var descent = 0.0
         var previous: Double? = null
         for (sample in samples) {
             val altitude = sample.altitudeMeters ?: continue
-            previous?.let { if (altitude < it) total += it - altitude }
+            previous?.let {
+                if (altitude > it) ascent += altitude - it else descent += it - altitude
+            }
             previous = altitude
         }
-        return total.takeIf { it > 0.0 }
+        return ElevationChange(
+            ascent = ascent.takeIf { it > 0.0 },
+            descent = descent.takeIf { it > 0.0 },
+        )
     }
 
     private fun List<Double>.averageOrNull(): Double? =

@@ -406,6 +406,16 @@ object ActivityExport {
         }
     }
 
+    private data class LapWindow(val index: Int, val start: Long, val end: Long)
+
+    private fun lapIndexFor(record: RecordEntity, windows: List<LapWindow>): Int {
+        if (windows.isEmpty()) return -1
+        val exact = windows.firstOrNull { record.timestamp in it.start until it.end }
+        return exact?.index
+            ?: windows.minByOrNull { abs(record.timestamp - it.start) }?.index
+            ?: 0
+    }
+
     /**
      * Returns, for every record, the zero-based position of its lap in
      * [sortedLaps]. Records are assigned by time; anything outside the known
@@ -439,15 +449,8 @@ object ActivityExport {
             if (last >= ends.last()) ends[ends.lastIndex] = last + 1
         }
 
-        return records.map { record ->
-            val exact = sortedLaps.indices.firstOrNull { record.timestamp >= starts[it] && record.timestamp < ends[it] }
-            if (exact != null) {
-                exact
-            } else {
-                // Nearest lap start.
-                sortedLaps.indices.minByOrNull { abs(record.timestamp - starts[it]) } ?: 0
-            }
-        }
+        val windows = sortedLaps.indices.map { LapWindow(it, starts[it], ends[it]) }
+        return records.map { record -> lapIndexFor(record, windows) }
     }
 
     /** [assignLapIndexes] for a laps list that is already in export order. */
@@ -456,17 +459,14 @@ object ActivityExport {
         laps: List<ExportLap>,
     ): List<Int> {
         if (laps.isEmpty()) return records.map { -1 }
-        return records.map { record ->
-            val exact = laps.firstOrNull { lap ->
-                val end = lap.startTime + lap.durationSeconds.toLong().coerceAtLeast(1)
-                record.timestamp >= lap.startTime && record.timestamp < end
-            }
-            if (exact != null) {
-                exact.index - 1
-            } else {
-                laps.minByOrNull { abs(record.timestamp - it.startTime) }?.index?.minus(1) ?: 0
-            }
+        val windows = laps.map { lap ->
+            LapWindow(
+                index = lap.index - 1,
+                start = lap.startTime,
+                end = lap.startTime + lap.durationSeconds.toLong().coerceAtLeast(1),
+            )
         }
+        return records.map { record -> lapIndexFor(record, windows) }
     }
 
     private fun averageCadence(records: List<RecordEntity>): Int? {

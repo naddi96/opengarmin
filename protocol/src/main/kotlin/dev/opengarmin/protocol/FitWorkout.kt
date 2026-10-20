@@ -1,8 +1,6 @@
 package dev.opengarmin.protocol
 
 import java.io.ByteArrayOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 /**
  * Minimal FIT workout-file encoder.
@@ -23,7 +21,7 @@ import java.nio.ByteOrder
  * Time durations are milliseconds and distance durations are centimetres on
  * the wire; the helper [Duration] values use seconds/metres.
  */
-object FitWorkout {
+object FitWorkout : FitEncoder(profileVersion = 21184) {
     // FIT file types.
     const val FILE_WORKOUT = 5
 
@@ -45,9 +43,6 @@ object FitWorkout {
     const val INTENSITY_INTERVAL = 5
     const val INTENSITY_OTHER = 6
 
-    private const val HEADER_SIZE = 14
-    private const val PROTOCOL_VERSION = 0x20
-    private const val PROFILE_VERSION = 21184
 
     sealed class Duration {
         /** Seconds. */
@@ -213,65 +208,5 @@ object FitWorkout {
         }
 
         return file(data.toByteArray())
-    }
-
-    private data class FieldDef(val number: Int, val size: Int, val baseType: Int)
-
-    private fun file(payload: ByteArray): ByteArray {
-        val header = ByteArray(HEADER_SIZE)
-        header[0] = HEADER_SIZE.toByte()
-        header[1] = PROTOCOL_VERSION.toByte()
-        header[2] = (PROFILE_VERSION and 0xFF).toByte()
-        header[3] = ((PROFILE_VERSION ushr 8) and 0xFF).toByte()
-        ByteBuffer.wrap(header, 4, 4).order(ByteOrder.LITTLE_ENDIAN).putInt(payload.size)
-        ".FIT".toByteArray(Charsets.US_ASCII).copyInto(header, 8)
-        val headerCrc = Crc16.compute(header, 0, 12)
-        header[12] = (headerCrc and 0xFF).toByte()
-        header[13] = ((headerCrc ushr 8) and 0xFF).toByte()
-        val crc = Crc16.compute(payload)
-        val out = ByteArray(header.size + payload.size + 2)
-        header.copyInto(out, 0)
-        payload.copyInto(out, header.size)
-        out[out.size - 2] = (crc and 0xFF).toByte()
-        out[out.size - 1] = ((crc ushr 8) and 0xFF).toByte()
-        return out
-    }
-
-    private fun ByteArrayOutputStream.definition(local: Int, global: Int, fields: List<FieldDef>) {
-        u8(0x40 or (local and 0x0F))
-        u8(0)
-        u8(0) // little endian
-        u16(global)
-        u8(fields.size)
-        fields.forEach { f ->
-            u8(f.number)
-            u8(f.size)
-            u8(f.baseType)
-        }
-    }
-
-    private fun ByteArrayOutputStream.record(local: Int, block: ByteArrayOutputStream.() -> Unit) {
-        u8(local and 0x0F)
-        block()
-    }
-
-    private fun ByteArrayOutputStream.u8(value: Int) {
-        write(value and 0xFF)
-    }
-
-    private fun ByteArrayOutputStream.u16(value: Int) {
-        u8(value)
-        u8(value ushr 8)
-    }
-
-    private fun ByteArrayOutputStream.u32(value: Long) {
-        repeat(4) { u8((value ushr (8 * it)).toInt()) }
-    }
-
-    private fun ByteArrayOutputStream.utf8(value: String, size: Int) {
-        val bytes = value.toByteArray(Charsets.UTF_8)
-        val count = minOf(bytes.size, size - 1)
-        write(bytes, 0, count)
-        repeat(size - count) { write(0) }
     }
 }

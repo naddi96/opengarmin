@@ -13,6 +13,7 @@ import dev.opengarmin.protocol.GfdiFileUpload
 import dev.opengarmin.protocol.Handshake
 import dev.opengarmin.protocol.Hex
 import dev.opengarmin.protocol.TransportPipe
+import dev.opengarmin.app.data.WellnessFileTypes
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -51,7 +52,10 @@ class SyncCoordinator(
         val fitType: Int = FitWorkout.FILE_WORKOUT,
         var attempts: Int = 0,
         var triedGdi: Boolean = false,
-    )
+    ) {
+        /** Log/status label for this upload kind. */
+        val kind: String get() = if (fitType == FitPaceBand.FILE_PACE_BAND) "PACE" else "WORKOUT"
+    }
 
     private val gdi = GdiClient(session) { log(it) }
     private val gdxmlLookup = Gdi.GdxmlLookup()
@@ -129,17 +133,14 @@ class SyncCoordinator(
             handler.post { handleLegacyUploadResponse(frame) }
         }
         session.onReady = {
-            val g = generation
-            handler.postDelayed({
-                if (g == generation) {
-                    log("GDI: DEVICE_SETTINGS + SYNC_READY")
-                    session.sendGfdi(Handshake.deviceSettings())
-                    session.sendGfdi(Handshake.systemEventSyncReady())
-                }
-            }, 300)
-            handler.postDelayed({
-                if (g == generation && !capabilitiesReceived) sendCapabilities()
-            }, 1500)
+            postIfCurrent(300) {
+                log("GDI: DEVICE_SETTINGS + SYNC_READY")
+                session.sendGfdi(Handshake.deviceSettings())
+                session.sendGfdi(Handshake.systemEventSyncReady())
+            }
+            postIfCurrent(1_500) {
+                if (!capabilitiesReceived) sendCapabilities()
+            }
             // The watch reopens the GDI session after a transport pipe closes.
             // Give it a moment, then prefer a queued activity over more wellness.
             if (pendingActivityItem != null && !done) {
@@ -152,9 +153,7 @@ class SyncCoordinator(
                     wellnessQueue.addFirst(retry)
                 }
                 activityPullNotBefore = SystemClock.uptimeMillis() + READY_GRACE_MS
-                handler.postDelayed({
-                    if (g == generation) tryStartActivityPull()
-                }, READY_GRACE_MS)
+                postIfCurrent(READY_GRACE_MS) { tryStartActivityPull() }
             } else {
                 handler.post {
                     val retry = inFlightWellness
@@ -243,7 +242,8 @@ class SyncCoordinator(
     }
 
     private fun enqueueUpload(id: Long, name: String, bytes: ByteArray, fitType: Int) {
-        val kind = if (fitType == FitPaceBand.FILE_PACE_BAND) "PACE" else "WORKOUT"
+        val pending = PendingWorkout(id, name, bytes, fitType)
+        val kind = pending.kind
         if (bytes.isEmpty()) {
             onWorkoutFailed(id, name, "The $kind file is empty.")
             return
@@ -254,7 +254,7 @@ class SyncCoordinator(
             log("$kind already queued id=$id")
             return
         }
-        workoutQueue.addLast(PendingWorkout(id, name, bytes, fitType))
+        workoutQueue.addLast(pending)
         log("$kind queued id=$id name=\"$name\" bytes=${bytes.size}")
         if (capabilitiesReceived && pipe == null && !wellnessTransfer) sendNextWorkout()
     }
@@ -276,6 +276,12 @@ class SyncCoordinator(
                 currentSize = pendingActivityItem?.dataSize,
             ),
         )
+    }
+
+    /** Runs [action] after [delayMs] unless the coordinator was reset meanwhile. */
+    private fun postIfCurrent(delayMs: Long, action: () -> Unit) {
+        val expected = generation
+        handler.postDelayed({ if (expected == generation) action() }, delayMs)
     }
 
     private fun closeOutput() {
@@ -354,10 +360,9 @@ class SyncCoordinator(
             // never answers, fall back to asking for the list directly.
             log("GDI: connection ready")
             sendCapabilities()
-            val g = generation
-            handler.postDelayed({
-                if (g == generation && !listRequested && !listReceived) requestList()
-            }, 2500)
+            postIfCurrent(2_500) {
+                if (!listRequested && !listReceived) requestList()
+            }
         }
 
         val fa = fields[Gdi.SMART_FILE_ACCESS] ?: return
@@ -383,7 +388,7 @@ class SyncCoordinator(
         val newItems = notification.items.filter { item ->
             val uid = item.uid?.hex().orEmpty()
             val type = gdxmlLookup.typeOf(item)
-            val immutable = type in IMMUTABLE_HEALTH_FILE_TYPES
+            val immutable = WellnessFileTypes.isImmutable(type)
             // SETTINGS_CHANGE carries no health samples and costs the watch a
             // full transfer slot; skipping it makes the subsequent directory
             // request much faster. Workout files (FIT_TYPE_5) are written by
@@ -405,35 +410,14 @@ class SyncCoordinator(
             return
         }
         val item = wellnessQueue.removeFirstOrNull()
-        if (item == null) {
-            if (pendingActivityItem == null && activityQueue.isNotEmpty() &&
-                !requestedPull && pipe == null
-            ) {
-                pendingActivityItem = activityQueue.removeFirstOrNull()
-                pendingActivityItem?.let { next ->
-                    pulledItemUid = next.uid?.hex().orEmpty()
-                    activityTotal = activityDone + activityQueue.size + 1
-                    reportActivityProgress()
-                    activitiesUpToDate = false
-                    tryStartActivityPull()
-                    return
-                }
-            }
-            if (activitiesUpToDate && !activityListProbePending) {
-                if (!done) {
-                    done = true
-                    log("SYNC up to date: activities and wellness synced")
-                    onUpToDate()
-                }
-            } else if (!listReceived && !done) {
-                requestList()
-            } else {
-                // The activity pull may have been deferred while wellness was
-                // using the watch's single transfer slot.
-                tryStartActivityPull()
-            }
+        if (item != null) {
+            startWellnessPull(item)
             return
         }
+        finishWellnessPhase()
+    }
+
+    private fun startWellnessPull(item: Gdi.ItemReference) {
         wellnessTransfer = true
         pulledWellnessType = gdxmlLookup.typeOf(item) ?: "unknown"
         inFlightWellness = item
@@ -441,6 +425,37 @@ class SyncCoordinator(
         gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.pullItemRequest(item))) { response ->
             handler.post { handleSmart(response) }
         }
+    }
+
+    private fun finishWellnessPhase() {
+        if (pendingActivityItem == null && activityQueue.isNotEmpty() && !requestedPull && pipe == null) {
+            startNextActivity()
+            return
+        }
+        when {
+            activitiesUpToDate && !activityListProbePending -> markActivitiesUpToDate()
+            !listReceived && !done -> requestList()
+            // The activity pull may have been deferred while wellness was
+            // using the watch's single transfer slot.
+            else -> tryStartActivityPull()
+        }
+    }
+
+    private fun startNextActivity() {
+        val next = activityQueue.removeFirstOrNull() ?: return
+        pendingActivityItem = next
+        pulledItemUid = next.uid?.hex().orEmpty()
+        activityTotal = activityDone + activityQueue.size + 1
+        reportActivityProgress()
+        activitiesUpToDate = false
+        tryStartActivityPull()
+    }
+
+    private fun markActivitiesUpToDate() {
+        if (done) return
+        done = true
+        log("SYNC up to date: activities and wellness synced")
+        onUpToDate()
     }
 
     private fun sendCapabilities() {
@@ -478,24 +493,22 @@ class SyncCoordinator(
                 if (status == 0) {
                     // Give the watch time to finalize the wellness file, then
                     // ask for the directory again.
-                    val g = generation
-                    handler.postDelayed({
-                        if (g == generation && !done && wellnessQueue.isEmpty()) {
+                    postIfCurrent(2_500) {
+                        if (!done && wellnessQueue.isEmpty()) {
                             listRequested = false
                             listReceived = false
                             requestList()
                         }
-                    }, 2500)
+                    }
                 } else {
                     requestList()
                 }
             }
         }
         // Fallback in case the watch does not answer the cut request.
-        val g = generation
-        handler.postDelayed({
-            if (g == generation && !cutResponseReceived && !listRequested) requestList()
-        }, 2000)
+        postIfCurrent(2_000) {
+            if (!cutResponseReceived && !listRequested) requestList()
+        }
     }
 
     private fun requestList() {
@@ -574,14 +587,13 @@ class SyncCoordinator(
         ) { response ->
             handler.post { handleSmart(response) }
         }
-        val g = generation
-        handler.postDelayed({
-            if (g == generation && activityListProbePending) {
+        postIfCurrent(6_000) {
+            if (activityListProbePending) {
                 activityListProbePending = false
                 log("ACTIVITY LIST probe timeout")
                 maybeFinish()
             }
-        }, 6_000)
+        }
     }
 
     private fun handleActivityProbe(items: List<Gdi.ItemReference>) {
@@ -700,8 +712,8 @@ class SyncCoordinator(
         val healthItems = items.filter { item ->
             val type = gdxmlLookup.typeOf(item) ?: return@filter false
             val uid = item.uid?.hex() ?: return@filter false
-            val immutable = type in IMMUTABLE_HEALTH_FILE_TYPES
-            type in HEALTH_FILE_TYPES &&
+            val immutable = WellnessFileTypes.isImmutable(type)
+            type in WellnessFileTypes.immutable &&
                 uid !in queuedUids &&
                 !(immutable && isWellnessItemKnown(uid)) &&
                 item.uid?.hex() != pendingActivityItem?.uid?.hex()
@@ -792,7 +804,6 @@ class SyncCoordinator(
         requestedPull = true
         pulledWellnessType = ""
         reportActivityProgress()
-        val sentGeneration = generation
         log(
             "PULL request uid=${item.uid?.hex()} type=${gdxmlLookup.typeOf(item)} " +
                 "size=${item.dataSize} attempt=${activityPullAttempts + 1}",
@@ -802,14 +813,14 @@ class SyncCoordinator(
         }
         // If the watch does not answer (e.g. the request raced with a session
         // restart), retry rather than waiting for the outer watchdog.
-        handler.postDelayed({
-            if (sentGeneration == generation && !done && requestedPull && pipe == null && !wellnessTransfer) {
+        postIfCurrent(PULL_TIMEOUT_MS) {
+            if (!done && requestedPull && pipe == null && !wellnessTransfer) {
                 log("PULL timeout waiting for the watch; retrying activity")
                 requestedPull = false
                 activityPullNotBefore = SystemClock.uptimeMillis() + READY_GRACE_MS
                 tryStartActivityPull()
             }
-        }, PULL_TIMEOUT_MS)
+        }
     }
 
     private fun handlePullResponse(pr: Gdi.PullItemResponse) {
@@ -972,7 +983,7 @@ class SyncCoordinator(
     private fun startLegacyWorkout(pending: PendingWorkout) {
         val upload = LegacyUpload(pending)
         legacyUpload = upload
-        val kind = if (pending.fitType == FitPaceBand.FILE_PACE_BAND) "PACE" else "WORKOUT"
+        val kind = pending.kind
         log("$kind legacy CREATE_FILE size=${pending.bytes.size} type=FIT/${pending.fitType}")
         session.sendGfdi(
             GfdiFileUpload.createFile(pending.bytes.size, subType = pending.fitType),
@@ -1000,7 +1011,7 @@ class SyncCoordinator(
             urgency = 0,
         )
         workoutRequested = true
-        val kind = if (pending.fitType == FitPaceBand.FILE_PACE_BAND) "PACE" else "WORKOUT"
+        val kind = pending.kind
         log("$kind GDI push request id=${pending.id} bytes=${pending.bytes.size}")
         gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.pushItemRequest(item))) { response ->
             handler.post { handleSmart(response) }
@@ -1182,28 +1193,6 @@ class SyncCoordinator(
         private const val LIST_GRACE_MS = 400L
         private const val PULL_TIMEOUT_MS = 8_000L
         private const val LEGACY_UPLOAD_TIMEOUT_MS = 10_000L
-
-        /**
-         * Immutable health history files we pull from the directory. The
-         * current monitoring (FIT_TYPE_32) delta is pushed by
-         * CutWellnessFilesRequest, so it is intentionally excluded here to
-         * avoid downloading dozens of historical monitoring files on every
-         * activity sync.
-         */
-        private val HEALTH_FILE_TYPES = setOf(
-            "FIT_TYPE_44",
-            "FIT_TYPE_49",
-        )
-
-        /**
-         * Only sleep/biometric files are immutable. Monitoring files are
-         * rewritten by every wellness cut, so their UID must not be cached as
-         * "already imported" or future deltas would be skipped.
-         */
-        private val IMMUTABLE_HEALTH_FILE_TYPES = setOf(
-            "FIT_TYPE_44",
-            "FIT_TYPE_49",
-        )
 
         private fun pullResultName(result: Int): String = when (result) {
             0 -> "SUCCESS"

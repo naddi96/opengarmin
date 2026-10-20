@@ -27,7 +27,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import dev.opengarmin.app.DataExplorer
 import dev.opengarmin.app.coach.CoachController
 import dev.opengarmin.app.coach.GpsSummary
 import dev.opengarmin.app.coach.RunningDynamicsSummary
@@ -58,6 +57,7 @@ import dev.opengarmin.app.ui.components.PulseTabBar
 import dev.opengarmin.app.ui.screens.ActivitiesScreen
 import dev.opengarmin.app.ui.screens.ActivityDetailScreen
 import dev.opengarmin.app.ui.screens.CoachScreen
+import dev.opengarmin.app.ui.screens.DataExplorer
 import dev.opengarmin.app.ui.screens.HealthScreen
 import dev.opengarmin.app.ui.screens.PaceRunScreen
 import dev.opengarmin.app.ui.screens.PaceStrategyScreen

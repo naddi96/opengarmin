@@ -945,149 +945,168 @@ class ActivityRepository(private val database: () -> AppDatabase) {
         val drafts = WellnessParser.parse(parsed.messages)
         if (drafts.isEmpty()) return emptyList()
 
-        val result = ArrayList<WellnessDayEntity>()
-        for (draft in drafts) {
-            val existing = dao.wellnessDay(draft.date)
-            val entity = if (existing == null) {
-                WellnessDayEntity(
-                    date = draft.date,
-                    steps = draft.steps,
-                    distanceMeters = draft.distanceMeters,
-                    activeCalories = draft.activeCalories,
-                    activeSeconds = draft.activeSeconds,
-                    restingHeartRate = draft.restingHeartRate,
-                    avgHeartRate = draft.avgHeartRate,
-                    maxHeartRate = draft.maxHeartRate,
-                    stressAvg = draft.stressAvg,
-                    spo2Avg = draft.spo2Avg,
-                    respirationAvg = draft.respirationAvg,
-                    updatedAt = System.currentTimeMillis() / 1000,
-                    bodyBatteryStart = draft.bodyBatteryStart,
-                    bodyBatteryMin = draft.bodyBatteryMin,
-                    bodyBatteryMax = draft.bodyBatteryMax,
-                    bodyBatteryLatest = draft.bodyBatteryLatest,
-                    sleepStart = draft.sleepStart,
-                    sleepEnd = draft.sleepEnd,
-                    sleepScore = draft.sleepScore,
-                    sleepQuality = draft.sleepQuality,
-                    deepSleepSeconds = draft.deepSleepSeconds,
-                    lightSleepSeconds = draft.lightSleepSeconds,
-                    remSleepSeconds = draft.remSleepSeconds,
-                    awakeSleepSeconds = draft.awakeSleepSeconds,
-                    sleepAvgSpo2 = draft.sleepAvgSpo2,
-                    sleepLowestSpo2 = draft.sleepLowestSpo2,
-                    sleepAvgRespiration = draft.sleepAvgRespiration,
-                    sleepLowestHeartRate = draft.sleepLowestHeartRate,
-                    hrvLastNight = draft.hrvLastNight,
-                    hrvWeeklyAvg = draft.hrvWeeklyAvg,
-                    hrvStatus = draft.hrvStatus,
-                    hrvBaselineLow = draft.hrvBaselineLow,
-                    hrvBaselineHigh = draft.hrvBaselineHigh,
-                    moderateMinutes = draft.moderateMinutes,
-                    vigorousMinutes = draft.vigorousMinutes,
-                )
-            } else {
-                // Separate files carry separate metrics. Only replace a value
-                // when this file actually contains one; never zero-fill.
-                existing.copy(
-                    steps = if (draft.hasMonitoring) draft.steps else existing.steps,
-                    distanceMeters = if (draft.hasMonitoring) draft.distanceMeters else existing.distanceMeters,
-                    activeCalories = if (draft.hasMonitoring) draft.activeCalories else existing.activeCalories,
-                    activeSeconds = if (draft.hasMonitoring) draft.activeSeconds else existing.activeSeconds,
-                    restingHeartRate = draft.restingHeartRate ?: existing.restingHeartRate,
-                    avgHeartRate = draft.avgHeartRate ?: existing.avgHeartRate,
-                    maxHeartRate = draft.maxHeartRate ?: existing.maxHeartRate,
-                    stressAvg = draft.stressAvg ?: existing.stressAvg,
-                    spo2Avg = draft.spo2Avg ?: existing.spo2Avg,
-                    respirationAvg = draft.respirationAvg ?: existing.respirationAvg,
-                    bodyBatteryStart = draft.bodyBatteryStart ?: existing.bodyBatteryStart,
-                    bodyBatteryMin = draft.bodyBatteryMin ?: existing.bodyBatteryMin,
-                    bodyBatteryMax = draft.bodyBatteryMax ?: existing.bodyBatteryMax,
-                    bodyBatteryLatest = draft.bodyBatteryLatest ?: existing.bodyBatteryLatest,
-                    sleepStart = draft.sleepStart ?: existing.sleepStart,
-                    sleepEnd = draft.sleepEnd ?: existing.sleepEnd,
-                    sleepScore = draft.sleepScore ?: existing.sleepScore,
-                    sleepQuality = draft.sleepQuality ?: existing.sleepQuality,
-                    deepSleepSeconds = draft.deepSleepSeconds ?: existing.deepSleepSeconds,
-                    lightSleepSeconds = draft.lightSleepSeconds ?: existing.lightSleepSeconds,
-                    remSleepSeconds = draft.remSleepSeconds ?: existing.remSleepSeconds,
-                    awakeSleepSeconds = draft.awakeSleepSeconds ?: existing.awakeSleepSeconds,
-                    sleepAvgSpo2 = draft.sleepAvgSpo2 ?: existing.sleepAvgSpo2,
-                    sleepLowestSpo2 = draft.sleepLowestSpo2 ?: existing.sleepLowestSpo2,
-                    sleepAvgRespiration = draft.sleepAvgRespiration ?: existing.sleepAvgRespiration,
-                    sleepLowestHeartRate = draft.sleepLowestHeartRate ?: existing.sleepLowestHeartRate,
-                    hrvLastNight = draft.hrvLastNight ?: existing.hrvLastNight,
-                    hrvWeeklyAvg = draft.hrvWeeklyAvg ?: existing.hrvWeeklyAvg,
-                    hrvStatus = draft.hrvStatus ?: existing.hrvStatus,
-                    hrvBaselineLow = draft.hrvBaselineLow ?: existing.hrvBaselineLow,
-                    hrvBaselineHigh = draft.hrvBaselineHigh ?: existing.hrvBaselineHigh,
-                    moderateMinutes = draft.moderateMinutes ?: existing.moderateMinutes,
-                    vigorousMinutes = draft.vigorousMinutes ?: existing.vigorousMinutes,
-                    updatedAt = System.currentTimeMillis() / 1000,
-                )
-            }
-
-            val id = if (existing == null) {
-                dao.insertWellnessDay(entity)
-            } else {
-                dao.updateWellnessDay(entity)
-                existing.id
-            }
-            val existingSamples = dao.wellnessSamples(id)
-            val existingKeys = existingSamples.map { it.kind to it.timestamp }.toHashSet()
-            val freshSamples = draft.samples
-                .filter { (it.kind to it.timestamp) !in existingKeys }
-                .map { WellnessSampleEntity(dayId = id, timestamp = it.timestamp, kind = it.kind, value = it.value) }
-            if (freshSamples.isNotEmpty()) dao.insertWellnessSamples(freshSamples)
-            if (draft.sleepStages.isNotEmpty()) {
-                dao.deleteSleepStages(draft.date)
-                dao.insertSleepStages(
-                    draft.sleepStages.map {
-                        SleepStageEntity(
-                            date = draft.date,
-                            startTime = it.startTime,
-                            endTime = it.endTime,
-                            stage = it.stage,
-                        )
-                    },
-                )
-            }
-
-            // Recompute sample-derived aggregates across every file imported
-            // for this day, so the result does not depend on import order.
-            val allSamples = if (freshSamples.isEmpty()) existingSamples else dao.wellnessSamples(id)
-            val bodyBattery = allSamples
-                .filter { it.kind == "body_battery" }
-                .sortedBy { it.timestamp }
-                .map { it.value.roundToInt() }
-            val stress = allSamples.filter { it.kind == "stress" }.map { it.value }
-            val spo2 = allSamples.filter { it.kind == "spo2" }.map { it.value }
-            val respiration = allSamples.filter { it.kind == "respiration" }.map { it.value }
-            val hr = allSamples.filter { it.kind == "hr" }.map { it.value }
-            val hrvSamples = allSamples.filter { it.kind == "hrv" && it.value > 0.0 }.map { it.value }
-            val merged = entity.copy(
-                id = id,
-                avgHeartRate = hr.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
-                    ?: entity.avgHeartRate,
-                maxHeartRate = hr.maxOrNull()?.roundToInt() ?: entity.maxHeartRate,
-                stressAvg = stress.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
-                    ?: entity.stressAvg,
-                spo2Avg = spo2.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
-                    ?: entity.spo2Avg,
-                respirationAvg = respiration.takeIf { it.isNotEmpty() }?.average()
-                    ?: entity.respirationAvg,
-                bodyBatteryStart = bodyBattery.firstOrNull() ?: entity.bodyBatteryStart,
-                bodyBatteryMin = bodyBattery.minOrNull() ?: entity.bodyBatteryMin,
-                bodyBatteryMax = bodyBattery.maxOrNull() ?: entity.bodyBatteryMax,
-                bodyBatteryLatest = bodyBattery.lastOrNull() ?: entity.bodyBatteryLatest,
-                hrvLastNight = entity.hrvLastNight
-                    ?: hrvSamples.takeIf { it.isNotEmpty() }?.average(),
-            )
-            if (merged != entity) dao.updateWellnessDay(merged)
-            result.add(merged)
-        }
-        return result
+        return drafts.map { draft -> importWellnessDay(draft) }
     }
+
+    private suspend fun importWellnessDay(draft: WellnessDayDraft): WellnessDayEntity {
+        val existing = dao.wellnessDay(draft.date)
+        val entity = existing?.mergedWith(draft) ?: draft.toEntity()
+        val id = if (existing == null) {
+            dao.insertWellnessDay(entity)
+        } else {
+            dao.updateWellnessDay(entity)
+            existing.id
+        }
+        mergeWellnessSamples(id, draft.samples)
+        replaceSleepStages(draft)
+        return recomputeWellnessAggregates(id, entity)
+    }
+
+    private fun WellnessDayDraft.toEntity(): WellnessDayEntity = WellnessDayEntity(
+        date = date,
+        steps = steps,
+        distanceMeters = distanceMeters,
+        activeCalories = activeCalories,
+        activeSeconds = activeSeconds,
+        restingHeartRate = restingHeartRate,
+        avgHeartRate = avgHeartRate,
+        maxHeartRate = maxHeartRate,
+        stressAvg = stressAvg,
+        spo2Avg = spo2Avg,
+        respirationAvg = respirationAvg,
+        updatedAt = nowSeconds(),
+        bodyBatteryStart = bodyBatteryStart,
+        bodyBatteryMin = bodyBatteryMin,
+        bodyBatteryMax = bodyBatteryMax,
+        bodyBatteryLatest = bodyBatteryLatest,
+        sleepStart = sleepStart,
+        sleepEnd = sleepEnd,
+        sleepScore = sleepScore,
+        sleepQuality = sleepQuality,
+        deepSleepSeconds = deepSleepSeconds,
+        lightSleepSeconds = lightSleepSeconds,
+        remSleepSeconds = remSleepSeconds,
+        awakeSleepSeconds = awakeSleepSeconds,
+        sleepAvgSpo2 = sleepAvgSpo2,
+        sleepLowestSpo2 = sleepLowestSpo2,
+        sleepAvgRespiration = sleepAvgRespiration,
+        sleepLowestHeartRate = sleepLowestHeartRate,
+        hrvLastNight = hrvLastNight,
+        hrvWeeklyAvg = hrvWeeklyAvg,
+        hrvStatus = hrvStatus,
+        hrvBaselineLow = hrvBaselineLow,
+        hrvBaselineHigh = hrvBaselineHigh,
+        moderateMinutes = moderateMinutes,
+        vigorousMinutes = vigorousMinutes,
+    )
+
+    /**
+     * Separate wellness files carry separate metrics. Only replace a value
+     * when this file actually contains one; never zero-fill.
+     */
+    private fun WellnessDayEntity.mergedWith(draft: WellnessDayDraft): WellnessDayEntity = copy(
+        steps = if (draft.hasMonitoring) draft.steps else steps,
+        distanceMeters = if (draft.hasMonitoring) draft.distanceMeters else distanceMeters,
+        activeCalories = if (draft.hasMonitoring) draft.activeCalories else activeCalories,
+        activeSeconds = if (draft.hasMonitoring) draft.activeSeconds else activeSeconds,
+        restingHeartRate = draft.restingHeartRate ?: restingHeartRate,
+        avgHeartRate = draft.avgHeartRate ?: avgHeartRate,
+        maxHeartRate = draft.maxHeartRate ?: maxHeartRate,
+        stressAvg = draft.stressAvg ?: stressAvg,
+        spo2Avg = draft.spo2Avg ?: spo2Avg,
+        respirationAvg = draft.respirationAvg ?: respirationAvg,
+        bodyBatteryStart = draft.bodyBatteryStart ?: bodyBatteryStart,
+        bodyBatteryMin = draft.bodyBatteryMin ?: bodyBatteryMin,
+        bodyBatteryMax = draft.bodyBatteryMax ?: bodyBatteryMax,
+        bodyBatteryLatest = draft.bodyBatteryLatest ?: bodyBatteryLatest,
+        sleepStart = draft.sleepStart ?: sleepStart,
+        sleepEnd = draft.sleepEnd ?: sleepEnd,
+        sleepScore = draft.sleepScore ?: sleepScore,
+        sleepQuality = draft.sleepQuality ?: sleepQuality,
+        deepSleepSeconds = draft.deepSleepSeconds ?: deepSleepSeconds,
+        lightSleepSeconds = draft.lightSleepSeconds ?: lightSleepSeconds,
+        remSleepSeconds = draft.remSleepSeconds ?: remSleepSeconds,
+        awakeSleepSeconds = draft.awakeSleepSeconds ?: awakeSleepSeconds,
+        sleepAvgSpo2 = draft.sleepAvgSpo2 ?: sleepAvgSpo2,
+        sleepLowestSpo2 = draft.sleepLowestSpo2 ?: sleepLowestSpo2,
+        sleepAvgRespiration = draft.sleepAvgRespiration ?: sleepAvgRespiration,
+        sleepLowestHeartRate = draft.sleepLowestHeartRate ?: sleepLowestHeartRate,
+        hrvLastNight = draft.hrvLastNight ?: hrvLastNight,
+        hrvWeeklyAvg = draft.hrvWeeklyAvg ?: hrvWeeklyAvg,
+        hrvStatus = draft.hrvStatus ?: hrvStatus,
+        hrvBaselineLow = draft.hrvBaselineLow ?: hrvBaselineLow,
+        hrvBaselineHigh = draft.hrvBaselineHigh ?: hrvBaselineHigh,
+        moderateMinutes = draft.moderateMinutes ?: moderateMinutes,
+        vigorousMinutes = draft.vigorousMinutes ?: vigorousMinutes,
+        updatedAt = nowSeconds(),
+    )
+
+    private suspend fun mergeWellnessSamples(dayId: Long, samples: List<WellnessSampleDraft>) {
+        if (samples.isEmpty()) return
+        val existingKeys = dao.wellnessSamples(dayId).map { it.kind to it.timestamp }.toHashSet()
+        val fresh = samples
+            .filter { (it.kind to it.timestamp) !in existingKeys }
+            .map { WellnessSampleEntity(dayId = dayId, timestamp = it.timestamp, kind = it.kind, value = it.value) }
+        if (fresh.isNotEmpty()) dao.insertWellnessSamples(fresh)
+    }
+
+    private suspend fun replaceSleepStages(draft: WellnessDayDraft) {
+        if (draft.sleepStages.isEmpty()) return
+        dao.deleteSleepStages(draft.date)
+        dao.insertSleepStages(
+            draft.sleepStages.map {
+                SleepStageEntity(
+                    date = draft.date,
+                    startTime = it.startTime,
+                    endTime = it.endTime,
+                    stage = it.stage,
+                )
+            },
+        )
+    }
+
+    /**
+     * Recomputes sample-derived aggregates across every file imported for this
+     * day, so the result does not depend on import order.
+     */
+    private suspend fun recomputeWellnessAggregates(
+        dayId: Long,
+        entity: WellnessDayEntity,
+    ): WellnessDayEntity {
+        val samples = dao.wellnessSamples(dayId)
+        val bodyBattery = samples
+            .filter { it.kind == "body_battery" }
+            .sortedBy { it.timestamp }
+            .map { it.value.roundToInt() }
+        val stress = samples.filter { it.kind == "stress" }.map { it.value }
+        val spo2 = samples.filter { it.kind == "spo2" }.map { it.value }
+        val respiration = samples.filter { it.kind == "respiration" }.map { it.value }
+        val hr = samples.filter { it.kind == "hr" }.map { it.value }
+        val hrvSamples = samples.filter { it.kind == "hrv" && it.value > 0.0 }.map { it.value }
+
+        val merged = entity.copy(
+            id = dayId,
+            avgHeartRate = hr.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
+                ?: entity.avgHeartRate,
+            maxHeartRate = hr.maxOrNull()?.roundToInt() ?: entity.maxHeartRate,
+            stressAvg = stress.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
+                ?: entity.stressAvg,
+            spo2Avg = spo2.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
+                ?: entity.spo2Avg,
+            respirationAvg = respiration.takeIf { it.isNotEmpty() }?.average()
+                ?: entity.respirationAvg,
+            bodyBatteryStart = bodyBattery.firstOrNull() ?: entity.bodyBatteryStart,
+            bodyBatteryMin = bodyBattery.minOrNull() ?: entity.bodyBatteryMin,
+            bodyBatteryMax = bodyBattery.maxOrNull() ?: entity.bodyBatteryMax,
+            bodyBatteryLatest = bodyBattery.lastOrNull() ?: entity.bodyBatteryLatest,
+            hrvLastNight = entity.hrvLastNight
+                ?: hrvSamples.takeIf { it.isNotEmpty() }?.average(),
+        )
+        if (merged != entity) dao.updateWellnessDay(merged)
+        return merged
+    }
+
+    private fun nowSeconds(): Long = System.currentTimeMillis() / 1000
 
     /**
      * Re-imports wellness files left in the app's directory by earlier

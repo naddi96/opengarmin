@@ -13,6 +13,7 @@ import androidx.work.WorkerParameters
 import dev.opengarmin.app.ble.GarminBleClient
 import dev.opengarmin.app.data.ActivityRepository
 import dev.opengarmin.app.data.AppDatabase
+import dev.opengarmin.app.data.WellnessFileTypes
 import dev.opengarmin.app.settings.PulseSettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -145,16 +146,11 @@ class WatchSyncWorker(
             )
         } else {
             val kind = outcome.kind ?: SyncPolicy.FailureKind.TRANSIENT
-            val kindLabel = when (kind) {
-                SyncPolicy.FailureKind.PERMANENT -> "permanent"
-                SyncPolicy.FailureKind.BUSY -> "busy"
-                SyncPolicy.FailureKind.TRANSIENT -> "transient"
-            }
             settings.recordSyncError(
                 outcome.message,
                 durationMs = durationMs,
                 trigger = "background",
-                kind = kindLabel,
+                kind = kind.storageKey,
             )
             val kindForRetry = outcome.kind ?: SyncPolicy.FailureKind.TRANSIENT
             val willRetry = SyncPolicy.shouldRetryWork(oneTimeSync, kindForRetry, runAttemptCount)
@@ -351,7 +347,7 @@ class WatchSyncWorker(
                 pendingImports += importScope.launch {
                     runCatching {
                         val days = repository.importWellness(decoded.readBytes())
-                        if (type == "FIT_TYPE_44" || type == "FIT_TYPE_49") {
+                        if (WellnessFileTypes.isImmutable(type)) {
                             repository.markWellnessFileImported(itemUid, type)
                             if (itemUid.isNotEmpty()) knownWellness.add(itemUid)
                         }

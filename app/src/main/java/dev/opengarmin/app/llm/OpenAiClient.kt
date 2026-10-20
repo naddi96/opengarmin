@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -98,57 +99,29 @@ class OpenAiClient(
     ): Flow<LlmStreamDelta> = flow {
         val body = requestBody(messages, tools, temperature, maxTokens, stream = true)
         val request = request(body, stream = true)
-        var attempt = 0
         var emitted = false
-        while (true) {
-            currentCoroutineContext().ensureActive()
-            val call = okHttpClient.newCall(request)
-            try {
-                val response = call.execute()
-                if (!response.isSuccessful) {
-                    val code = response.code
-                    val snippet = response.body?.string()?.take(500)
-                    response.close()
-                    val retryable = code in 500..599 && attempt < MAX_RETRIES
-                    if (retryable) {
-                        attempt++
-                        delay(backoffMs(attempt))
-                        continue
+        executeWithRetry(request, canRetry = { !emitted }) { response ->
+            val source = response.body?.source()
+                ?: throw LlmException(LlmException.Kind.Malformed, "Empty response body")
+            source.use { src ->
+                while (!src.exhausted()) {
+                    currentCoroutineContext().ensureActive()
+                    val line = src.readUtf8Line() ?: break
+                    if (line.isBlank() || line.startsWith(":")) continue
+                    if (!line.startsWith("data:")) continue
+                    val data = line.removePrefix("data:").trim()
+                    if (data == "[DONE]") {
+                        emit(LlmStreamDelta(finishReason = "stop"))
+                        return@executeWithRetry
                     }
-                    throw httpError(code, snippet)
-                }
-                val source = response.body?.source()
-                    ?: throw LlmException(LlmException.Kind.Malformed, "Empty response body")
-                source.use { src ->
-                    while (!src.exhausted()) {
-                        currentCoroutineContext().ensureActive()
-                        val line = src.readUtf8Line() ?: break
-                        if (line.isBlank() || line.startsWith(":")) continue
-                        if (!line.startsWith("data:")) continue
-                        val data = line.removePrefix("data:").trim()
-                        if (data == "[DONE]") {
-                            emit(LlmStreamDelta(finishReason = "stop"))
-                            return@flow
-                        }
-                        val parsed = runCatching { parseStreamDelta(JSONObject(data)) }.getOrNull()
-                        if (parsed != null) {
-                            if (parsed.text.isNotEmpty() || parsed.toolCalls.isNotEmpty() || parsed.finishReason != null) {
-                                emitted = true
-                                emit(parsed)
-                            }
-                        }
+                    val parsed = runCatching { parseStreamDelta(JSONObject(data)) }.getOrNull()
+                    if (parsed != null &&
+                        (parsed.text.isNotEmpty() || parsed.toolCalls.isNotEmpty() || parsed.finishReason != null)
+                    ) {
+                        emitted = true
+                        emit(parsed)
                     }
                 }
-                return@flow
-            } catch (e: IOException) {
-                if (!emitted && attempt < MAX_RETRIES) {
-                    attempt++
-                    delay(backoffMs(attempt))
-                    continue
-                }
-                throw wrapIo(e)
-            } finally {
-                call.cancel()
             }
         }
     }.flowOn(Dispatchers.IO)
@@ -159,11 +132,37 @@ class OpenAiClient(
         temperature: Double? = null,
         maxTokens: Int? = null,
         stream: Boolean = false,
-    ): LlmCompletion = withContext<LlmCompletion>(Dispatchers.IO) {
+    ): LlmCompletion = withContext(Dispatchers.IO) {
         val body = requestBody(messages, tools, temperature, maxTokens, stream = stream)
         val request = request(body, stream = false)
+        executeWithRetry(request, canRetry = { true }) { response ->
+            val text = response.body?.string()
+                ?: throw LlmException(LlmException.Kind.Malformed, "Empty response body")
+            val json = runCatching { JSONObject(text) }
+                .getOrElse { throw LlmException(LlmException.Kind.Malformed, "Invalid JSON response") }
+            val choice = json.optJSONArray("choices")?.optJSONObject(0)
+                ?: throw LlmException(LlmException.Kind.Malformed, "No choices in response")
+            val message = choice.optJSONObject("message")
+            LlmCompletion(
+                content = message?.optString("content").orEmpty(),
+                toolCalls = message?.optJSONArray("tool_calls").toToolCalls(),
+                finishReason = choice.optString("finish_reason").takeIf { it.isNotBlank() },
+            )
+        }
+    }
+
+    /**
+     * Executes [request], retrying server and network failures with the same
+     * bounded backoff for streaming and non-streaming calls.
+     */
+    private suspend fun <T> executeWithRetry(
+        request: Request,
+        canRetry: () -> Boolean,
+        onResponse: suspend (Response) -> T,
+    ): T {
         var attempt = 0
         while (true) {
+            currentCoroutineContext().ensureActive()
             val call = okHttpClient.newCall(request)
             try {
                 val response = call.execute()
@@ -171,29 +170,16 @@ class OpenAiClient(
                     val code = response.code
                     val snippet = response.body?.string()?.take(500)
                     response.close()
-                    if (code in 500..599 && attempt < MAX_RETRIES) {
+                    if (code in 500..599 && canRetry() && attempt < MAX_RETRIES) {
                         attempt++
                         delay(backoffMs(attempt))
                         continue
                     }
                     throw httpError(code, snippet)
                 }
-                val text = response.body?.string()
-                    ?: throw LlmException(LlmException.Kind.Malformed, "Empty response body")
-                val json = runCatching { JSONObject(text) }
-                    .getOrElse { throw LlmException(LlmException.Kind.Malformed, "Invalid JSON response") }
-                val choice = json.optJSONArray("choices")?.optJSONObject(0)
-                    ?: throw LlmException(LlmException.Kind.Malformed, "No choices in response")
-                val message = choice.optJSONObject("message")
-                val content = message?.optString("content").orEmpty()
-                val calls = message?.optJSONArray("tool_calls").toToolCalls()
-                return@withContext LlmCompletion(
-                    content = content,
-                    toolCalls = calls,
-                    finishReason = choice.optString("finish_reason").takeIf { it.isNotBlank() },
-                )
+                return onResponse(response)
             } catch (e: IOException) {
-                if (attempt < MAX_RETRIES) {
+                if (canRetry() && attempt < MAX_RETRIES) {
                     attempt++
                     delay(backoffMs(attempt))
                     continue
@@ -203,8 +189,6 @@ class OpenAiClient(
                 call.cancel()
             }
         }
-        @Suppress("UNREACHABLE_CODE")
-        throw LlmException(LlmException.Kind.Unknown, "Request failed")
     }
 
     suspend fun listModels(): List<String> = withContext<List<String>>(Dispatchers.IO) {
