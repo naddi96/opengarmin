@@ -356,9 +356,13 @@ class SyncCoordinator(
             val immutable = WellnessFileTypes.isImmutable(type)
             // SETTINGS_CHANGE carries no health samples and costs the watch a
             // full transfer slot; skipping it makes the subsequent directory
-            // request much faster. Workout files (FIT_TYPE_5) are written by
-            // us and are not health data either.
-            type != "FIT_TYPE_41" &&
+            // request much faster. Workout files (FIT_TYPE_5/FIT_TYPE_56) are
+            // written by us and are not health data either. Activities
+            // (FIT_TYPE_4) are handled by the directory path, which knows the
+            // imported UIDs; queueing one here would pull it twice and route
+            // the FIT through the wellness importer.
+            type != "FIT_TYPE_4" &&
+                type != "FIT_TYPE_41" &&
                 type != "FIT_TYPE_5" &&
                 type != "FIT_TYPE_56" &&
                 uid.isNotEmpty() && uid !in queuedUids &&

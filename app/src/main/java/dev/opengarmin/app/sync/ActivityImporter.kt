@@ -26,6 +26,14 @@ class ActivityImporter(
     @Volatile
     private var knownWellnessUids: Set<String> = emptySet()
 
+    /**
+     * Item UIDs already stored in Room. The foreground sync checks this set in
+     * addition to the observed activity list, so a sync that starts before the
+     * database flow has emitted its first value cannot re-download history.
+     */
+    @Volatile
+    private var knownActivityUids: Set<String> = emptySet()
+
     /** Invoked on the main thread after a sync import so the controller can refresh its notification. */
     var onImportProgress: (() -> Unit)? = null
 
@@ -38,6 +46,14 @@ class ActivityImporter(
 
     suspend fun reloadKnownWellnessUids() {
         knownWellnessUids = runCatching { repository.importedWellnessFileIds() }
+            .getOrDefault(emptySet())
+    }
+
+    fun isKnownActivityUid(uid: String): Boolean =
+        uid.isNotEmpty() && uid in knownActivityUids
+
+    suspend fun reloadKnownActivityUids() {
+        knownActivityUids = runCatching { repository.activityItemUids() }
             .getOrDefault(emptySet())
     }
 
@@ -56,6 +72,7 @@ class ActivityImporter(
                 if (entity == null) {
                     ui.log("FIT has no session or was already imported")
                 } else {
+                    if (itemUid.isNotEmpty()) knownActivityUids = knownActivityUids + itemUid
                     ui.importedThisSync++
                     ui.lastImportedLabel = importedLabel(entity)
                     ui.log(

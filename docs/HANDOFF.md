@@ -232,12 +232,15 @@ pairing port (pairing needs the 6-digit code).
   watch-side button press.
 - GDI frames are ACKed per chunk (`[id][offset][ok][code]`), not per message.
 - Store `ItemReference.uid` with the activity and skip the PULL when it is
-  already in Room; otherwise every connect re-downloads the same FIT.
-- Room DB is version 9: `itemUid` (1→2), `laps` (2→3), record
+  already in Room; otherwise every connect re-downloads the same FIT. The
+  `imported_activity_files` ledger records every UID pulled (not just the one on
+  the activity row) so a watch re-index or a different watch cannot make an
+  existing activity download again.
+- Room DB is version 10: `itemUid` (1→2), `laps` (2→3), record
   `latitude`/`longitude` (3→4), `fit_messages` (4→5), wellness tables (5→6),
   sleep/HRV/Body Battery columns + `sleep_stages` +
-  `imported_wellness_files` (6→7), `planned_workouts` (7→8), and `pace_plans`
-  (8→9) migrations live in `AppDatabase`.
+  `imported_wellness_files` (6→7), `planned_workouts` (7→8), `pace_plans`
+  (8→9), and `imported_activity_files` (9→10) migrations live in `AppDatabase`.
 - Daily wellness comes from `CutWellnessFilesRequest` → `ItemAddedNotification`
   (FIT_TYPE_32). Use `cycles_16 * 2` for steps and resolve `timestamp_16`
   against the last full timestamp. The watch may ignore a re-cut within its

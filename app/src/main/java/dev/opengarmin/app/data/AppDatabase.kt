@@ -229,6 +229,19 @@ data class ImportedWellnessFileEntity(
     val importedAt: Long,
 )
 
+/**
+ * Every activity file UID this app has pulled, including UIDs that belong to an
+ * activity already stored under a different UID. Keeping the ledger separate
+ * from `activities.itemUid` means a watch re-index or a second watch cannot
+ * make the app re-download an activity it already has: the new UID is added
+ * alongside the old one instead of replacing it.
+ */
+@Entity(tableName = "imported_activity_files")
+data class ImportedActivityFileEntity(
+    @PrimaryKey val itemUid: String,
+    val importedAt: Long,
+)
+
 @Dao
 interface ActivityDao {
     @Query("SELECT * FROM activities ORDER BY startTime DESC")
@@ -316,6 +329,12 @@ interface ActivityDao {
     @Query("SELECT itemUid FROM imported_wellness_files")
     suspend fun importedWellnessFileIds(): List<String>
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertImportedActivityFile(file: ImportedActivityFileEntity)
+
+    @Query("SELECT itemUid FROM imported_activity_files")
+    suspend fun importedActivityFileIds(): List<String>
+
     @Query("SELECT * FROM laps WHERE activityId = :activityId ORDER BY lapIndex")
     suspend fun laps(activityId: Long): List<LapEntity>
 
@@ -349,8 +368,14 @@ interface ActivityDao {
     @Query("DELETE FROM records WHERE activityId = :activityId")
     suspend fun deleteRecords(activityId: Long)
 
-    @Query("UPDATE activities SET itemUid = :uid WHERE sourceKey = :sourceKey AND itemUid = ''")
-    suspend fun backfillItemUid(sourceKey: String, uid: String)
+    /**
+     * Stores the watch's current UID for an activity. Called for new imports and
+     * for duplicates: a watch re-index or a different watch can report a new UID
+     * for an activity that is already in Room, and keeping the stale UID would
+     * make every sync download that activity again.
+     */
+    @Query("UPDATE activities SET itemUid = :uid WHERE sourceKey = :sourceKey")
+    suspend fun rememberItemUid(sourceKey: String, uid: String)
 
     @Query("DELETE FROM activities")
     suspend fun clear()
@@ -420,6 +445,7 @@ interface WorkoutDao {
         WellnessSampleEntity::class,
         SleepStageEntity::class,
         ImportedWellnessFileEntity::class,
+        ImportedActivityFileEntity::class,
         PlannedWorkoutEntity::class,
         PacePlanEntity::class,
     ],
@@ -433,7 +459,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "opengarmin.db"
-        const val SCHEMA_VERSION = 9
+        const val SCHEMA_VERSION = 10
 
         @Volatile
         private var instance: AppDatabase? = null
@@ -634,6 +660,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `imported_activity_files` (" +
+                        "`itemUid` TEXT NOT NULL, " +
+                        "`importedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`itemUid`))",
+                )
+                // Seed the ledger with the UID already stored on each activity.
+                db.execSQL(
+                    "INSERT OR IGNORE INTO `imported_activity_files` (`itemUid`, `importedAt`) " +
+                        "SELECT `itemUid`, `importedAt` FROM `activities` WHERE `itemUid` != ''",
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -649,6 +691,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_6_7,
                     MIGRATION_7_8,
                     MIGRATION_8_9,
+                    MIGRATION_9_10,
                 ).build().also { instance = it }
             }
 
@@ -740,7 +783,8 @@ class ActivityRepository(private val database: () -> AppDatabase) {
 
     suspend fun importedWellnessFileIds(): Set<String> = dao.importedWellnessFileIds().toHashSet()
 
-    suspend fun activityItemUids(): Set<String> = dao.activityItemUids().toHashSet()
+    suspend fun activityItemUids(): Set<String> =
+        (dao.activityItemUids() + dao.importedActivityFileIds()).toHashSet()
 
     suspend fun wellnessDaysBetween(start: String, end: String): List<WellnessDayEntity> =
         dao.wellnessDaysBetween(start, end)
@@ -895,8 +939,14 @@ class ActivityRepository(private val database: () -> AppDatabase) {
         val id = dao.insertActivity(entity)
         if (id == -1L) {
             // Already imported: remember the GDI UID so the next sync can
-            // skip the download entirely.
-            if (itemUid.isNotEmpty()) dao.backfillItemUid(sourceKey, itemUid)
+            // skip the download entirely. The watch may report a different UID
+            // than the one stored earlier (re-index, firmware update, or a
+            // different watch), so keep both: update the activity row and add
+            // the UID to the imported-file ledger.
+            if (itemUid.isNotEmpty()) {
+                dao.rememberItemUid(sourceKey, itemUid)
+                markActivityFileImported(itemUid)
+            }
             return null
         }
         val records = recordEntities(id, parsed)
@@ -905,7 +955,15 @@ class ActivityRepository(private val database: () -> AppDatabase) {
         if (laps.isNotEmpty()) dao.insertLaps(laps)
         val messages = messageEntities(id, parsed)
         if (messages.isNotEmpty()) dao.insertMessages(messages)
+        markActivityFileImported(itemUid)
         return entity.copy(id = id)
+    }
+
+    private suspend fun markActivityFileImported(itemUid: String) {
+        if (itemUid.isEmpty()) return
+        dao.insertImportedActivityFile(
+            ImportedActivityFileEntity(itemUid = itemUid, importedAt = nowSeconds()),
+        )
     }
 
     private fun messageEntities(activityId: Long, parsed: Fit.Parsed): List<FitMessageEntity> =

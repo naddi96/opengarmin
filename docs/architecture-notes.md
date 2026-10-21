@@ -110,7 +110,7 @@ a separate ViewModel layer; the Coach has its own `CoachController`.
 
 ## 4. Data model and local storage
 
-### Room entities (version 9)
+### Room entities (version 10)
 
 | Table | Purpose | Key columns |
 |---|---|---|
@@ -122,10 +122,11 @@ a separate ViewModel layer; the Coach has its own `CoachController`.
 | `wellness_samples` | Intraday wellness samples | `dayId`, timestamp, `kind` (`hr`, `stress`, `spo2`, `respiration`, `body_battery`, `hrv`), value |
 | `sleep_stages` | Sleep-stage transitions | `date`, `startTime`, `endTime`, `stage` |
 | `imported_wellness_files` | Imported watch file UIDs | `itemUid` primary key, `type`, `importedAt` |
+| `imported_activity_files` | Every activity file UID pulled, including UIDs that mapped to an already-imported activity | `itemUid` primary key, `importedAt` |
 | `planned_workouts` | Locally authored workouts | name, FIT sport/subSport, notes, optional scheduled date, `stepsJson` (timed/distance/open steps + repeat blocks), timestamps, last sent |
 | `pace_plans` | Locally authored PacePro strategies | race, distance, goal time, course name/activity id, strategy/hill sliders, alert mode, `splitsJson`, timestamps, last sent |
 
-Migrations 1→9 are hand-written in `AppDatabase`; `exportSchema = false`.
+Migrations 1→10 are hand-written in `AppDatabase`; `exportSchema = false`.
 `AppDatabase.SCHEMA_VERSION` is the single version constant used by the database
 and backup validation. A new table or column requires a version bump and a
 migration test.

@@ -145,7 +145,9 @@ class MainActivity : ComponentActivity() {
             repository = repository,
             ui = uiState,
             importer = importer,
-            isActivityKnown = { uid -> uid.isNotEmpty() && activities.any { it.itemUid == uid } },
+            isActivityKnown = { uid ->
+                importer.isKnownActivityUid(uid) || activities.any { it.itemUid == uid }
+            },
             requestNotificationPermission = { ensureNotificationPermission() },
         )
 
@@ -154,6 +156,7 @@ class MainActivity : ComponentActivity() {
             var known = runCatching { repository.importedWellnessFileIds() }
                 .getOrDefault(emptySet())
             importer.setKnownWellnessUids(known)
+            runCatching { importer.reloadKnownActivityUids() }
             runCatching { repository.backfillHrvFromSamples() }
             runCatching { repository.backfillWellnessFiles(filesDir) }
             known = runCatching { repository.importedWellnessFileIds() }
@@ -396,7 +399,10 @@ class MainActivity : ComponentActivity() {
                 importer.clearImportedLabel()
                 activities.clear()
                 wellnessDays.clear()
-                withContext(Dispatchers.IO) { importer.reloadKnownWellnessUids() }
+                withContext(Dispatchers.IO) {
+                    importer.reloadKnownWellnessUids()
+                    importer.reloadKnownActivityUids()
+                }
                 observeDatabase()
                 coachController.reloadAfterRestore()
                 backupStatus = if (imported.chatRestored) {

@@ -520,7 +520,13 @@ class SyncSessionController(
         )
         settings.updateWatchName(watch.name ?: "")
         coordinator?.reset()
-        c.connect(watch)
+        // Refresh the imported-UID set before the first directory response is
+        // processed. Doing it here (rather than only when the Activity starts)
+        // keeps the dedupe check independent of the activity Flow timing.
+        scope.launch {
+            withContext(Dispatchers.IO) { importer.reloadKnownActivityUids() }
+            if (syncInProgress) c.connect(watch)
+        }
     }
 
     private fun armWatchdog(timeoutMs: Long = 15_000) {
