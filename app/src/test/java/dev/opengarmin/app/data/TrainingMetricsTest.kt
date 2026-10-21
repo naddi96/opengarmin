@@ -2,6 +2,7 @@ package dev.opengarmin.app.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -85,6 +86,84 @@ class TrainingMetricsTest {
         assertEquals(null, summary.recoveryRemainingMinutes)
         assertEquals(3, summary.latestMetrics!!.primaryBenefit)
         assertEquals(1, summary.vo2History.size)
+    }
+
+    @Test
+    fun `zero activity vo2 falls back to the user snapshot`() {
+        val start = 1_800_000_000L
+        val activity = activity(id = 3, start = start, duration = 600.0)
+        val rows = listOf(
+            TrainingRow(
+                activityId = 3,
+                startTime = start,
+                messageName = "activity_metrics",
+                fieldsJson = """{"vo2_max":0,"first_vo2_max":0}""",
+            ),
+            TrainingRow(
+                activityId = 3,
+                startTime = start,
+                messageName = "user_metrics",
+                fieldsJson = """{"vo2_max":52.435}""",
+            ),
+        )
+
+        val summary = TrainingMetrics.build(listOf(activity), rows, now = start + 600)
+
+        assertEquals(52.435, summary.latestVo2Max!!, 0.001)
+        assertEquals(52.435, summary.latestMetrics!!.vo2Max!!, 0.001)
+        assertEquals(1, summary.vo2History.size)
+    }
+
+    @Test
+    fun `user vo2 survives when the activity row is parsed second`() {
+        val start = 1_800_000_000L
+        val activity = activity(id = 5, start = start, duration = 600.0)
+        val rows = listOf(
+            TrainingRow(
+                activityId = 5,
+                startTime = start,
+                messageName = "user_metrics",
+                fieldsJson = """{"vo2_max":52.4,"initial_body_battery":54}""",
+            ),
+            TrainingRow(
+                activityId = 5,
+                startTime = start,
+                messageName = "activity_metrics",
+                fieldsJson = """{"vo2_max":0,"recovery_time":120}""",
+            ),
+        )
+
+        val summary = TrainingMetrics.build(listOf(activity), rows, now = start + 600)
+
+        assertEquals(52.4, summary.latestVo2Max!!, 0.01)
+        assertEquals(54, summary.latestMetrics!!.initialBodyBattery)
+        assertEquals(120, summary.latestMetrics!!.recoveryMinutes)
+    }
+
+    @Test
+    fun `zero vo2 is treated as missing`() {
+        val start = 1_800_000_000L
+        val activity = activity(id = 4, start = start, duration = 600.0)
+        val rows = listOf(
+            TrainingRow(
+                activityId = 4,
+                startTime = start,
+                messageName = "msg_140",
+                fieldsJson = """{"field_7":0}""",
+            ),
+            TrainingRow(
+                activityId = 4,
+                startTime = start,
+                messageName = "msg_79",
+                fieldsJson = """{"field_0":0}""",
+            ),
+        )
+
+        val summary = TrainingMetrics.build(listOf(activity), rows, now = start + 600)
+
+        assertNull(summary.latestVo2Max)
+        assertNull(summary.latestMetrics!!.vo2Max)
+        assertTrue(summary.vo2History.isEmpty())
     }
 
     private fun activity(id: Long, start: Long, duration: Double) = ActivityEntity(

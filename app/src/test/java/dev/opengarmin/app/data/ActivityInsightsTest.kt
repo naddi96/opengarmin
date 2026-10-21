@@ -131,6 +131,35 @@ class ActivityInsightsTest {
         assertEquals(333.333, session.bestPaceSecondsPerKm ?: 0.0, 0.01)
     }
 
+    @Test
+    fun `zero activity vo2 falls back to the user metric`() {
+        val activity = ActivityEntity(
+            id = 2L,
+            sourceKey = "zero-vo2",
+            fileName = "zero-vo2.fit",
+            startTime = 1_000L,
+            sport = 10,
+            subSport = 26,
+            distanceMeters = 0.0,
+            durationSeconds = 600.0,
+            elapsedSeconds = 600.0,
+            avgHeartRate = 90,
+            maxHeartRate = 110,
+            calories = 40,
+            ascentMeters = 0,
+            descentMeters = 0,
+            importedAt = 2_000L,
+        )
+        val messages = listOf(
+            message("activity_metrics", 1_600L, """{"vo2_max":0,"first_vo2_max":0}"""),
+            message("user_metrics", 1_600L, """{"vo2_max":52.4}"""),
+        )
+
+        val insights = ActivityAnalysis.build(activity, emptyList(), emptyList(), messages)
+
+        assertEquals(52.4, insights.session.vo2Max!!, 0.001)
+    }
+
     private fun record(
         timestamp: Long,
         distance: Double,

@@ -80,17 +80,20 @@ object TrainingMetrics {
             val json = runCatching { JSONObject(row.fieldsJson) }.getOrNull() ?: continue
             when (row.messageName) {
                 "activity_metrics", "msg_140" -> {
-                    metricsByActivity[row.activityId] = parseActivityMetrics(row, json)
+                    val parsed = parseActivityMetrics(row, json)
+                    val existing = metricsByActivity[row.activityId]
+                    metricsByActivity[row.activityId] =
+                        if (existing == null) parsed else parsed.withFallback(existing)
                 }
                 "user_metrics", "msg_79" -> {
                     val existing = metricsByActivity[row.activityId]
-                    val vo2 = number(json, "vo2_max", "field_0")?.let {
-                        if (json.has("field_0")) it / 292.57142857142856 else it
-                    }
+                    val vo2 = validVo2Max(
+                        number(json, "vo2_max")
+                            ?: number(json, "field_0")?.div(USER_VO2_SCALE),
+                    )
                     val lthr = number(json, "lthr", "field_11")?.roundToInt()
-                    val ltSpeed = number(json, "ltspeed", "field_13")?.let {
-                        if (json.has("field_13")) it / 10.0 else it
-                    }
+                    val ltSpeed = number(json, "ltspeed")
+                        ?: number(json, "field_13")?.div(10.0)
                     val initial = number(json, "initial_body_battery", "field_15")?.roundToInt()
                     metricsByActivity[row.activityId] = (existing ?: ActivityTrainingMetrics(
                         activityId = row.activityId,
@@ -221,8 +224,33 @@ object TrainingMetrics {
         )
     }
 
+    /**
+     * Keeps values already parsed from the matching `user_metrics` row when the
+     * activity message does not carry them (or carries a zero VO2 max).
+     */
+    private fun ActivityTrainingMetrics.withFallback(
+        other: ActivityTrainingMetrics,
+    ): ActivityTrainingMetrics = copy(
+        trainingLoad = trainingLoad ?: other.trainingLoad,
+        aerobicEffect = aerobicEffect ?: other.aerobicEffect,
+        anaerobicEffect = anaerobicEffect ?: other.anaerobicEffect,
+        primaryBenefit = primaryBenefit ?: other.primaryBenefit,
+        recoveryMinutes = recoveryMinutes ?: other.recoveryMinutes,
+        vo2Max = vo2Max ?: other.vo2Max,
+        performanceCondition = performanceCondition ?: other.performanceCondition,
+        finalBodyBattery = finalBodyBattery ?: other.finalBodyBattery,
+        lthr = lthr ?: other.lthr,
+        ltSpeedKmh = ltSpeedKmh ?: other.ltSpeedKmh,
+        initialBodyBattery = initialBodyBattery ?: other.initialBodyBattery,
+    )
+
     private fun parseActivityMetrics(row: TrainingRow, json: JSONObject): ActivityTrainingMetrics {
-        val vo2 = number(json, "vo2_max") ?: number(json, "field_7")?.let { it * 3.5 / 65536.0 }
+        // Garmin writes 0 for activities that do not produce a VO2 max estimate
+        // (walks, strength work, very short sessions). Treat that as missing so
+        // it cannot shadow the valid value in the matching user_metrics row.
+        val vo2 = validVo2Max(
+            number(json, "vo2_max") ?: number(json, "field_7")?.let { it * 3.5 / 65536.0 },
+        )
         val load = number(json, "training_load_peak_1")
             ?: number(json, "training_load_peak_2")
             ?: number(json, "field_37")?.div(65536.0)
@@ -257,3 +285,13 @@ object TrainingMetrics {
         return null
     }
 }
+
+/** Garmin's legacy `user_metrics` encoding for VO2 max. */
+private const val USER_VO2_SCALE = 292.57142857142856
+
+/**
+ * Returns a VO2 max only when it looks like a real estimate. The watch writes
+ * literal zero when an activity has no estimate, which must not be presented as
+ * a measurement or allowed to win over a valid value.
+ */
+internal fun validVo2Max(value: Double?): Double? = value?.takeIf { it in 5.0..100.0 }

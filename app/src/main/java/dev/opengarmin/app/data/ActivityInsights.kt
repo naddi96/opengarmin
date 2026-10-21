@@ -395,7 +395,7 @@ object ActivityAnalysis {
         val primaryBenefit = primaryBenefitLabel(metrics.num("primary_benefit")?.roundToInt())
         val performanceCondition = metrics.num("final_performance_condition")?.roundToInt()
             ?: context.samples.lastOrNull { it.performanceCondition != null }?.performanceCondition
-        val vo2Max = metrics.num("vo2_max") ?: context.user.num("vo2_max")
+        val vo2Max = validVo2Max(metrics.num("vo2_max")) ?: validVo2Max(context.user.num("vo2_max"))
         return TrainingMetrics(
             aerobic = aerobic,
             anaerobic = anaerobic,
