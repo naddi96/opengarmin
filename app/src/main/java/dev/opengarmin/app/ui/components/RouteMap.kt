@@ -1,6 +1,8 @@
 package dev.opengarmin.app.ui.components
 
 import android.graphics.Canvas as AndroidCanvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.Point
 import androidx.compose.foundation.layout.Column
@@ -20,27 +22,75 @@ import dev.opengarmin.app.ui.theme.PulseColors
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Overlay
 import kotlin.math.roundToInt
 
 private data class RouteSample(val point: GeoPoint, val speedMps: Double?)
 
 /**
+ * Calm, low-attention basemap.
+ *
+ * Plain OpenStreetMap rasters (free, anonymous, no API key; attribution shown
+ * under the map) with all colour and detail noise turned down: each tile is
+ * passed through a local grayscale colour filter applied only to the tile
+ * layer, so streets and land shapes stay plainly visible while POI icons,
+ * land-cover colours and text lose their ability to pull the eye. The GPS
+ * trace is drawn above the filter and keeps full saturation.
+ *
+ * [MUTED_TILE_FILTER]: 22 % saturation to calm the land-cover colours and
+ * beige paper, then a 0.93 scale on the grey channels to deepen the paper
+ * without losing street contrast.
+ */
+private val MUTED_TILE_FILTER = ColorMatrixColorFilter(
+    ColorMatrix().apply {
+        setSaturation(0.22f)
+        postConcat(
+            ColorMatrix().apply {
+                setScale(0.93f, 0.93f, 0.93f, 1f)
+            },
+        )
+    },
+)
+
+/**
  * Draws the GPS trace as colour-coded line segments: blue for slower samples,
  * red for faster ones. Using a custom overlay instead of one Polyline keeps
  * the speed gradient without adding thousands of map overlays.
+ *
+ * A white winding-order casing is drawn first so the trace separates cleanly
+ * from the pale street network, and the endpoints are flat dots instead of
+ * map pins.
  */
 private class SpeedRouteOverlay(
     private val route: List<RouteSample>,
+    density: Float,
 ) : Overlay() {
+    private val routeWidth = 4.5f * density
+    private val casingWidth = 8f * density
+    private val dotRadius = 4.5f * density
+    private val dotRingWidth = 2f * density
     private val paint = Paint().apply {
         isAntiAlias = true
         style = Paint.Style.STROKE
-        strokeWidth = 10f
+        strokeWidth = routeWidth
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
+    }
+    private val casingPaint = Paint(paint).apply {
+        strokeWidth = casingWidth
+        color = android.graphics.Color.WHITE
+    }
+    private val dotPaint = Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.FILL
+    }
+    private val ringPaint = Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.STROKE
+        strokeWidth = dotRingWidth
+        color = PulseColors.TextOnAccent.toArgb()
     }
     private val slowColor = PulseColors.RouteSlow.toArgb()
     private val fastColor = PulseColors.RouteFast.toArgb()
@@ -69,21 +119,53 @@ private class SpeedRouteOverlay(
         val first = Point()
         val second = Point()
         val step = if (route.size > 1_800) 2 else 1
+        // Two passes: the white casing first, the speed gradient on top of it.
+        drawSegments(canvas, projection, first, second, step, casing = true)
+        drawSegments(canvas, projection, first, second, step, casing = false)
+        drawEndpoint(canvas, projection, route.first().point, PulseColors.Text.toArgb())
+        drawEndpoint(canvas, projection, route.last().point, PulseColors.Accent.toArgb())
+    }
+
+    private fun drawSegments(
+        canvas: AndroidCanvas,
+        projection: org.osmdroid.views.Projection,
+        first: Point,
+        second: Point,
+        step: Int,
+        casing: Boolean,
+    ) {
         var index = 0
         while (index < route.lastIndex) {
             val next = minOf(index + step, route.lastIndex)
             projection.toPixels(route[index].point, first)
             projection.toPixels(route[next].point, second)
-            paint.color = colorForSpeed(averageSpeed(index, next))
+            if (!casing) {
+                paint.color = colorForSpeed(averageSpeed(index, next))
+            }
             canvas.drawLine(
                 first.x.toFloat(),
                 first.y.toFloat(),
                 second.x.toFloat(),
                 second.y.toFloat(),
-                paint,
+                if (casing) casingPaint else paint,
             )
             index = next
         }
+    }
+
+    private fun drawEndpoint(
+        canvas: AndroidCanvas,
+        projection: org.osmdroid.views.Projection,
+        point: GeoPoint,
+        color: Int,
+    ) {
+        val pixel = Point()
+        projection.toPixels(point, pixel)
+        val x = pixel.x.toFloat()
+        val y = pixel.y.toFloat()
+        dotPaint.color = color
+        canvas.drawCircle(x, y, dotRadius, dotPaint)
+        canvas.drawCircle(x, y, dotRadius, ringPaint)
     }
 
     private fun averageSpeed(index: Int, next: Int): Double {
@@ -141,12 +223,17 @@ internal fun RouteMap(records: List<RecordEntity>, modifier: Modifier = Modifier
 
     val context = LocalContext.current
     val mapView = remember(route) {
+        val density = context.resources.displayMetrics.density
         MapView(context).apply {
             setTileSource(TileSourceFactory.MAPNIK)
+            // Mute only the basemap tiles; overlays above keep full colour.
+            overlayManager.tilesOverlay?.setColorFilter(MUTED_TILE_FILTER)
+            // Neutral, map-like colour while tiles stream in.
+            setBackgroundColor(0xFFE5E6E5.toInt())
             setMultiTouchControls(true)
-            overlays.add(SpeedRouteOverlay(route))
-            overlays.add(Marker(this).apply { position = points.first(); title = "Start" })
-            overlays.add(Marker(this).apply { position = points.last(); title = "Finish" })
+            // Pinch gestures remain; the busy default +/- buttons do not.
+            zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+            overlays.add(SpeedRouteOverlay(route, density))
             val box = BoundingBox.fromGeoPoints(points)
             controller.setCenter(
                 GeoPoint((box.latNorth + box.latSouth) / 2.0, (box.lonEast + box.lonWest) / 2.0),
@@ -170,7 +257,7 @@ internal fun RouteMap(records: List<RecordEntity>, modifier: Modifier = Modifier
             modifier = Modifier.fillMaxWidth().weight(1f).clipToBounds(),
         )
         Text(
-            "© OpenStreetMap contributors",
+            "© OpenStreetMap contributors · colours muted in-app",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

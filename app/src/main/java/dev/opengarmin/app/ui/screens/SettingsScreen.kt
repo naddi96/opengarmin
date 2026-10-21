@@ -565,7 +565,7 @@ fun SettingsScreen(
                     color = PulseColors.TextMuted,
                 )
                 Text(
-                    "Fonts: DM Sans and Space Grotesk (SIL Open Font License). Map tiles © OpenStreetMap contributors.",
+                    "Fonts: DM Sans and Space Grotesk (SIL Open Font License). Map tiles © OpenStreetMap contributors, colours muted in-app.",
                     style = MaterialTheme.typography.labelSmall,
                     color = PulseColors.TextMuted,
                 )

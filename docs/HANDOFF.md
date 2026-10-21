@@ -1,6 +1,6 @@
 # Handoff — OpenGarmin offline sync
 
-_Last updated: 2026-10-18. Written so a fresh session can continue without the
+_Last updated: 2026-10-21. Written so a fresh session can continue without the
 original chat context._
 
 ## Goal
@@ -248,9 +248,15 @@ pairing port (pairing needs the 6-digit code).
   `msg_<n>` / `field_<n>`.
 - The data explorer stores field values as scaled JSON objects per message.
   Arrays are stored as comma-separated strings and are not plotted.
-- The track map uses osmdroid/OpenStreetMap (`org.osmdroid:osmdroid-android`).
-  Tiles need `INTERNET`; the cache is under `cacheDir/osmdroid`. Without a
-  network the track still draws over an empty map.
+- The track map uses osmdroid (`org.osmdroid:osmdroid-android`) with the standard
+  free anonymous OpenStreetMap rasters, **muted locally**: `TilesOverlay.
+  setColorFilter` applies a grayscale colour matrix (22 % saturation, 0.93
+  grey-channel scale) to the tile layer only, so the street network stays
+  plainly visible while POI colours and land-cover noise step back; the
+  speed-coloured trace is drawn above the filter at full saturation. No API
+  key or account is involved; the only obligation is attribution, shown under
+  the map and in Settings. With no network the track still draws (white
+  casing keeps it legible) over the neutral paper-coloured surface.
 - `ItemReference.data_size` is **not** the compressed stream length; read until
   the pipe service closes, then zlib-decompress.
 - Full HCI capture is unavailable (no root; bugreport `btsnooz` truncates to
@@ -720,3 +726,29 @@ failure. The worker now catches the denial, logs
 JobScheduler execution window. The final notification still posts; the progress
 notification is used only when the OS allows the foreground worker. This path
 was verified by triggering the worker with the app backgrounded.
+
+## 2026-10-21 — Quiet route map
+
+The track map was noisy: the standard OpenStreetMap raster bakes POI icons and
+street names into every tile, so the GPS trace got buried between the labels.
+The map now uses the same free, token-free OpenStreetMap rasters but mutes
+them in-app, so the trace stays the loudest element while the basemap remains
+a readable map.
+
+- The map went past the intended look once: Esri's World Light Gray Base
+  (anonymous, no key) was tried as a "minimal" style but its paper + white
+  streets are so sparse around rural tracks that the whole card read as a
+  blank white sheet. The fix keeps the standard OSM rasters (free, anonymous)
+  and mutes them locally with a tile-only grayscale filter instead - a real,
+  visible map with the attention back on the trace.
+- The trace is drawn in two passes: a white casing under the speed gradient
+  (blue slow, red fast), with plain start/finish dots instead of map pins.
+  Stroke widths are density-scaled instead of fixed pixels.
+- The osmdroid default `+ / -` zoom buttons are hidden (`CustomZoomButtonsController
+  Visibility.NEVER`); pinch-zoom and pan stay active.
+- Only the tile layer is filtered (`TilesOverlay.setColorFilter`), so the
+  track keeps its blue→red speed gradient. Removing the filter (or switching
+  the tile source) is a one-line change in `RouteMap.kt`.
+- Verified on the Pixel 10a (2026-10-21): streets render muted but visible
+  under the trace, which pops with its white casing, and the default osmdroid
+  `+ / -` buttons no longer appear on touch.

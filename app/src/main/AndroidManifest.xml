@@ -15,7 +15,7 @@
         android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
-    <!-- Map tiles (OpenStreetMap) -->
+    <!-- Map tiles: free anonymous OpenStreetMap rasters; muting applied locally -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 

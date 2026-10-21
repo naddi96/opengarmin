@@ -21,7 +21,7 @@ cloud accounts, and telemetry.
 | Storage | Room 2.6.1, database **version 9**, raw FIT files kept on disk |
 | Local preferences | SharedPreferences for profile/sync metadata, provider configs, and coach conversations |
 | UI | Jetpack Compose + Material 3 with the Pulse design tokens |
-| Networking | OkHttp only for the user-configured LLM endpoint; osmdroid for map tiles |
+| Networking | OkHttp only for the user-configured LLM endpoint; osmdroid with free anonymous OpenStreetMap rasters for the route map, muted locally (no API key) |
 | Background scheduling | AndroidX WorkManager for optional periodic BLE sync with battery/charging constraints and exponential backoff |
 | Secrets | Android Keystore AES-GCM for provider API keys |
 | Data ownership | Local database + FIT files; user-initiated ZIP backup/restore of the database and conversations; per-activity FIT/GPX/TCX/CSV export |

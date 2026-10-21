@@ -20,7 +20,7 @@ live in [`BACKLOG.md`](../BACKLOG.md).
 | Async | Kotlin coroutines + `lifecycleScope`; Room flows feed Compose state; a `Handler` watchdog guards sync timeouts; WorkManager runs optional periodic sync |
 | Watch transport | Custom BLE/GFDI/Multi-Link implementation in `:protocol` + `GarminBleClient` |
 | Background sync | WorkManager `CoroutineWorker`, battery-not-low + optional charging constraints, 10-minute exponential backoff, process-wide `SyncGate` |
-| Networking | OkHttp for the configured OpenAI-compatible endpoint; osmdroid/OpenStreetMap for map tiles |
+| Networking | OkHttp for the configured OpenAI-compatible endpoint; osmdroid with free anonymous OpenStreetMap rasters for the route map (no API key), muted locally via a tile-only grayscale filter |
 | Auth | **None.** Local-first, single implicit local profile; no account or server |
 | Secrets | Provider keys encrypted with Android Keystore AES-GCM |
 | Tests | 55 protocol unit tests and 112 app JVM tests; one instrumented Keystore test |
