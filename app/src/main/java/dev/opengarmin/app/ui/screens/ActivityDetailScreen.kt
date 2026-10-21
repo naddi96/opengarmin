@@ -3,6 +3,8 @@ package dev.opengarmin.app.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +20,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -34,13 +38,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -84,12 +92,18 @@ import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
 import kotlin.math.ceil
 import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 private const val SECTION_OVERVIEW = 0
 private const val SECTION_STATS = 1
 private const val SECTION_CHARTS = 2
 private const val SECTION_LAPS = 3
+private const val SECTION_COUNT = 4
 
+private val SECTION_TITLES = listOf("Overview", "Stats", "Charts", "Laps")
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ActivityDetailScreen(
     activity: ActivityEntity,
@@ -109,13 +123,37 @@ fun ActivityDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     var section by rememberSaveable(activity.id) { mutableIntStateOf(SECTION_OVERVIEW) }
-    val scrollState = rememberScrollState()
+    val pagerState = rememberPagerState(initialPage = section) { SECTION_COUNT }
+    val pageScrollStates = listOf(
+        rememberPageScrollState(activity.id),
+        rememberPageScrollState(activity.id),
+        rememberPageScrollState(activity.id),
+        rememberPageScrollState(activity.id),
+    )
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
     val configuredZones = remember(records, maxHeartRate) { heartRateZoneSet(records, maxHeartRate) }
     val fallbackZones = remember(records, maxHeartRate) { zoneSummary(records, maxHeartRate) }
     val hrZones = if (maxHeartRate != null) configuredZones else insights?.hrZones
     val gpsAvailable = ActivityExport.hasGps(records)
-    LaunchedEffect(section) {
-        scrollState.animateScrollTo(0)
+    LaunchedEffect(activity.id) {
+        if (pagerState.currentPage != section) pagerState.scrollToPage(section)
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }
+            .distinctUntilChanged()
+            .collect { section = it }
+    }
+    LaunchedEffect(pagerState) {
+        var lastSettled = pagerState.settledPage
+        snapshotFlow { pagerState.settledPage }
+            .distinctUntilChanged()
+            .collect { page ->
+                if (page != lastSettled) {
+                    lastSettled = page
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                }
+            }
     }
 
     Column(
@@ -129,54 +167,76 @@ fun ActivityDetailScreen(
             onExploreData = onExploreData,
         )
         Spacer(Modifier.height(PulseSpacing.md))
-        Column(
+        SegmentedControl(
+            options = SECTION_TITLES,
+            selectedIndex = section,
+            onSelected = { target ->
+                val index = target.coerceIn(0, SECTION_COUNT - 1)
+                if (index == pagerState.settledPage && index == pagerState.currentPage) {
+                    scope.launch { pageScrollStates[index].animateScrollTo(0) }
+                } else {
+                    scope.launch { pagerState.animateScrollToPage(index) }
+                }
+            },
+        )
+        Spacer(Modifier.height(PulseSpacing.lg))
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(PulseSpacing.lg),
-        ) {
-            SegmentedControl(
-                options = listOf("Overview", "Stats", "Charts", "Laps"),
-                selectedIndex = section,
-                onSelected = { section = it },
-            )
-            when (section) {
-                SECTION_OVERVIEW -> ActivityOverview(
-                    activity = activity,
-                    insights = insights,
-                    zones = hrZones,
-                    fallbackZones = fallbackZones,
-                    maxHeartRate = maxHeartRate,
-                    gps = gps,
-                    records = records,
-                    fitExportAvailable = fitExportAvailable,
-                    gpsAvailable = gpsAvailable,
-                    exportStatus = exportStatus,
-                    exportBusy = exportBusy,
-                    onExport = onExport,
-                    onOpenSettings = onOpenSettings,
-                )
-                SECTION_STATS -> ActivityStats(
-                    activity = activity,
-                    insights = insights,
-                    dynamics = dynamics,
-                )
-                SECTION_CHARTS -> ActivityCharts(
-                    activity = activity,
-                    insights = insights,
-                    zones = hrZones,
-                    powerZones = insights?.powerZones,
-                    fallbackZones = fallbackZones,
-                    maxHeartRate = maxHeartRate,
-                    onOpenSettings = onOpenSettings,
-                )
-                SECTION_LAPS -> ActivityLaps(activity = activity, insights = insights, laps = laps)
+                .fillMaxWidth(),
+            beyondBoundsPageCount = 1,
+            key = { it },
+        ) { page ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(pageScrollStates[page]),
+                verticalArrangement = Arrangement.spacedBy(PulseSpacing.lg),
+            ) {
+                when (page) {
+                    SECTION_OVERVIEW -> ActivityOverview(
+                        activity = activity,
+                        insights = insights,
+                        zones = hrZones,
+                        fallbackZones = fallbackZones,
+                        maxHeartRate = maxHeartRate,
+                        gps = gps,
+                        records = records,
+                        fitExportAvailable = fitExportAvailable,
+                        gpsAvailable = gpsAvailable,
+                        exportStatus = exportStatus,
+                        exportBusy = exportBusy,
+                        onExport = onExport,
+                        onOpenSettings = onOpenSettings,
+                    )
+                    SECTION_STATS -> ActivityStats(
+                        activity = activity,
+                        insights = insights,
+                        dynamics = dynamics,
+                    )
+                    SECTION_CHARTS -> ActivityCharts(
+                        activity = activity,
+                        insights = insights,
+                        zones = hrZones,
+                        powerZones = insights?.powerZones,
+                        fallbackZones = fallbackZones,
+                        maxHeartRate = maxHeartRate,
+                        onOpenSettings = onOpenSettings,
+                    )
+                    SECTION_LAPS -> ActivityLaps(activity = activity, insights = insights, laps = laps)
+                }
+                Spacer(Modifier.height(PulseSpacing.xl))
             }
-            Spacer(Modifier.height(PulseSpacing.xl))
         }
     }
 }
+
+@Composable
+private fun rememberPageScrollState(activityId: Long) = rememberSaveable(
+    activityId,
+    saver = ScrollState.Saver,
+) { ScrollState(0) }
 
 @Composable
 private fun ActivityHeader(

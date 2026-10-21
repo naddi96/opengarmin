@@ -1,5 +1,9 @@
 package dev.opengarmin.app.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -7,13 +11,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
@@ -26,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -207,32 +216,58 @@ fun SegmentedControl(
     onSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    if (options.isEmpty()) return
+    val shape = CircleShape
+    val gap = 3.dp
+    val selected = selectedIndex.coerceIn(0, options.lastIndex)
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .height(PulseSpacing.touchTarget)
-            .clip(CircleShape)
+            .clip(shape)
             .background(PulseColors.Surface)
-            .border(1.dp, PulseColors.BorderStrong, CircleShape)
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+            .border(1.dp, PulseColors.BorderStrong, shape)
+            .padding(gap),
     ) {
-        options.forEachIndexed { index, label ->
-            val selected = index == selectedIndex
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(PulseSpacing.touchTarget - 6.dp)
-                    .clip(CircleShape)
-                    .background(if (selected) PulseColors.Accent else Color.Transparent)
-                    .selectable(selected = selected, role = Role.Tab, onClick = { onSelected(index) }),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (selected) PulseColors.TextOnAccent else PulseColors.TextMuted,
+        val segmentWidth = (maxWidth - gap * (options.size - 1)) / options.size
+        val indicatorOffset by animateDpAsState(
+            targetValue = (segmentWidth + gap) * selected,
+            animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+            label = "segmentIndicator",
+        )
+        Box(
+            modifier = Modifier
+                .offset(x = indicatorOffset)
+                .width(segmentWidth)
+                .fillMaxHeight()
+                .clip(shape)
+                .background(PulseColors.Accent),
+        )
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            options.forEachIndexed { index, label ->
+                val isSelected = index == selected
+                val labelColor by animateColorAsState(
+                    targetValue = if (isSelected) PulseColors.TextOnAccent else PulseColors.TextMuted,
+                    animationSpec = tween(durationMillis = 160),
+                    label = "segmentLabel",
                 )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(shape)
+                        .selectable(selected = isSelected, role = Role.Tab, onClick = { onSelected(index) }),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = labelColor,
+                    )
+                }
             }
         }
     }
