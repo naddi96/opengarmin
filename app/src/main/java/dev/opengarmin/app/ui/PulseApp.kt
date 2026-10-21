@@ -228,7 +228,6 @@ fun PulseApp(
                             )
                             PulseTab.Training -> TrainingScreen(
                                 summary = trainingSummary,
-                                latestDay = dev.opengarmin.app.data.WellnessMetrics.latestDay(wellnessDays),
                                 onOpenActivity = { activity ->
                                     onSelectActivity(activity)
                                     detailId = activity.id

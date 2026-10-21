@@ -37,7 +37,6 @@ import dev.opengarmin.app.data.LoadFocus
 import dev.opengarmin.app.data.PacePlanCalculator
 import dev.opengarmin.app.data.PaceRace
 import dev.opengarmin.app.data.TrainingSummary
-import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.util.formatDate
 import dev.opengarmin.app.util.formatPacePerKm
 import dev.opengarmin.app.util.formatElapsedTime
@@ -45,7 +44,6 @@ import dev.opengarmin.app.util.formatWellnessDate
 import dev.opengarmin.app.ui.components.CoachInsightCard
 import dev.opengarmin.app.ui.components.LineChart
 import dev.opengarmin.app.ui.components.PrimaryButton
-import dev.opengarmin.app.ui.components.ProgressRing
 import dev.opengarmin.app.ui.components.PulseCard
 import dev.opengarmin.app.ui.components.StatTile
 import dev.opengarmin.app.ui.components.TinyStat
@@ -61,7 +59,6 @@ import kotlin.math.roundToInt
 @Composable
 fun TrainingScreen(
     summary: TrainingSummary,
-    latestDay: WellnessDayEntity?,
     onOpenActivity: (ActivityEntity) -> Unit,
     onAskCoach: () -> Unit,
     onOpenPlan: () -> Unit = {},
@@ -81,7 +78,7 @@ fun TrainingScreen(
         Column {
             Text("Training", style = MaterialTheme.typography.headlineLarge, color = PulseColors.Text)
             Text(
-                "Readiness, load and performance · from your watch",
+                "Load and performance · from your watch",
                 style = MaterialTheme.typography.bodySmall,
                 color = PulseColors.TextMuted,
             )
@@ -103,8 +100,6 @@ fun TrainingScreen(
             }
             return@Column
         }
-
-        ReadinessCard(summary = summary, latestDay = latestDay)
 
         // Training load ------------------------------------------------------
         PulseCard(modifier = Modifier.fillMaxWidth()) {
@@ -403,121 +398,6 @@ fun TrainingScreen(
 }
 
 @Composable
-private fun ReadinessCard(summary: TrainingSummary, latestDay: WellnessDayEntity?) {
-    val factors = readinessFactors(summary, latestDay)
-    val hasSleep = latestDay?.sleepScore != null
-    val hasHrv = latestDay?.hrvLastNight != null
-    PulseCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(PulseSpacing.xlPlus),
-            verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
-        ) {
-            Text("Training readiness", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(PulseSpacing.xl),
-            ) {
-                ProgressRing(
-                    progress = 0f,
-                    label = "—",
-                    caption = "no score",
-                    color = PulseColors.Yellow,
-                    size = 96.dp,
-                    strokeWidth = 9.dp,
-                    contentDescription = "Training readiness score unavailable",
-                )
-                Text(
-                    if (!hasSleep || !hasHrv) {
-                        "A readiness score needs overnight sleep and HRV. Sync after sleeping with the watch; the factors below are already recorded from the watch."
-                    } else {
-                        "Sleep and HRV are available. Garmin's readiness model is not exposed in the FIT file, so this app shows the factors instead of inventing a score."
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = PulseColors.Text,
-                )
-            }
-            factors.forEach { factor ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.size(9.dp).clip(CircleShape).background(factor.color))
-                    Spacer(Modifier.width(PulseSpacing.mdPlus))
-                    Text(factor.name, style = MaterialTheme.typography.bodyMedium, color = PulseColors.Text, modifier = Modifier.weight(1f))
-                    Text(factor.value, style = MaterialTheme.typography.labelMedium, color = PulseColors.TextMuted)
-                }
-            }
-        }
-    }
-}
-
-private data class ReadinessFactor(val name: String, val value: String, val color: Color)
-
-private fun readinessFactors(summary: TrainingSummary, day: WellnessDayEntity?): List<ReadinessFactor> {
-    val recovery = summary.recoveryRemainingMinutes
-    val load = summary.loadRatio
-    val factors = ArrayList<ReadinessFactor>()
-    factors.add(
-        ReadinessFactor(
-            "Recovery time",
-            recovery?.let { formatRecovery(it) } ?: "Recovered",
-            if (recovery == null) PulseColors.Teal else PulseColors.Yellow,
-        ),
-    )
-    factors.add(
-        ReadinessFactor(
-            "Acute load",
-            summary.acuteLoad?.let { loadValue -> "%.0f · ${loadLabel(load)}".format(loadValue) } ?: "—",
-            when {
-                summary.acuteLoad == null -> PulseColors.TextMuted
-                load == null -> PulseColors.TextMuted
-                load < 0.8 -> PulseColors.Yellow
-                load > 1.3 -> PulseColors.Coral
-                else -> PulseColors.Teal
-            },
-        ),
-    )
-    factors.add(
-        ReadinessFactor(
-            "Sleep score",
-            day?.sleepScore?.let { "$it · ${day.sleepQuality ?: "recorded"}" } ?: "Not synced",
-            if (day?.sleepScore == null) PulseColors.TextMuted else PulseColors.Teal,
-        ),
-    )
-    factors.add(
-        ReadinessFactor(
-            "HRV status",
-            day?.hrvLastNight?.let { value -> "%.0f ms · ${day.hrvStatus ?: "recorded"}".format(value) }
-                ?: day?.hrvStatus ?: "Not synced",
-            if (day?.hrvLastNight == null && day?.hrvStatus == null) PulseColors.TextMuted else PulseColors.Teal,
-        ),
-    )
-    factors.add(
-        ReadinessFactor(
-            "Stress",
-            day?.stressAvg?.let { "$it · ${stressBand(it)}" } ?: "—",
-            when {
-                day?.stressAvg == null -> PulseColors.TextMuted
-                day.stressAvg <= 50 -> PulseColors.Teal
-                day.stressAvg <= 75 -> PulseColors.Yellow
-                else -> PulseColors.Coral
-            },
-        ),
-    )
-    factors.add(
-        ReadinessFactor(
-            "VO₂ max trend",
-            summary.vo2Change?.let { change ->
-                "${if (change >= 0) "+" else ""}${"%.1f".format(change)} in 6 weeks"
-            } ?: "Need more runs",
-            if (summary.vo2Change == null) PulseColors.TextMuted else PulseColors.Teal,
-        ),
-    )
-    return factors
-}
-
-@Composable
 private fun LoadRatioBar(ratio: Double?) {
     if (ratio == null) return
     val fraction = (ratio / 2.0).coerceIn(0.0, 1.0).toFloat()
@@ -644,13 +524,6 @@ private fun performanceLabel(value: Int): String = when {
     value == 0 -> "At baseline"
     value >= -5 -> "Slightly below baseline"
     else -> "Fatigued"
-}
-
-private fun stressBand(value: Int): String = when {
-    value <= 25 -> "Rest"
-    value <= 50 -> "Low"
-    value <= 75 -> "Medium"
-    else -> "High"
 }
 
 private fun sportLabel(activity: ActivityEntity): String = when (activity.sport) {
