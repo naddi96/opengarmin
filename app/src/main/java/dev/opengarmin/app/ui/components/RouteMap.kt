@@ -239,7 +239,18 @@ internal fun RouteMap(records: List<RecordEntity>, modifier: Modifier = Modifier
                 GeoPoint((box.latNorth + box.latSouth) / 2.0, (box.lonEast + box.lonWest) / 2.0),
             )
             controller.setZoom(16.0)
-            post { zoomToBoundingBox(box, true, 64) }
+            // osmdroid's zoomToBoundingBox loops forever when the map has not
+            // been laid out yet: a zero-sized projection produces huge pixel
+            // coordinates that no longer change when shifted by the world
+            // width. Wait for the first real layout instead of posting blind.
+            addOnFirstLayoutListener { view, _, _, _, _ ->
+                val map = view as MapView
+                map.post {
+                    if (map.isAttachedToWindow && map.width > 0 && map.height > 0) {
+                        map.zoomToBoundingBox(box, false, 64)
+                    }
+                }
+            }
         }
     }
 
