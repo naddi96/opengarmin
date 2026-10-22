@@ -1,0 +1,1237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulse / OpenGarmin — current app mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0E1311;
+    --surface:#161D1A;
+    --surface-2:#1E2723;
+    --border:#2A3530;
+    --border-2:#2F3F38;
+    --border-strong:#6B7C73;
+    --track:#26322D;
+    --text:#EAF1EC;
+    --muted:#8FA096;
+    --on-accent:#0E1311;
+    --accent:#C7F26B;
+    --teal:#5ED6C1;
+    --coral:#FF7A66;
+    --blue:#8FA8FF;
+    --orange:#FFB45E;
+    --yellow:#FFD166;
+    --magenta:#E879F9;
+    --violet:#B39DFF;
+  }
+
+  *{box-sizing:border-box}
+  html{background:#070B09}
+  body{
+    margin:0;
+    background:
+      radial-gradient(900px 600px at 15% -10%, rgba(199,242,107,.06), transparent 60%),
+      radial-gradient(900px 600px at 90% 10%, rgba(94,214,193,.05), transparent 55%),
+      #070B09;
+    color:var(--text);
+    font-family:'DM Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .page-header{max-width:1680px;margin:0 auto;padding:56px 36px 12px}
+  .brand{display:flex;align-items:center;gap:11px;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+  .brand-mark{width:28px;height:28px;border-radius:9px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center}
+  .brand-mark svg{width:16px;height:16px}
+  h1{font-family:'Space Grotesk',system-ui,sans-serif;font-size:clamp(34px,4.2vw,54px);line-height:1.02;letter-spacing:-.02em;margin:22px 0 14px;font-weight:700}
+  .lead{max-width:780px;margin:0;color:var(--muted);font-size:15px;line-height:1.65}
+  .lead b{color:var(--text);font-weight:500}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+  .meta span{font-size:12px;color:var(--muted);background:rgba(255,255,255,.035);border:1px solid var(--border);border-radius:999px;padding:6px 11px}
+  .meta span b{color:var(--text);font-weight:500}
+
+  .gallery{
+    display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;
+    gap:52px 40px;max-width:1780px;margin:0 auto;padding:46px 32px 80px;
+  }
+  .device-wrap{margin:0;width:390px;display:flex;flex-direction:column;gap:15px}
+  .device{
+    position:relative;width:390px;height:844px;
+    background:var(--bg);color:var(--text);
+    border:1px solid #2C3832;border-radius:40px;overflow:hidden;
+    display:flex;flex-direction:column;
+    box-shadow:0 40px 90px rgba(0,0,0,.55), 0 0 0 8px rgba(255,255,255,.018);
+  }
+  .device *{min-width:0}
+
+  /* ---------- status bar ---------- */
+  .statusbar{
+    flex:none;height:42px;padding:0 22px;display:flex;align-items:center;justify-content:space-between;
+    font-size:13px;font-weight:700;letter-spacing:.01em;
+  }
+  .status-icons{display:flex;align-items:center;gap:6px}
+  .sic{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .battery-pct{font-size:11px;font-weight:700;opacity:.9}
+
+  /* ---------- generic ---------- */
+  .screen{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:12px;padding:10px 20px 0}
+  .screen>*{flex:none}
+  .display{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;letter-spacing:-.015em}
+  .muted{color:var(--muted)}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:16px 18px}
+  .card.tight{padding:14px 16px}
+  .kicker{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+  .big{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;line-height:1}
+  .unit{font-size:14px;font-weight:500;color:var(--muted);letter-spacing:0}
+  .ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--teal);flex:none}
+  .screen-title{font-size:30px;line-height:1.05;margin:0}
+  .subtitle{font-size:13px;color:var(--muted);margin-top:5px}
+  .section-label{font-size:12px;color:var(--muted);margin:2px 2px -5px}
+
+  .icon-btn{
+    width:42px;height:42px;border-radius:50%;background:var(--surface);border:1px solid var(--border);
+    color:var(--text);display:grid;place-items:center;padding:0;flex:none;
+  }
+  .icon-btn .ic{width:20px;height:20px}
+  .pill-btn{
+    display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--text);
+    border:1px solid var(--border-strong);border-radius:999px;padding:9px 14px;
+    font-family:inherit;font-size:13px;font-weight:500;white-space:nowrap;
+  }
+  .btn-lime{
+    background:var(--accent);color:var(--on-accent);border:none;border-radius:999px;
+    font-family:inherit;font-weight:700;font-size:14px;padding:12px 18px;
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  }
+
+  /* ---------- bottom nav ---------- */
+  .tabbar{flex:none;display:flex;padding:8px 8px 0;background:var(--bg)}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:3px 0;color:var(--muted);font-size:10.5px}
+  .tab .ic{width:24px;height:24px;stroke-width:1.6}
+  .tab.active{color:var(--accent);font-weight:700}
+  .homebar{flex:none;height:22px;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+  .homebar:after{content:"";width:128px;height:4px;border-radius:2px;background:var(--text);opacity:.85}
+
+  /* ---------- today ---------- */
+  .today-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding-top:4px}
+  .today-head h2{font-size:30px;line-height:1.06;max-width:158px;margin:4px 0 0}
+  .head-actions{display:flex;align-items:center;gap:9px;padding-top:5px}
+  .sync-pill{display:flex;align-items:center;gap:7px;padding:11px 13px;border:1px solid var(--border);border-radius:999px;font-size:11.5px;white-space:nowrap;color:var(--text)}
+  .steps-card{display:flex;align-items:center;gap:18px;padding:18px}
+  .ring{position:relative;flex:none;display:grid;place-items:center}
+  .ring svg{display:block}
+  .ring-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
+  .steps-body{display:flex;flex-direction:column;gap:4px;min-width:0}
+  .steps-value{font-size:38px;line-height:1;color:var(--accent)}
+  .steps-meta{display:flex;gap:14px;font-size:13px;margin-top:9px}
+  .steps-meta b{font-weight:700}
+  .hr-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .hr-now{font-size:34px;line-height:1.05;margin-top:5px}
+  .hr-range{text-align:right;font-size:12.5px;color:var(--muted);line-height:1.55}
+  .hr-range b{color:var(--text)}
+  .chart-axis{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-top:3px}
+  .tile-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .tile{padding:10px 16px 11px;border-radius:18px}
+  .tile-label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .tile-value{font-family:'Space Grotesk',system-ui,sans-serif;font-size:24px;font-weight:700;line-height:1.15;margin-top:3px}
+  .tile-value span{font-size:12px;font-weight:500;color:var(--muted);letter-spacing:0}
+  .tile-sub{font-size:12px;color:var(--muted);margin-top:1px}
+  .insight{background:var(--surface-2);border-color:var(--border-2);padding:14px 18px 16px}
+  .eyebrow{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+  .insight-text{font-size:14px;line-height:1.45;margin-top:8px;color:var(--text)}
+
+  /* ---------- health / training ---------- */
+  .title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-top:6px}
+  .stat-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .stat-line{display:flex;align-items:baseline;gap:7px;margin-top:5px}
+  .stat-line .big{font-size:34px}
+  .card-sub{font-size:12.5px;color:var(--muted);line-height:1.45}
+  .three-stats{display:flex;justify-content:space-between;gap:8px;margin-top:10px}
+  .three-stats .lbl{font-size:11px;color:var(--muted)}
+  .three-stats .val{font-family:'Space Grotesk',system-ui,sans-serif;font-size:17px;font-weight:700;margin-top:2px}
+  .seg-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;gap:2px;margin-top:12px}
+  .seg-bar>span{display:block;height:100%}
+  .legend{display:flex;flex-wrap:wrap;gap:9px 14px;font-size:10.5px;color:var(--muted);margin-top:9px}
+  .legend i{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px;vertical-align:1px}
+  .factor-list{display:flex;flex-direction:column;gap:7px;margin-top:12px}
+  .factor{display:flex;align-items:center;justify-content:space-between;font-size:13px}
+  .factor .name{display:flex;align-items:center;gap:8px;color:var(--text)}
+  .factor .val{color:var(--muted);font-size:12.5px;text-align:right}
+  .factor .val b{color:var(--text);font-weight:500}
+  .metric-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .badge{display:inline-flex;align-items:center;border-radius:999px;font-size:11.5px;font-weight:700;padding:5px 10px;white-space:nowrap}
+  .badge-lime{background:var(--accent);color:var(--on-accent)}
+  .badge-coral{background:rgba(255,122,102,.16);color:var(--coral)}
+  .badge-muted{background:var(--surface-2);color:var(--muted)}
+  .load-row{margin-top:11px}
+  .load-row-top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px}
+  .load-row-top b{font-weight:500}
+  .track{height:6px;border-radius:3px;background:var(--track);overflow:hidden}
+  .track>span{display:block;height:100%;border-radius:3px}
+  .slider{position:relative;height:7px;border-radius:4px;background:var(--track);margin:12px 0 6px}
+  .slider .fill{position:absolute;left:0;top:0;bottom:0;width:78%;border-radius:4px;background:var(--accent)}
+  .slider .thumb{position:absolute;left:78%;top:-3px;width:2px;height:13px;background:var(--text);border-radius:1px}
+  .slider-labels{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)}
+
+  /* ---------- activities ---------- */
+  .week-strip{display:flex;justify-content:space-between;gap:8px;margin-top:6px}
+  .week-strip .lbl{font-size:11.5px;color:var(--muted)}
+  .week-strip .val{font-family:'Space Grotesk',system-ui,sans-serif;font-size:22px;font-weight:700;margin-top:3px}
+  .chips{display:flex;gap:7px;overflow:hidden;padding:1px 0}
+  .chip{flex:none;border:1px solid var(--border-strong);border-radius:999px;padding:9px 12px;font-size:12.5px;font-weight:500;color:var(--text);background:transparent;white-space:nowrap}
+  .chip.active{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:700}
+  .featured{padding:14px 16px 16px}
+  .featured-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+  .featured-head h3{font-family:'Space Grotesk',system-ui,sans-serif;font-size:22px;line-height:1.1;margin:0}
+  .featured-body{display:flex;gap:14px;margin-top:12px}
+  .spark-box{width:150px;flex:none;border-radius:14px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .featured-stats{display:grid;grid-template-columns:1fr 1fr;gap:9px 12px;flex:1}
+  .fs .lbl{font-size:10.5px;color:var(--muted);line-height:1.25}
+  .fs .val{font-family:'Space Grotesk',system-ui,sans-serif;font-size:17px;font-weight:700;line-height:1.15;margin-top:1px}
+  .fs .val span{font-size:10.5px;font-weight:500;color:var(--muted)}
+  .zones-label{font-size:11px;color:var(--muted);margin-top:11px}
+  .zone-legend{display:flex;flex-wrap:wrap;gap:5px 10px;font-size:9.5px;color:var(--muted);margin-top:7px}
+  .zone-legend i{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:3px;vertical-align:1px}
+  .activity-row{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:10px 14px}
+  .activity-row.selected{border-color:var(--accent);background:rgba(199,242,107,.035)}
+  .sport-icon{width:40px;height:40px;border-radius:11px;background:var(--surface-2);display:grid;place-items:center;flex:none}
+  .activity-main{flex:1;min-width:0}
+  .activity-name{font-family:'Space Grotesk',system-ui,sans-serif;font-size:16px;font-weight:700;line-height:1.2}
+  .activity-sub{font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .activity-hr{text-align:right;flex:none}
+  .activity-hr .val{font-family:'Space Grotesk',system-ui,sans-serif;font-size:17px;font-weight:700;color:var(--coral);line-height:1.1}
+  .activity-hr .lbl{font-size:10px;color:var(--muted)}
+  .chev{color:var(--muted);flex:none}
+  .chev .ic{width:18px;height:18px}
+
+  /* ---------- coach ---------- */
+  .coach-head{display:flex;align-items:center;gap:12px;padding-top:8px}
+  .coach-mark{width:48px;height:48px;border-radius:14px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;flex:none}
+  .coach-mark .ic{width:24px;height:24px;stroke-width:2}
+  .coach-head h2{font-family:'Space Grotesk',system-ui,sans-serif;font-size:26px;margin:0;line-height:1.1}
+  .coach-head .subtitle{margin-top:3px;font-size:11.5px;white-space:nowrap}
+  .coach-head>div:nth-child(2){min-width:0}
+  .coach-actions{margin-left:auto;display:flex;gap:9px}
+  .status-strip{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--border-2);border-radius:16px;padding:13px 15px;font-size:12.5px}
+  .status-strip .manage{margin-left:auto;color:var(--accent);font-weight:700;font-size:12px}
+  .disclaimer{font-size:10.5px;color:var(--muted);margin:-3px 0 0 2px}
+  .chat{display:flex;align-items:flex-start;gap:9px}
+  .chat-avatar{width:30px;height:30px;border-radius:9px;background:var(--surface-2);display:grid;place-items:center;flex:none;color:var(--accent)}
+  .chat-avatar .ic{width:15px;height:15px}
+  .bubble{background:var(--surface);border:1px solid var(--border);border-radius:4px 18px 18px 18px;padding:13px 16px;font-size:13.5px;line-height:1.5;max-width:280px}
+  .coach-spacer{flex:1 1 auto !important;min-height:8px}
+  .suggestions{display:flex;gap:8px;overflow:hidden}
+  .suggestion{flex:none;background:var(--surface-2);border:1px solid var(--border-2);border-radius:999px;padding:10px 14px;font-size:12.5px;color:var(--text);white-space:nowrap}
+  .composer{display:flex;align-items:center;gap:10px;padding-bottom:2px}
+  .composer input{flex:1;background:transparent;border:1px solid var(--border-strong);border-radius:999px;padding:13px 18px;font-family:inherit;font-size:13.5px;color:var(--text);outline:none}
+  .composer input::placeholder{color:var(--muted)}
+  .send-btn{width:48px;height:48px;border-radius:50%;background:var(--accent);color:var(--on-accent);border:none;display:grid;place-items:center;flex:none}
+  .send-btn .ic{width:21px;height:21px;stroke-width:2}
+
+  /* ---------- trends ---------- */
+  .focus-head{display:flex;align-items:flex-start;gap:14px;padding-top:6px}
+  .focus-head h2{font-size:28px;line-height:1.1;margin:0}
+  .range-chips{display:flex;gap:6px;overflow:hidden}
+  .range-chip{flex:none;border:1px solid var(--border-strong);border-radius:999px;padding:9px 12px;font-size:12px;font-weight:500;white-space:nowrap}
+  .range-chip.active{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:700}
+  .range-chip.with-icon{display:flex;align-items:center;gap:6px}
+  .trend-meta{font-size:12px;color:var(--muted);margin:-2px 0}
+  .trend-chart{position:relative;height:100px;margin-top:10px;border-bottom:1px solid var(--border)}
+  .goal-line{position:absolute;left:0;right:0;top:55%;border-top:1px dashed #5E6F66}
+  .bars{position:absolute;inset:0;display:flex;align-items:flex-end;gap:6px;padding:0 2px}
+  .bar-col{flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center}
+  .bar{border-radius:4px 4px 0 0;width:74%}
+  .day-labels{display:flex;gap:6px;padding:6px 2px 0;font-size:10px;color:var(--muted)}
+  .day-labels span{flex:1;text-align:center}
+  .chart-note{font-size:10px;color:var(--muted);margin-top:8px}
+  .summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px 14px;margin-top:10px}
+  .summary-grid .lbl{font-size:10.5px;color:var(--muted);line-height:1.25}
+  .summary-grid .val{font-family:'Space Grotesk',system-ui,sans-serif;font-size:17px;font-weight:700;line-height:1.2;margin-top:2px}
+  .summary-grid .val span{font-size:11px;font-weight:500;color:var(--muted)}
+
+  /* ---------- activity detail ---------- */
+  .detail-head{display:flex;align-items:flex-start;gap:12px;padding-top:4px}
+  .detail-title{flex:1;min-width:0;padding-top:2px}
+  .detail-title h2{font-family:'Space Grotesk',system-ui,sans-serif;font-size:26px;line-height:1.1;margin:0}
+  .segmented{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:4px;gap:2px}
+  .segment{flex:1;text-align:center;border-radius:999px;padding:9px 4px;font-size:12.5px;color:var(--muted);font-weight:500}
+  .segment.active{background:var(--accent);color:var(--on-accent);font-weight:700}
+  .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px 10px;margin-top:12px}
+  .stat-cell .lbl{font-size:10px;color:var(--muted);line-height:1.25}
+  .stat-cell .val{font-family:'Space Grotesk',system-ui,sans-serif;font-size:17px;font-weight:700;line-height:1.15;margin-top:2px;white-space:nowrap}
+  .stat-cell .val span{font-size:9.5px;font-weight:500;color:var(--muted)}
+  .track-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .track-head h3{font-family:'Space Grotesk',system-ui,sans-serif;font-size:18px;margin:0}
+  .map{border-radius:12px;overflow:hidden;background:#e7e3d8;line-height:0}
+  .map svg{width:100%;height:200px;display:block}
+  .attribution{font-size:9.5px;color:var(--muted);margin-top:7px}
+  .speed-legend{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--muted);margin-top:8px}
+  .speed-legend .grad{flex:1;height:5px;border-radius:3px;background:linear-gradient(90deg,#4A90E2,#E53935)}
+  .te-card{padding-bottom:18px}
+  .te-card h3{font-family:'Space Grotesk',system-ui,sans-serif;font-size:18px;margin:0 0 10px}
+  .te-value{font-family:'Space Grotesk',system-ui,sans-serif;font-size:21px;font-weight:700;color:var(--accent);line-height:1.2}
+  .te-scale{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:12px}
+  .te-scale b{color:var(--blue);font-family:'Space Grotesk',system-ui,sans-serif;font-size:16px}
+  .te-bar{position:relative;display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px;margin-top:6px}
+  .te-bar span{flex:1;height:100%}
+  .te-knob{position:absolute;left:48%;top:-4px;width:18px;height:18px;border-radius:50%;background:var(--accent);border:3px solid var(--bg)}
+
+  /* ---------- plan ---------- */
+  .plan-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:13px 16px}
+  .plan-row h3{font-family:'Space Grotesk',system-ui,sans-serif;font-size:19px;margin:0;line-height:1.2}
+  .plan-sub{font-size:12px;color:var(--muted);margin-top:3px}
+  .plan-row .actions{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .badge-sent{background:var(--accent);color:var(--on-accent);border-radius:6px;font-size:10px;font-weight:700;padding:3px 8px}
+
+  /* ---------- settings ---------- */
+  .setting-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:13.5px;color:var(--muted)}
+  .setting-row b{color:var(--text);font-weight:500}
+  .settings-card{padding:8px 16px 14px}
+  .device-title{font-family:'Space Grotesk',system-ui,sans-serif;font-size:20px;margin:4px 0 2px}
+  .device-sub{font-size:13px;color:var(--muted)}
+  .button-wrap{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}
+  .button-wrap .btn-lime{padding:10px 16px;font-size:13px}
+  .fine{font-size:11px;color:var(--muted);line-height:1.45;margin-top:10px}
+
+  /* ---------- page footer / captions ---------- */
+  figcaption{font-size:13px;color:var(--muted);line-height:1.5;padding:0 6px}
+  figcaption strong{display:block;color:var(--text);font-family:'Space Grotesk',system-ui,sans-serif;font-size:15px;margin-bottom:2px;letter-spacing:.01em}
+  figcaption em{font-style:normal;color:#B7C5BC}
+  .page-footer{max-width:900px;margin:0 auto;padding:0 32px 72px;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.6}
+  .page-footer code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:5px;padding:2px 5px;color:#C9D6CE}
+
+  @media (max-width:520px){
+    .page-header{padding:36px 20px 4px}
+    .gallery{padding:32px 12px 56px;gap:40px}
+    .device-wrap{width:min(390px,calc(100vw - 24px))}
+    .device{width:100%;height:auto;aspect-ratio:390/844;border-radius:30px}
+    .screen{gap:2.6vw;padding:2.6vw 5vw 0}
+    .card{border-radius:5.6vw;padding:4vw 4.6vw}
+    .statusbar{height:10.6vw;padding:0 5.6vw}
+    .tabbar{padding:2vw 2vw 0}
+    .homebar{height:5.6vw}
+  }
+</style>
+</head>
+<body>
+
+<!-- icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-spark" viewBox="0 0 24 24">
+      <path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"/>
+      <path d="M18.6 16.2l.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8z"/>
+    </symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9.6 21v-6h4.8v6"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20V10"/><path d="M12 20V4"/><path d="M19 20v-7"/></symbol>
+    <symbol id="i-run" viewBox="0 0 24 24"><circle cx="15.5" cy="4.5" r="1.9"/><path d="M13.6 8.2l-3 2.4-2.3 4.1"/><path d="M13.6 8.2l3.3 2.4 2.6.5"/><path d="M10.6 10.6L6 12.2"/><path d="M10.6 14.7l-1.9 3.4-2.7 1.9"/><path d="M10.6 14.7l3.3 1.8 1 3.5"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-.7 4.5"/><path d="M20 4v7h-7"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z"/></symbol>
+    <symbol id="i-hrv" viewBox="0 0 24 24"><path d="M2.5 12h4l2-5 3.5 10 2.5-6 2 3h5"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5L4.5 14h6l-1.5 7.5L19 10h-6z"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 21c4 0 6.5-2.6 6.5-6.2 0-4.4-4.6-6.8-4.2-12.3-3.1 1.6-4.5 4.2-4.4 6.6-1.3-.4-2.1-1.5-2.3-2.6-1.4 1.6-2.1 3.5-2.1 5.4C5.5 18.1 8 21 12 21z"/></symbol>
+    <symbol id="i-watch" viewBox="0 0 24 24"><rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6l1-3h4l1 3M9 18l1 3h4l1-3"/></symbol>
+    <symbol id="i-trends" viewBox="0 0 24 24"><path d="M3 17l5.5-5.5 3.5 3.5L21 6"/><path d="M15 6h6v6"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5.4l3.4 2"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-13.6 5.7L3 20l1.4-4.2A8 8 0 1 1 20 12z"/><path d="M12 8v4.3l2.8 1.6"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M21.5 2.5L10.5 13.5"/><path d="M21.5 2.5l-7 19-4-8.5-8.5-4z"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6"/><path d="M3 3l6 6M21 3l-6 6M3 21l6-6M21 21l-6-6"/></symbol>
+    <symbol id="i-steps" viewBox="0 0 24 24"><path d="M8 4c1.8 0 2.6 1.6 2.6 3.4 0 1.2-.5 2.1-1.4 2.7.9.7 1.3 2 1.3 3.3 0 2-1 3.6-2.8 3.6S4.9 15.4 4.9 13.4c0-1.3.4-2.6 1.3-3.3-.9-.6-1.4-1.5-1.4-2.7C4.8 5.6 6.2 4 8 4z"/><path d="M16.7 8c1.5 0 2.2 1.4 2.2 2.9 0 1-.4 1.8-1.2 2.3.8.6 1.1 1.7 1.1 2.8 0 1.7-.8 3-2.3 3s-2.3-1.3-2.3-3c0-1.1.3-2.2 1.1-2.8-.8-.5-1.2-1.3-1.2-2.3 0-1.5 1.1-2.9 2.6-2.9z"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+    <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2.5" y="7.5" width="17" height="9" rx="2"/><path d="M21.5 10.5v3"/><rect x="5" y="10" width="10" height="4" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M3 9a13 13 0 0 1 18 0"/><path d="M6.5 12.5a8 8 0 0 1 11 0"/><path d="M10 16a3.2 3.2 0 0 1 4 0"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-signal" viewBox="0 0 24 24"><path d="M4 19v-3"/><path d="M9 19v-6"/><path d="M14 19v-9"/><path d="M19 19V5"/></symbol>
+  </defs>
+</svg>
+
+<header class="page-header">
+  <div class="brand">
+    <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-spark"/></svg></span>
+    Pulse / OpenGarmin
+  </div>
+  <h1>Current app screens</h1>
+  <p class="lead">
+    Standalone HTML mockups of the shipping Compose UI. Colours, type and spacing come from
+    <b>docs/design/tokens.md</b>; layout and sample values mirror the current
+    <b>docs/screenshots</b>. Nothing here is wired to the app — this is a static design reference.
+  </p>
+  <div class="meta">
+    <span><b>9</b> screens</span>
+    <span>390 × 844</span>
+    <span>DM Sans / Space Grotesk</span>
+    <span>Local-first · no telemetry</span>
+  </div>
+</header>
+
+<main class="gallery">
+
+  <!-- ============================================================ TODAY -->
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Today screen mockup">
+      <div class="statusbar">
+        <span>23:22</span>
+        <div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg>
+          <svg class="sic"><use href="#i-wifi"/></svg>
+          <svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">52</span>
+        </div>
+      </div>
+
+      <div class="screen" style="gap:10px">
+        <header class="today-head">
+          <div>
+            <div class="muted" style="font-size:13px">mercoledì, 21 ott</div>
+            <h2 class="display">Good evening</h2>
+          </div>
+          <div class="head-actions">
+            <button class="icon-btn" aria-label="Sync"><svg class="ic"><use href="#i-refresh"/></svg></button>
+            <div class="sync-pill"><span class="dot"></span>Synced 1 min ago</div>
+          </div>
+        </header>
+
+        <!-- steps -->
+        <div class="card steps-card">
+          <div class="ring">
+            <svg width="126" height="126" viewBox="0 0 126 126" aria-hidden="true">
+              <circle cx="63" cy="63" r="52" fill="none" stroke="#26322D" stroke-width="12"/>
+              <circle cx="63" cy="63" r="52" fill="none" stroke="#C7F26B" stroke-width="12" stroke-linecap="round"
+                      stroke-dasharray="310.4 326.7" transform="rotate(-90 63 63)"/>
+            </svg>
+            <div class="ring-label">
+              <div class="display" style="font-size:26px">95%</div>
+              <div class="muted" style="font-size:11px;margin-top:4px">of goal</div>
+            </div>
+          </div>
+          <div class="steps-body">
+            <div class="muted" style="font-size:13px">Steps today</div>
+            <div class="display steps-value">9.522</div>
+            <div class="muted" style="font-size:13px">478 to reach 10.000</div>
+            <div class="steps-meta">
+              <span><b>7,8</b> <span class="muted">km</span></span>
+              <span><b>130</b> <span class="muted">active min</span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- heart rate -->
+        <div class="card" style="padding-bottom:9px">
+          <div class="hr-top">
+            <div>
+              <div class="kicker" style="color:var(--coral)"><svg class="ic" style="width:15px;height:15px"><use href="#i-heart"/></svg><span style="color:var(--muted)">Heart rate</span></div>
+              <div class="display hr-now">79 <span class="unit">bpm now</span></div>
+            </div>
+            <div class="hr-range">
+              Resting <b>49</b><br>
+              Range <b>49–170</b>
+            </div>
+          </div>
+          <svg viewBox="0 0 300 88" preserveAspectRatio="none" style="display:block;width:100%;height:74px;margin-top:7px" aria-hidden="true">
+            <polygon fill="#FF7A66" fill-opacity=".14" points="0,80 5,82 10,72 15,78 20,66 25,74 30,63 35,70 40,58 45,66 50,54 55,62 60,50 65,58 70,45 75,53 80,40 85,47 90,34 95,42 100,30 105,38 110,26 115,33 120,22 125,29 130,18 135,25 140,16 145,23 150,14 155,20 160,16 165,24 170,15 175,22 180,13 185,20 190,17 195,25 200,20 205,30 210,24 215,34 220,27 225,37 230,30 235,40 240,33 245,43 250,37 255,47 260,41 265,50 270,45 275,54 280,48 285,58 290,52 295,60 300,55 300,88 0,88"/>
+            <polyline fill="none" stroke="#FF7A66" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"
+                      points="0,80 5,82 10,72 15,78 20,66 25,74 30,63 35,70 40,58 45,66 50,54 55,62 60,50 65,58 70,45 75,53 80,40 85,47 90,34 95,42 100,30 105,38 110,26 115,33 120,22 125,29 130,18 135,25 140,16 145,23 150,14 155,20 160,16 165,24 170,15 175,22 180,13 185,20 190,17 195,25 200,20 205,30 210,24 215,34 220,27 225,37 230,30 235,40 240,33 245,43 250,37 255,47 260,41 265,50 270,45 275,54 280,48 285,58 290,52 295,60 300,55"/>
+          </svg>
+          <div class="chart-axis"><span>02:54</span><span>15:01</span><span>17:45</span><span>Now</span></div>
+        </div>
+
+        <!-- tiles -->
+        <div class="tile-grid">
+          <div class="card tile">
+            <div class="tile-label" style="color:var(--blue)"><svg class="ic" style="width:14px;height:14px"><use href="#i-moon"/></svg><span style="color:var(--muted)">Sleep</span></div>
+            <div class="tile-value">85 <span>score</span></div>
+            <div class="tile-sub">Good</div>
+          </div>
+          <div class="card tile">
+            <div class="tile-label" style="color:var(--teal)"><svg class="ic" style="width:14px;height:14px"><use href="#i-hrv"/></svg><span style="color:var(--muted)">HRV</span></div>
+            <div class="tile-value">43 <span>ms</span></div>
+            <div class="tile-sub">Overnight</div>
+          </div>
+          <div class="card tile">
+            <div class="tile-label" style="color:var(--accent)"><svg class="ic" style="width:14px;height:14px"><use href="#i-bolt"/></svg><span style="color:var(--muted)">Active time</span></div>
+            <div class="tile-value">130 <span>min</span></div>
+            <div class="tile-sub">From wellness totals</div>
+          </div>
+          <div class="card tile">
+            <div class="tile-label" style="color:var(--orange)"><svg class="ic" style="width:14px;height:14px"><use href="#i-flame"/></svg><span style="color:var(--muted)">Calories</span></div>
+            <div class="tile-value">655 <span>kcal</span></div>
+            <div class="tile-sub">Active calories</div>
+          </div>
+        </div>
+
+        <!-- coach insight -->
+        <div class="card insight">
+          <div class="eyebrow"><svg class="ic" style="width:14px;height:14px"><use href="#i-spark"/></svg>Coach insight</div>
+          <div class="insight-text">Your resting heart rate is -5 bpm vs your recent</div>
+        </div>
+      </div>
+
+      <nav class="tabbar" aria-label="Primary">
+        <div class="tab active"><svg class="ic"><use href="#i-home"/></svg>Today</div>
+        <div class="tab"><svg class="ic"><use href="#i-heart"/></svg>Health</div>
+        <div class="tab"><svg class="ic"><use href="#i-chart"/></svg>Training</div>
+        <div class="tab"><svg class="ic"><use href="#i-run"/></svg>Activities</div>
+        <div class="tab"><svg class="ic"><use href="#i-spark"/></svg>Coach</div>
+      </nav>
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Today</strong>Steps ring, current heart rate, sleep/HRV tiles and the daily coach insight. <em>Primary tab.</em></figcaption>
+  </figure>
+
+  <!-- ============================================================ HEALTH -->
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Health screen mockup">
+      <div class="statusbar">
+        <span>23:22</span>
+        <div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg>
+          <svg class="sic"><use href="#i-wifi"/></svg>
+          <svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">52</span>
+        </div>
+      </div>
+
+      <div class="screen" style="gap:11px">
+        <div class="title-row">
+          <div>
+            <h2 class="display screen-title">Health</h2>
+            <div class="subtitle">mer 21 ott · from your watch</div>
+          </div>
+          <button class="pill-btn"><svg class="ic" style="width:15px;height:15px"><use href="#i-trends"/></svg>Trends</button>
+        </div>
+
+        <!-- body battery -->
+        <div class="card">
+          <div class="stat-head">
+            <div class="kicker" style="color:var(--teal)"><svg class="ic" style="width:15px;height:15px"><use href="#i-bolt"/></svg><span style="color:var(--muted)">Body Battery</span></div>
+            <div class="muted" style="font-size:11.5px;text-align:right;line-height:1.4">Woke up at<br><b style="color:var(--text);font-size:13px">42</b></div>
+          </div>
+          <div class="stat-line">
+            <span class="big" style="font-size:38px;color:var(--teal)">33</span>
+            <span class="unit">/ 100 · Low</span>
+          </div>
+          <svg viewBox="0 0 300 86" preserveAspectRatio="none" style="display:block;width:100%;height:70px;margin-top:7px" aria-hidden="true">
+            <polygon fill="#5ED6C1" fill-opacity=".13" points="0,70 6,68 6,30 10,28 10,26 16,26 16,30 24,30 24,33 34,33 34,36 46,36 46,39 60,39 60,42 76,42 76,45 94,45 94,48 114,48 114,51 136,51 136,54 160,54 160,57 186,57 186,60 214,60 214,63 242,63 242,66 268,66 268,69 300,69 300,86 0,86"/>
+            <polyline fill="none" stroke="#5ED6C1" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"
+                      points="0,70 6,68 6,30 10,28 10,26 16,26 16,30 24,30 24,33 34,33 34,36 46,36 46,39 60,39 60,42 76,42 76,45 94,45 94,48 114,48 114,51 136,51 136,54 160,54 160,57 186,57 186,60 214,60 214,63 242,63 242,66 268,66 268,69 300,69"/>
+            <circle cx="300" cy="69" r="3" fill="#5ED6C1"/>
+          </svg>
+          <div class="chart-axis"><span>00:01</span><span>19:10</span><span>21:13</span><span>Now</span></div>
+          <div class="three-stats">
+            <div><div class="lbl">Overnight</div><div class="val" style="color:var(--teal)">+3</div></div>
+            <div><div class="lbl">Drained</div><div class="val" style="color:var(--coral)">−62</div></div>
+            <div><div class="lbl">Recharged</div><div class="val" style="color:var(--teal)">+53</div></div>
+          </div>
+        </div>
+
+        <!-- stress -->
+        <div class="card">
+          <div class="kicker"><svg class="ic" style="width:15px;height:15px;color:var(--yellow)"><use href="#i-hrv"/></svg>Stress</div>
+          <div class="stat-line">
+            <span class="big" style="font-size:36px">37</span>
+            <span class="unit">avg · Low (0–100)</span>
+          </div>
+          <div class="seg-bar" aria-hidden="true">
+            <span style="width:46%;background:var(--blue)"></span>
+            <span style="width:26%;background:var(--teal)"></span>
+            <span style="width:17%;background:var(--yellow)"></span>
+            <span style="width:11%;background:var(--coral)"></span>
+          </div>
+          <div class="legend">
+            <span><i style="background:var(--blue)"></i>Rest 44%</span>
+            <span><i style="background:var(--teal)"></i>Low 26%</span>
+            <span><i style="background:var(--yellow)"></i>Medium 17%</span>
+            <span><i style="background:var(--coral)"></i>High 11%</span>
+          </div>
+          <svg viewBox="0 0 300 68" preserveAspectRatio="none" style="display:block;width:100%;height:56px;margin-top:10px" aria-hidden="true">
+            <g fill="#FFD166">
+              <rect x="0"   y="54" width="12" height="6"  rx="2"/>
+              <rect x="18"  y="56" width="12" height="4"  rx="2"/>
+              <rect x="36"  y="55" width="12" height="5"  rx="2"/>
+              <rect x="54"  y="56" width="12" height="4"  rx="2"/>
+              <rect x="72"  y="34" width="12" height="26" rx="2"/>
+              <rect x="90"  y="30" width="12" height="30" rx="2"/>
+              <rect x="108" y="32" width="12" height="28" rx="2"/>
+              <rect x="126" y="30" width="12" height="30" rx="2"/>
+              <rect x="144" y="42" width="12" height="18" rx="2"/>
+              <rect x="162" y="34" width="12" height="26" rx="2"/>
+              <rect x="180" y="55" width="12" height="5"  rx="2"/>
+              <rect x="198" y="56" width="12" height="4"  rx="2"/>
+              <rect x="216" y="44" width="12" height="16" rx="2"/>
+              <rect x="234" y="28" width="12" height="32" rx="2"/>
+              <rect x="252" y="24" width="12" height="36" rx="2"/>
+              <rect x="270" y="50" width="12" height="10" rx="2"/>
+              <rect x="288" y="55" width="12" height="5"  rx="2"/>
+            </g>
+          </svg>
+        </div>
+
+        <!-- sleep -->
+        <div class="card">
+          <div class="kicker"><svg class="ic" style="width:15px;height:15px;color:var(--blue)"><use href="#i-moon"/></svg>Sleep</div>
+          <div style="display:flex;align-items:center;gap:18px;margin-top:8px">
+            <div class="ring" style="width:76px;height:76px">
+              <svg width="76" height="76" viewBox="0 0 76 76" aria-hidden="true">
+                <circle cx="38" cy="38" r="31" fill="none" stroke="#26322D" stroke-width="8"/>
+                <circle cx="38" cy="38" r="31" fill="none" stroke="#8FA8FF" stroke-width="8" stroke-linecap="round"
+                        stroke-dasharray="165.6 194.8" transform="rotate(-90 38 38)"/>
+              </svg>
+              <div class="ring-label"><span class="display" style="font-size:22px">85</span></div>
+            </div>
+            <div>
+              <div class="display" style="font-size:26px">6h 39m</div>
+              <div class="muted" style="font-size:12px;margin-top:3px">Good · 01:05 – 08:14</div>
+            </div>
+          </div>
+          <svg viewBox="0 0 300 64" preserveAspectRatio="none" style="display:block;width:100%;height:64px;margin-top:8px" aria-hidden="true">
+            <g>
+              <rect x="0"   y="54" width="7" height="10" rx="2" fill="#8FA8FF"/>
+              <rect x="10"  y="30" width="7" height="34" rx="2" fill="#8FA8FF"/>
+              <rect x="20"  y="46" width="7" height="18" rx="2" fill="#B39DFF"/>
+              <rect x="30"  y="24" width="7" height="40" rx="2" fill="#8FA8FF"/>
+              <rect x="40"  y="42" width="7" height="22" rx="2" fill="#E879F9"/>
+              <rect x="50"  y="34" width="7" height="30" rx="2" fill="#B39DFF"/>
+              <rect x="60"  y="20" width="7" height="44" rx="2" fill="#8FA8FF"/>
+              <rect x="70"  y="38" width="7" height="26" rx="2" fill="#8FA8FF"/>
+              <rect x="80"  y="44" width="7" height="20" rx="2" fill="#B39DFF"/>
+              <rect x="90"  y="26" width="7" height="38" rx="2" fill="#E879F9"/>
+              <rect x="100" y="40" width="7" height="24" rx="2" fill="#8FA8FF"/>
+              <rect x="110" y="32" width="7" height="32" rx="2" fill="#B39DFF"/>
+              <rect x="120" y="18" width="7" height="46" rx="2" fill="#8FA8FF"/>
+              <rect x="130" y="36" width="7" height="28" rx="2" fill="#8FA8FF"/>
+              <rect x="140" y="46" width="7" height="18" rx="2" fill="#B39DFF"/>
+              <rect x="150" y="28" width="7" height="36" rx="2" fill="#E879F9"/>
+              <rect x="160" y="42" width="7" height="22" rx="2" fill="#8FA8FF"/>
+              <rect x="170" y="34" width="7" height="30" rx="2" fill="#8FA8FF"/>
+              <rect x="180" y="22" width="7" height="42" rx="2" fill="#B39DFF"/>
+              <rect x="190" y="38" width="7" height="26" rx="2" fill="#8FA8FF"/>
+              <rect x="200" y="48" width="7" height="16" rx="2" fill="#B39DFF"/>
+              <rect x="210" y="26" width="7" height="38" rx="2" fill="#8FA8FF"/>
+              <rect x="220" y="44" width="7" height="20" rx="2" fill="#E879F9"/>
+              <rect x="230" y="36" width="7" height="28" rx="2" fill="#8FA8FF"/>
+              <rect x="240" y="24" width="7" height="40" rx="2" fill="#8FA8FF"/>
+              <rect x="250" y="40" width="7" height="24" rx="2" fill="#B39DFF"/>
+              <rect x="260" y="50" width="7" height="14" rx="2" fill="#8FA8FF"/>
+              <rect x="270" y="30" width="7" height="34" rx="2" fill="#8FA8FF"/>
+              <rect x="280" y="46" width="7" height="18" rx="2" fill="#B39DFF"/>
+              <rect x="290" y="38" width="7" height="26" rx="2" fill="#8FA8FF"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <nav class="tabbar" aria-label="Primary">
+        <div class="tab"><svg class="ic"><use href="#i-home"/></svg>Today</div>
+        <div class="tab active"><svg class="ic"><use href="#i-heart"/></svg>Health</div>
+        <div class="tab"><svg class="ic"><use href="#i-chart"/></svg>Training</div>
+        <div class="tab"><svg class="ic"><use href="#i-run"/></svg>Activities</div>
+        <div class="tab"><svg class="ic"><use href="#i-spark"/></svg>Coach</div>
+      </nav>
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Health</strong>Body Battery, stress distribution and sleep staging, all decoded from watch wellness data. <em>Primary tab.</em></figcaption>
+  </figure>
+
+  <!-- ============================================================ TRAINING -->
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Training screen mockup">
+      <div class="statusbar">
+        <span>23:22</span>
+        <div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg>
+          <svg class="sic"><use href="#i-wifi"/></svg>
+          <svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">52</span>
+        </div>
+      </div>
+
+      <div class="screen">
+        <div class="title-row" style="display:block">
+          <h2 class="display screen-title">Training</h2>
+          <div class="subtitle">Readiness, load and performance · from your watch</div>
+        </div>
+
+        <!-- readiness -->
+        <div class="card">
+          <div class="kicker">Training readiness</div>
+          <div style="display:flex;gap:16px;align-items:center;margin-top:9px">
+            <div class="ring" style="width:92px;height:92px">
+              <svg width="92" height="92" viewBox="0 0 92 92" aria-hidden="true">
+                <circle cx="46" cy="46" r="39" fill="none" stroke="#26322D" stroke-width="7"/>
+              </svg>
+              <div class="ring-label">
+                <span class="display" style="font-size:24px;color:var(--muted)">—</span>
+                <span class="muted" style="font-size:10px;margin-top:2px">no score</span>
+              </div>
+            </div>
+            <p style="margin:0;font-size:12.5px;line-height:1.5;color:var(--text)">
+              Sleep and HRV are available. Garmin's readiness model is not exposed in the FIT file,
+              so this app shows the factors instead of inventing a score.
+            </p>
+          </div>
+          <div class="factor-list">
+            <div class="factor"><span class="name"><span class="dot" style="background:var(--yellow)"></span>Recovery time</span><span class="val"><b>21h 45m</b></span></div>
+            <div class="factor"><span class="name"><span class="dot" style="background:var(--teal)"></span>Acute load</span><span class="val"><b>633</b> · Balanced</span></div>
+            <div class="factor"><span class="name"><span class="dot" style="background:var(--teal)"></span>Sleep score</span><span class="val"><b>85</b> · Good</span></div>
+            <div class="factor"><span class="name"><span class="dot" style="background:var(--teal)"></span>HRV status</span><span class="val"><b>43 ms</b> · recorded</span></div>
+            <div class="factor"><span class="name"><span class="dot" style="background:var(--teal)"></span>Stress</span><span class="val"><b>37</b> · Low</span></div>
+            <div class="factor"><span class="name"><span class="dot" style="background:var(--teal)"></span>VO₂ max trend</span><span class="val"><b>−53,0</b> in 6 weeks</span></div>
+          </div>
+        </div>
+
+        <!-- load -->
+        <div class="card">
+          <div class="metric-head">
+            <div class="kicker">Training load</div>
+            <span class="badge badge-lime">Balanced</span>
+          </div>
+          <div style="font-size:13.5px;line-height:1.45;margin-top:7px">Your 7-day load is balanced against your recent weekly average.</div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:8px">
+            <div>
+              <div class="muted" style="font-size:11px">Acute load (7 days)</div>
+              <div class="display" style="font-size:30px;line-height:1.1">633</div>
+            </div>
+            <div style="text-align:right">
+              <div class="muted" style="font-size:11px">4-week weekly avg</div>
+              <div class="display" style="font-size:26px;line-height:1.1">644</div>
+            </div>
+          </div>
+          <div class="slider"><span class="fill"></span><span class="thumb"></span></div>
+          <div class="slider-labels"><span>0</span><span>Balanced 0.8–1.3</span><span>2.0+</span></div>
+          <div class="muted" style="font-size:11px;margin-top:12px">Load focus · last 7 days (from training effect)</div>
+          <div class="load-row">
+            <div class="load-row-top"><span>Low aerobic</span><span><b>450</b> · 71%</span></div>
+            <div class="track"><span style="width:71%;background:var(--teal)"></span></div>
+          </div>
+          <div class="load-row">
+            <div class="load-row-top"><span>High aerobic</span><span><b>183</b> · 29%</span></div>
+            <div class="track"><span style="width:29%;background:var(--accent)"></span></div>
+          </div>
+          <div class="load-row">
+            <div class="load-row-top"><span>Anaerobic</span><span><b>0</b> · 0%</span></div>
+            <div class="track"><span style="width:0%;background:var(--coral)"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <nav class="tabbar" aria-label="Primary">
+        <div class="tab"><svg class="ic"><use href="#i-home"/></svg>Today</div>
+        <div class="tab"><svg class="ic"><use href="#i-heart"/></svg>Health</div>
+        <div class="tab active"><svg class="ic"><use href="#i-chart"/></svg>Training</div>
+        <div class="tab"><svg class="ic"><use href="#i-run"/></svg>Activities</div>
+        <div class="tab"><svg class="ic"><use href="#i-spark"/></svg>Coach</div>
+      </nav>
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Training</strong>Honest readiness factors instead of a fabricated score, plus acute load, load focus and VO₂ max trend. <em>Primary tab.</em></figcaption>
+  </figure>
+
+  <!-- ============================================================ ACTIVITIES -->
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Activities screen mockup">
+      <div class="statusbar">
+        <span>23:57</span>
+        <div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg>
+          <svg class="sic"><use href="#i-wifi"/></svg>
+          <svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">49</span>
+        </div>
+      </div>
+
+      <div class="screen">
+        <div class="title-row" style="display:block">
+          <h2 class="display screen-title">Activities</h2>
+          <div class="subtitle">Recorded on your watch and synced automatically</div>
+        </div>
+
+        <div class="card tight">
+          <div class="muted" style="font-size:12px">Last 7 days</div>
+          <div class="week-strip">
+            <div><div class="lbl">workouts</div><div class="val">11</div></div>
+            <div><div class="lbl">active time</div><div class="val">5h 38m</div></div>
+            <div><div class="lbl">kcal burned</div><div class="val">3.205</div></div>
+          </div>
+        </div>
+
+        <div class="chips">
+          <span class="chip active">All</span>
+          <span class="chip">Run</span>
+          <span class="chip">Ride</span>
+          <span class="chip">Cardio</span>
+          <span class="chip">Strength</span>
+          <span class="chip">W</span>
+        </div>
+
+        <!-- featured -->
+        <div class="card featured">
+          <div class="featured-head">
+            <div>
+              <h3>Cardio</h3>
+              <div class="muted" style="font-size:11.5px;margin-top:2px">mer 21 ott, 20:14 · Cardio session</div>
+            </div>
+            <span class="badge badge-coral">Cardio</span>
+          </div>
+          <div class="featured-body">
+            <div class="spark-box">
+              <svg viewBox="0 0 150 86" preserveAspectRatio="none" style="width:100%;height:86px" aria-hidden="true">
+                <polyline fill="none" stroke="#FFB45E" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"
+                  points="0,66 6,58 12,62 18,42 24,50 30,36 36,46 42,28 48,38 54,50 60,42 66,56 72,38 78,48 84,64 90,56 96,70 102,48 108,42 114,58 120,46 126,62 132,52 138,68 144,58 150,72"/>
+              </svg>
+            </div>
+            <div class="featured-stats">
+              <div class="fs"><div class="lbl">Distance</div><div class="val">0,00 <span>km</span></div></div>
+              <div class="fs"><div class="lbl">Duration</div><div class="val">1:14:09</div></div>
+              <div class="fs"><div class="lbl">Avg HR</div><div class="val" style="color:var(--coral)">143 <span>bpm</span></div></div>
+              <div class="fs"><div class="lbl">Calories</div><div class="val">702 <span>kcal</span></div></div>
+            </div>
+          </div>
+          <div class="zones-label">Time in heart-rate zones</div>
+          <div class="seg-bar" style="margin-top:6px" aria-hidden="true">
+            <span style="width:17%;background:var(--teal)"></span>
+            <span style="width:21%;background:var(--accent)"></span>
+            <span style="width:24%;background:var(--yellow)"></span>
+            <span style="width:38%;background:#FF9F5E"></span>
+          </div>
+          <div class="zone-legend">
+            <span><i style="background:var(--teal)"></i>Z1 17%</span>
+            <span><i style="background:var(--accent)"></i>Z2 21%</span>
+            <span><i style="background:var(--yellow)"></i>Z3 24%</span>
+            <span><i style="background:#FF9F5E"></i>Z4 37%</span>
+            <span><i style="background:var(--coral)"></i>Z5 0%</span>
+          </div>
+        </div>
+
+        <div class="section-label" style="margin-top:2px">Recent activities</div>
+
+        <div class="activity-row selected">
+          <div class="sport-icon" style="color:var(--orange)"><svg class="ic" style="width:22px;height:22px"><use href="#i-run"/></svg></div>
+          <div class="activity-main">
+            <div class="activity-name">Cardio</div>
+            <div class="activity-sub">mer 21 ott, 20:14 · 0,00 km · 1:14…</div>
+          </div>
+          <div class="activity-hr"><div class="val">143</div><div class="lbl">avg bpm</div></div>
+          <div class="chev"><svg class="ic"><use href="#i-chev"/></svg></div>
+        </div>
+
+        <div class="activity-row">
+          <div class="sport-icon" style="color:var(--orange)"><svg class="ic" style="width:22px;height:22px"><use href="#i-run"/></svg></div>
+          <div class="activity-main">
+            <div class="activity-name">Cardio</div>
+            <div class="activity-sub">lun 19 ott, 20:18 · 0,00 km · 1:20…</div>
+          </div>
+          <div class="activity-hr"><div class="val">132</div><div class="lbl">avg bpm</div></div>
+          <div class="chev"><svg class="ic"><use href="#i-chev"/></svg></div>
+        </div>
+
+        <div class="activity-row">
+          <div class="sport-icon" style="color:var(--coral)"><svg class="ic" style="width:22px;height:22px"><use href="#i-run"/></svg></div>
+          <div class="activity-main">
+            <div class="activity-name">Run</div>
+            <div class="activity-sub">dom 18 ott, 18:36 · 6,55 km · 46…</div>
+          </div>
+          <div class="activity-hr"><div class="val">144</div><div class="lbl">avg bpm</div></div>
+          <div class="chev"><svg class="ic"><use href="#i-chev"/></svg></div>
+        </div>
+      </div>
+
+      <nav class="tabbar" aria-label="Primary">
+        <div class="tab"><svg class="ic"><use href="#i-home"/></svg>Today</div>
+        <div class="tab"><svg class="ic"><use href="#i-heart"/></svg>Health</div>
+        <div class="tab"><svg class="ic"><use href="#i-chart"/></svg>Training</div>
+        <div class="tab active"><svg class="ic"><use href="#i-run"/></svg>Activities</div>
+        <div class="tab"><svg class="ic"><use href="#i-spark"/></svg>Coach</div>
+      </nav>
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Activities</strong>Weekly totals, sport filters, featured activity with HR zones, and the synced activity list. <em>Primary tab.</em></figcaption>
+  </figure>
+
+  <!-- ============================================================ COACH -->
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Coach screen mockup">
+      <div class="statusbar">
+        <span>21:40</span>
+        <div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg>
+          <svg class="sic"><use href="#i-wifi"/></svg>
+          <svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">22</span>
+        </div>
+      </div>
+
+      <div class="screen">
+        <div class="coach-head">
+          <div class="coach-mark"><svg class="ic"><use href="#i-spark"/></svg></div>
+          <div>
+            <h2>Coach</h2>
+            <div class="subtitle">AI insights from your watch data</div>
+          </div>
+          <div class="coach-actions">
+            <button class="icon-btn" aria-label="History"><svg class="ic"><use href="#i-clock"/></svg></button>
+            <button class="icon-btn" aria-label="Conversations"><svg class="ic"><use href="#i-history"/></svg></button>
+          </div>
+        </div>
+
+        <div class="status-strip">
+          <span class="dot"></span>
+          <span>Reading steps, heart rate and workouts</span>
+          <span class="manage">Manage</span>
+        </div>
+        <div class="disclaimer">Informational only · not medical advice</div>
+
+        <div class="chat">
+          <div class="chat-avatar"><svg class="ic"><use href="#i-spark"/></svg></div>
+          <div class="bubble">Hi, I'm your coach. I can read the health data stored on this device. Ask me about your steps, heart rate, or workouts.</div>
+        </div>
+
+        <div class="coach-spacer"></div>
+
+        <div class="suggestions">
+          <span class="suggestion">How was my week?</span>
+          <span class="suggestion">Why is my resting HR changing?</span>
+        </div>
+        <div class="composer">
+          <input type="text" placeholder="Ask about your data" aria-label="Ask about your data">
+          <button class="send-btn" aria-label="Send"><svg class="ic"><use href="#i-send"/></svg></button>
+        </div>
+      </div>
+
+      <nav class="tabbar" aria-label="Primary">
+        <div class="tab"><svg class="ic"><use href="#i-home"/></svg>Today</div>
+        <div class="tab"><svg class="ic"><use href="#i-heart"/></svg>Health</div>
+        <div class="tab"><svg class="ic"><use href="#i-chart"/></svg>Training</div>
+        <div class="tab"><svg class="ic"><use href="#i-run"/></svg>Activities</div>
+        <div class="tab active"><svg class="ic"><use href="#i-spark"/></svg>Coach</div>
+      </nav>
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Coach</strong>Streaming chat with typed read-only health tools, suggestions and local conversation history. <em>Primary tab.</em></figcaption>
+  </figure>
+
+  <!-- ============================================================ TRENDS -->
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Trends screen mockup">
+      <div class="statusbar">
+        <span>23:42</span>
+        <div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg>
+          <svg class="sic"><use href="#i-wifi"/></svg>
+          <svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">50</span>
+        </div>
+      </div>
+
+      <div class="screen" style="gap:10px">
+        <div class="focus-head">
+          <button class="icon-btn" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+          <h2 class="display" style="padding-top:6px">Trends</h2>
+        </div>
+
+        <div class="range-chips">
+          <span class="range-chip active">7D</span>
+          <span class="range-chip">30D</span>
+          <span class="range-chip">90D</span>
+          <span class="range-chip">1Y</span>
+          <span class="range-chip">All</span>
+          <span class="range-chip with-icon"><svg class="ic" style="width:13px;height:13px"><use href="#i-calendar"/></svg>Custom</span>
+        </div>
+
+        <div class="trend-meta">15 ott – 21 ott · 7 days</div>
+
+        <div class="chips">
+          <span class="chip active">Steps</span>
+          <span class="chip">Sleep</span>
+          <span class="chip">HRV</span>
+          <span class="chip">Resting HR</span>
+          <span class="chip">Active</span>
+        </div>
+
+        <div class="card" style="padding:14px 16px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+            <div class="kicker">Steps</div>
+            <div class="muted" style="font-size:11px">daily average</div>
+          </div>
+          <div class="display" style="font-size:32px;line-height:1.1;margin-top:3px">3.915 <span class="unit" style="font-size:13px">steps</span></div>
+          <div class="muted" style="font-size:12px;margin-top:4px">23.490 total steps · 6 of 7 days with data</div>
+          <div class="trend-chart">
+            <div class="goal-line"></div>
+            <div class="bars">
+              <div class="bar-col"></div>
+              <div class="bar-col"></div>
+              <div class="bar-col"><span class="bar" style="height:70%;background:rgba(199,242,107,.38)"></span></div>
+              <div class="bar-col"></div>
+              <div class="bar-col"></div>
+              <div class="bar-col"><span class="bar" style="height:38%;background:var(--accent)"></span></div>
+            </div>
+          </div>
+          <div class="day-labels"><span>16 ott</span><span>17 ott</span><span>18 ott</span><span>19 ott</span><span>20 ott</span><span>21 ott</span></div>
+          <div class="chart-note">Dashed line: goal 10.000</div>
+        </div>
+
+        <div class="card" style="padding:14px 16px">
+          <div class="kicker">Averages in this period</div>
+          <div class="summary-grid">
+            <div><div class="lbl">Steps</div><div class="val">3.915 <span>steps</span></div></div>
+            <div><div class="lbl">Sleep</div><div class="val">6h 27m</div></div>
+            <div><div class="lbl">HRV</div><div class="val">36 <span>ms</span></div></div>
+            <div><div class="lbl">Resting HR</div><div class="val">53 <span>bpm</span></div></div>
+            <div><div class="lbl">Active</div><div class="val">48 <span>min</span></div></div>
+            <div><div class="lbl">Calories</div><div class="val">223 <span>kcal</span></div></div>
+            <div><div class="lbl">Stress</div><div class="val">24 <span>/100</span></div></div>
+            <div><div class="lbl">SpO₂</div><div class="val">98 <span>%</span></div></div>
+            <div><div class="lbl">Resp.</div><div class="val">14,3 <span>brpm</span></div></div>
+            <div><div class="lbl">Body Batt.</div><div class="val">32 <span>/100</span></div></div>
+          </div>
+        </div>
+
+        <div class="card tight" style="display:flex;justify-content:space-between;color:var(--muted);font-size:12px;padding:11px 16px">
+          <span>daily history</span><span>6 buckets</span>
+        </div>
+      </div>
+
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Trends</strong>7-day / 30-day / 90-day / 1-year / all-time and custom ranges with honest partial-history labels. <em>Focused screen.</em></figcaption>
+  </figure>
+
+  <!-- ============================================================ ACTIVITY DETAIL -->
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Activity detail screen mockup">
+      <div class="statusbar">
+        <span>00:00</span>
+        <div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg>
+          <svg class="sic"><use href="#i-wifi"/></svg>
+          <svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">49</span>
+        </div>
+      </div>
+
+      <div class="screen">
+        <div class="detail-head">
+          <button class="icon-btn" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+          <div class="detail-title">
+            <h2>Run</h2>
+            <div class="subtitle">dom 18 ott, 18:36 · Run</div>
+          </div>
+          <button class="btn-lime" style="padding:10px 16px;font-size:13px">All data</button>
+        </div>
+
+        <div class="segmented">
+          <div class="segment active">Overview</div>
+          <div class="segment">Stats</div>
+          <div class="segment">Charts</div>
+          <div class="segment">Laps</div>
+        </div>
+
+        <div class="card">
+          <div class="stats-grid">
+            <div class="stat-cell"><div class="lbl">Distance</div><div class="val">6,55 <span>km</span></div></div>
+            <div class="stat-cell"><div class="lbl">Duration</div><div class="val">46:59</div></div>
+            <div class="stat-cell"><div class="lbl">Avg pace</div><div class="val">7:10 <span>/km</span></div></div>
+            <div class="stat-cell"><div class="lbl">Calories</div><div class="val">497 <span>kcal</span></div></div>
+            <div class="stat-cell"><div class="lbl">Avg HR</div><div class="val">144 <span>bpm</span></div></div>
+            <div class="stat-cell"><div class="lbl">Max HR</div><div class="val">170 <span>bpm</span></div></div>
+            <div class="stat-cell"><div class="lbl">Ascent</div><div class="val">8 <span>m</span></div></div>
+            <div class="stat-cell"><div class="lbl">Descent</div><div class="val">12 <span>m</span></div></div>
+            <div class="stat-cell"><div class="lbl">Moving time</div><div class="val">44:22</div></div>
+            <div class="stat-cell"><div class="lbl">Elapsed</div><div class="val">46:59</div></div>
+            <div class="stat-cell"><div class="lbl">Max km/h</div><div class="val">22,0</div></div>
+            <div class="stat-cell"><div class="lbl">Avg cadence</div><div class="val">140 <span>spm</span></div></div>
+          </div>
+        </div>
+
+        <div class="card tight">
+          <div class="track-head">
+            <h3>Track</h3>
+            <button class="icon-btn" style="width:38px;height:38px" aria-label="Expand map"><svg class="ic" style="width:17px;height:17px"><use href="#i-expand"/></svg></button>
+          </div>
+          <div class="map">
+            <svg viewBox="0 0 340 240" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+              <rect width="340" height="240" fill="#E7E3D8"/>
+              <!-- parks -->
+              <path d="M28 16 L118 10 L126 66 L40 82 Z" fill="#D8E2CE"/>
+              <path d="M228 22 L316 16 L322 60 L236 70 Z" fill="#D8E2CE"/>
+              <path d="M244 158 L330 148 L334 206 L250 214 Z" fill="#D8E2CE"/>
+              <!-- minor streets -->
+              <g stroke="#D8D2C3" stroke-width="1.4">
+                <path d="M-10 28 L350 44"/><path d="M-10 62 L350 72"/><path d="M-10 98 L350 96"/>
+                <path d="M-10 132 L350 124"/><path d="M-10 166 L350 158"/><path d="M-10 200 L350 190"/>
+                <path d="M32 -10 L48 250"/><path d="M76 -10 L88 250"/><path d="M122 -10 L126 250"/>
+                <path d="M168 -10 L160 250"/><path d="M214 -10 L198 250"/><path d="M258 -10 L240 250"/>
+                <path d="M300 -10 L286 250"/>
+              </g>
+              <g stroke="#D8D2C3" stroke-width="1.1" opacity=".85">
+                <path d="M0 12 L140 240"/><path d="M40 -10 L210 250"/><path d="M320 0 L150 240"/>
+                <path d="M360 110 L180 250"/><path d="M0 230 L200 0"/>
+              </g>
+              <!-- major roads -->
+              <g stroke="#C9C1AF" stroke-width="3.2" fill="none">
+                <path d="M-10 80 C70 92 130 70 210 88 S300 108 350 92"/>
+                <path d="M104 -10 C110 60 96 120 110 250"/>
+                <path d="M-10 182 C80 168 160 180 240 162 S320 150 350 156"/>
+              </g>
+              <!-- river -->
+              <path d="M-20 222 C50 196 100 212 160 188 S268 136 360 150" stroke="#BFD8E0" stroke-width="34" fill="none" stroke-linecap="round"/>
+              <path d="M-20 222 C50 196 100 212 160 188 S268 136 360 150" stroke="#D3E6EC" stroke-width="20" fill="none" stroke-linecap="round"/>
+              <!-- route -->
+              <path d="M64 50 L74 56 L82 50 L94 66 L102 74 L112 82 L118 100 L130 114 L142 120 L156 132 L170 142 L190 154 L210 168 L232 178 L252 192 L270 200 L292 212"
+                    fill="none" stroke="#4A90E2" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M64 50 L74 56 L82 50 L94 66 L102 74 L112 82 L118 100"
+                    fill="none" stroke="#E53935" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+              <!-- markers -->
+              <circle cx="64" cy="50" r="7" fill="#C7F26B" stroke="#0E1311" stroke-width="3"/>
+              <circle cx="292" cy="212" r="7" fill="#4A90E2" stroke="#0E1311" stroke-width="3"/>
+              <!-- labels -->
+              <text x="70" y="226" font-family="DM Sans, sans-serif" font-size="7" fill="#8A8578">River Thames</text>
+              <text x="246" y="90" font-family="DM Sans, sans-serif" font-size="7" fill="#8A8578">Battersea Park</text>
+            </svg>
+          </div>
+          <div class="attribution">© OpenStreetMap contributors · colours muted in-app</div>
+          <div class="speed-legend"><span>Slow</span><span class="grad"></span><span>Fast</span></div>
+        </div>
+
+        <div class="card te-card">
+          <h3>Training effect</h3>
+          <div class="te-value">Base (aerobic low)</div>
+          <div class="te-scale"><span>Aerobic</span><b>2,4</b></div>
+          <div class="te-bar" aria-hidden="true">
+            <span style="background:#4A5A54"></span>
+            <span style="background:var(--blue)"></span>
+            <span style="background:var(--accent)"></span>
+            <span style="background:var(--orange)"></span>
+            <span style="background:var(--coral)"></span>
+            <span class="te-knob"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Activity detail</strong>Overview, Stats, Charts and Laps tabs, GPS track coloured by speed, training effect and local export. <em>Focused screen.</em></figcaption>
+  </figure>
+
+  <!-- ============================================================ PLAN -->
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Plan screen mockup">
+      <div class="statusbar">
+        <span>19:08</span>
+        <div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg>
+          <svg class="sic"><use href="#i-wifi"/></svg>
+          <svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">68</span>
+        </div>
+      </div>
+
+      <div class="screen">
+        <div class="focus-head">
+          <button class="icon-btn" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+          <div style="padding-top:2px">
+            <h2 class="display">Plan</h2>
+            <div class="subtitle">Build workouts and send them to your watch</div>
+          </div>
+        </div>
+
+        <button class="btn-lime" style="width:100%;height:48px;font-size:15px">New workout</button>
+
+        <div class="section-label">Your workouts</div>
+
+        <div class="plan-row">
+          <div>
+            <div style="display:flex;align-items:center;gap:9px">
+              <h3>Interval session</h3>
+              <span class="badge-sent">Sent</span>
+            </div>
+            <div class="plan-sub">Run · 13 min</div>
+          </div>
+          <div class="actions">
+            <button class="icon-btn" style="width:36px;height:36px;background:transparent;border:none" aria-label="Delete workout"><svg class="ic" style="width:18px;height:18px"><use href="#i-trash"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Plan</strong>Timed, distance and open steps with repeat blocks, scheduling and direct FIT workout upload to the watch. <em>Focused screen.</em></figcaption>
+  </figure>
+
+  <!-- ============================================================ SETTINGS -->
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Settings screen mockup">
+      <div class="statusbar">
+        <span>21:41</span>
+        <div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg>
+          <svg class="sic"><use href="#i-wifi"/></svg>
+          <svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">22</span>
+        </div>
+      </div>
+
+      <div class="screen">
+        <div class="focus-head" style="align-items:center">
+          <button class="icon-btn" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+          <h2 class="display" style="font-size:28px">Settings</h2>
+        </div>
+
+        <div class="section-label">Profile</div>
+        <div class="card settings-card">
+          <div class="setting-row"><span>Daily step goal</span><b>10.000</b></div>
+          <div class="setting-row"><span>Max heart rate</span><b>190 bpm</b></div>
+          <div class="setting-row"><span>Height</span><b>178 cm</b></div>
+          <div class="setting-row"><span>Weight</span><b>72 kg</b></div>
+          <div class="setting-row"><span>Year of birth</span><b>1994</b></div>
+          <div class="setting-row"><span>Biological sex</span><b>Male</b></div>
+          <button class="btn-lime" style="width:100%;margin-top:10px;padding:10px">Save profile</button>
+        </div>
+
+        <div class="section-label">Device &amp; sync</div>
+        <div class="card settings-card">
+          <div class="device-title">Forerunner 255</div>
+          <div class="device-sub">Synced just now</div>
+          <div class="fine" style="margin-top:3px">Last success: dom 18 ott, 21:39</div>
+          <div class="button-wrap">
+            <button class="btn-lime">Sync now</button>
+            <button class="btn-lime">Scan</button>
+            <button class="btn-lime">Disconnect</button>
+            <button class="btn-lime">Show device log</button>
+            <button class="btn-lime">Import FIT file</button>
+          </div>
+          <div class="fine">Recovery: import a FIT file that is no longer exposed by the watch. The file stays on this device.</div>
+        </div>
+
+        <div class="section-label">Data &amp; backup</div>
+        <div class="card settings-card">
+          <div class="fine" style="margin-top:2px">Export every activity, wellness sample and coach conversation to a single backup file. The file stays wherever you save it; nothing is uploaded.</div>
+          <div class="button-wrap">
+            <button class="btn-lime">Export backup</button>
+            <button class="btn-lime">Import backup</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Settings</strong>Profile, device sync, background sync, FIT import, backup/restore and connection diagnostics. <em>Focused screen.</em></figcaption>
+  </figure>
+
+</main>
+
+<footer class="page-footer">
+  Static mockup — generated from the current Compose screens and the screenshots in
+  <code>docs/screenshots/</code>. Fonts are DM Sans and Space Grotesk (SIL Open Font License);
+  map tiles are representative, not live.
+</footer>
+
+</body>
+</html>
