@@ -334,6 +334,7 @@ Important limitations:
 | **Watch battery** | ❌ | not read |
 | **"Synced N min ago"** | ✅ | persisted `lastSyncAt` / `lastSyncStatus` |
 | Weekly/monthly aggregates | ✅ | `WellnessHistory` over accumulated days, with partial-history labels |
+| AI activity analysis | ✅ | cached in `activity_analyses`; generated through the configured provider by WorkManager, automatically for new activities (opt-out) or on demand; notification when ready |
 | AI insight cards | ✅ | deterministic summaries from local data; Ask Coach opens the LLM chat |
 
 ## 6. Auth, networking, and security

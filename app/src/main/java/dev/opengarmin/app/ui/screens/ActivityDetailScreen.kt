@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,8 +28,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Fullscreen
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -60,6 +65,8 @@ import dev.opengarmin.app.coach.GpsSummary
 import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.coach.SportCategory
 import dev.opengarmin.app.coach.categoryForSport
+import dev.opengarmin.app.data.ActivityAnalysisEntity
+import dev.opengarmin.app.data.ActivityAnalysisStatus
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.ActivityExport
 import dev.opengarmin.app.data.ActivityExportFormat
@@ -74,6 +81,8 @@ import dev.opengarmin.app.util.formatPacePerKm
 import dev.opengarmin.app.util.formatDate
 import dev.opengarmin.app.util.formatDistanceKm
 import dev.opengarmin.app.util.formatElapsedTime
+import dev.opengarmin.app.ui.components.AssistantMarkdown
+import dev.opengarmin.app.ui.components.Badge
 import dev.opengarmin.app.ui.components.DividerLine
 import dev.opengarmin.app.ui.components.EmptyState
 import dev.opengarmin.app.ui.components.IconButtonRound
@@ -112,10 +121,13 @@ fun ActivityDetailScreen(
     insights: ActivityInsights?,
     dynamics: RunningDynamicsSummary?,
     gps: GpsSummary?,
+    analysis: ActivityAnalysisEntity?,
+    providerConfigured: Boolean,
     maxHeartRate: Int?,
     fitExportAvailable: Boolean,
     exportStatus: String?,
     exportBusy: Boolean,
+    onGenerateAnalysis: () -> Unit,
     onExport: (ActivityExportFormat, Uri) -> Unit,
     onBack: () -> Unit,
     onExploreData: () -> Unit,
@@ -203,10 +215,13 @@ fun ActivityDetailScreen(
                         maxHeartRate = maxHeartRate,
                         gps = gps,
                         records = records,
+                        analysis = analysis,
+                        analysisProviderConfigured = providerConfigured,
                         fitExportAvailable = fitExportAvailable,
                         gpsAvailable = gpsAvailable,
                         exportStatus = exportStatus,
                         exportBusy = exportBusy,
+                        onGenerateAnalysis = onGenerateAnalysis,
                         onExport = onExport,
                         onOpenSettings = onOpenSettings,
                     )
@@ -286,10 +301,13 @@ private fun ActivityOverview(
     maxHeartRate: Int?,
     gps: GpsSummary?,
     records: List<RecordEntity>,
+    analysis: ActivityAnalysisEntity?,
+    analysisProviderConfigured: Boolean,
     fitExportAvailable: Boolean,
     gpsAvailable: Boolean,
     exportStatus: String?,
     exportBusy: Boolean,
+    onGenerateAnalysis: () -> Unit,
     onExport: (ActivityExportFormat, Uri) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -342,6 +360,13 @@ private fun ActivityOverview(
             }
         }
     }
+
+    ActivityAiAnalysisCard(
+        analysis = analysis,
+        providerConfigured = analysisProviderConfigured,
+        onGenerate = onGenerateAnalysis,
+        onOpenSettings = onOpenSettings,
+    )
 
     if (gps?.available == true) {
         PulseCard(modifier = Modifier.fillMaxWidth()) {
@@ -398,6 +423,175 @@ private fun ActivityOverview(
         exportBusy = exportBusy,
         onExport = onExport,
     )
+}
+
+@Composable
+private fun ActivityAiAnalysisCard(
+    analysis: ActivityAnalysisEntity?,
+    providerConfigured: Boolean,
+    onGenerate: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    val status = analysis?.status
+    val busy = ActivityAnalysisStatus.isBusy(status)
+    val content = analysis?.content?.takeIf { it.isNotBlank() }
+    PulseCard(elevated = true, modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(horizontal = PulseSpacing.lg, vertical = PulseSpacing.xl),
+            verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+            ) {
+                Icon(
+                    Icons.Outlined.AutoAwesome,
+                    contentDescription = null,
+                    tint = PulseColors.Accent,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    "AI analysis",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = PulseColors.Text,
+                )
+                Badge(
+                    text = when {
+                        busy -> "Generating…"
+                        status == ActivityAnalysisStatus.ERROR -> "Needs attention"
+                        content != null -> "Saved on this device"
+                        else -> "Not generated"
+                    },
+                    color = when {
+                        busy -> PulseColors.Teal
+                        status == ActivityAnalysisStatus.ERROR -> PulseColors.Coral
+                        content != null -> PulseColors.Teal
+                        else -> PulseColors.TextMuted
+                    },
+                )
+            }
+            when {
+                content != null -> {
+                    AssistantMarkdown(content, streaming = false)
+                    if (busy) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = PulseColors.Accent,
+                                strokeWidth = 2.dp,
+                            )
+                            Text(
+                                "Regenerating with the latest data…",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = PulseColors.TextMuted,
+                            )
+                        }
+                    }
+                    analysis.error?.takeIf { !busy }?.let { message ->
+                        Text(
+                            message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PulseColors.Coral,
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+                    ) {
+                        Text(
+                            "Generated ${analysis.generatedAt?.let { formatDate(it) } ?: "just now"} · not medical advice",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = PulseColors.TextMuted,
+                        )
+                        if (providerConfigured) {
+                            Row(
+                                modifier = Modifier
+                                    .clickable(enabled = !busy, onClick = onGenerate)
+                                    .padding(vertical = PulseSpacing.sm),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(PulseSpacing.xs),
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Refresh,
+                                    contentDescription = null,
+                                    tint = if (busy) PulseColors.TextMuted else PulseColors.Accent,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                                Text(
+                                    if (analysis.status == ActivityAnalysisStatus.ERROR) "Try again" else "Regenerate",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (busy) PulseColors.TextMuted else PulseColors.Accent,
+                                )
+                            }
+                        }
+                    }
+                    if (!providerConfigured) {
+                        Text(
+                            "Add a provider in Settings to regenerate this analysis.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = PulseColors.TextMuted,
+                        )
+                    }
+                }
+                busy -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = PulseColors.Accent,
+                        strokeWidth = 2.dp,
+                    )
+                    Text(
+                        "Reading this activity…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+                status == ActivityAnalysisStatus.ERROR -> {
+                    Text(
+                        analysis.error ?: "Could not generate an analysis. Try again.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.Coral,
+                    )
+                    PrimaryButton(
+                        text = if (providerConfigured) "Try again" else "Open settings",
+                        onClick = if (providerConfigured) onGenerate else onOpenSettings,
+                    )
+                }
+                else -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+                    ) {
+                        Text(
+                            if (providerConfigured) {
+                                "Get a short coach read of this run: effort, pacing and recovery."
+                            } else {
+                                "Add an AI provider in Settings to generate a coach read of this run."
+                            },
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PulseColors.TextMuted,
+                        )
+                        PrimaryButton(
+                            text = if (providerConfigured) "Generate" else "Open settings",
+                            onClick = if (providerConfigured) onGenerate else onOpenSettings,
+                            leading = if (providerConfigured) Icons.Outlined.AutoAwesome else null,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

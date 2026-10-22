@@ -332,12 +332,36 @@ fun SettingsScreen(
                     )
                 } else {
                     Text(
-                        "Configure any OpenAI-compatible endpoint. The coach is disabled until a base URL and default model exist.",
+                        "Configure any OpenAI-compatible endpoint. The coach and activity analysis stay disabled until a base URL and default model exist.",
                         style = MaterialTheme.typography.bodySmall,
                         color = PulseColors.TextMuted,
                     )
                 }
                 PrimaryButton("Manage provider", onManageProvider)
+                if (provider.isConfigured) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Analyze new activities automatically",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = PulseColors.Text,
+                            )
+                            Text(
+                                "Runs after a sync for recent activities and notifies you when the analysis is ready.",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = PulseColors.TextMuted,
+                            )
+                        }
+                        Switch(
+                            checked = settings.autoActivityAnalysisEnabled,
+                            onCheckedChange = { settings.updateAutoActivityAnalysisEnabled(it) },
+                        )
+                    }
+                }
                 Text(
                     "Health data is sent to the endpoint you configure. Use a local model (Ollama, LM Studio, vLLM) if you want it to stay on your network.",
                     style = MaterialTheme.typography.labelMedium,

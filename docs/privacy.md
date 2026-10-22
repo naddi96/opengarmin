@@ -6,23 +6,30 @@ analytics.
 
 ## What leaves the device
 
-Only when the coach is used:
+Only when the coach or activity analysis is used:
 
-- The chat message you type.
-- The system prompt and recent chat history.
+- **Coach:** the chat message you type, the system prompt and recent chat
+  history.
+- **Coach tools:** compact JSON results from the tools the model calls,
+  including wellness aggregates, workout summaries, running dynamics, and—only
+  when the user asks about a route and the model requests it—up to 60 sampled
+  GPS points. It never sends the full raw record stream. For models without tool
+  calling, a compact 14-day snapshot is sent instead.
+- **Activity analysis:** the activity's date, sport, distance, duration, pace,
+  speed, heart rate, zones, laps, training effect, recovery time and similar
+  session aggregates. The GPS route, coordinates and raw record stream are not
+  sent. Analyses run automatically after a new activity is imported when
+  **Settings → AI provider → Analyze new activities automatically** is on, and
+  manually when you tap **Generate** or **Regenerate** on an activity.
 - The optional profile you save in Settings: max heart rate, height, weight,
   year of birth, biological sex, imported resting heart rate, and training
   limitations. Unset fields and "Prefer not to say" are omitted.
-- The results of the tools the model calls. This is compact JSON: wellness
-  aggregates, workout summaries, running dynamics, and—only when the user asks
-  about a route and the model requests it—up to 60 sampled GPS points. It never
-  sends the full raw record stream. For models without tool calling, a compact
-  14-day snapshot is sent instead.
 - The configured model name and parameters.
 
 These are sent to the **OpenAI-compatible endpoint you configure**. Nothing is
 sent to OpenGarmin/Pulse servers, and no data is sent anywhere if no provider is
-configured.
+configured. Automatic analysis can be turned off without affecting the coach or
+manual generation.
 
 A local model (Ollama, LM Studio, vLLM) keeps the data on your device or LAN.
 The provider screen recommends this and warns when plain HTTP is used.
@@ -58,8 +65,10 @@ screen unless the user changes the system notification privacy setting.
 ## Background sync
 
 - Optional periodic sync runs through Android WorkManager and connects only to
-  the OS-bonded Garmin watch over BLE. It does not use the network or any
-  OpenGarmin/Garmin server.
+  the OS-bonded Garmin watch over BLE. The sync itself does not use the network
+  or any OpenGarmin/Garmin server. If automatic activity analysis is enabled and
+  a provider is configured, a separate WorkManager job sends the compact
+  aggregates described above to that provider after new activities are imported.
 - The worker discards protocol and FIT/health payloads from logs. Only
   high-level lifecycle lines (`BG sync started`/`finished`) are emitted for
   diagnostics.
@@ -75,8 +84,9 @@ screen unless the user changes the system notification privacy setting.
 ## Backups
 
 - **Settings → Data & backup → Export backup** creates a ZIP containing the full
-  local Room database and the coach conversation history. It is written only to
-  the location you choose in the system file picker; the app does not upload it.
+  local Room database (including cached activity analyses) and the coach
+  conversation history. It is written only to the location you choose in the
+  system file picker; the app does not upload it.
 - The ZIP is **not encrypted**. It contains all health data, FIT-derived
   records, and chat text, so treat it like the app's own data and delete old
   copies securely. Provider configuration and API keys are not included.

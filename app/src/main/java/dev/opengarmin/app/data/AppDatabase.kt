@@ -103,6 +103,44 @@ data class LapEntity(
     val descentMeters: Int?,
 )
 
+/**
+ * A locally cached, model-generated read of one activity. The row is also the
+ * queue marker for automatic/manual generation: [status] moves from pending to
+ * generating to ready (or error) while the WorkManager job runs.
+ */
+@Entity(
+    tableName = "activity_analyses",
+    foreignKeys = [
+        ForeignKey(
+            entity = ActivityEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["activityId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
+data class ActivityAnalysisEntity(
+    @PrimaryKey val activityId: Long,
+    val status: String = ActivityAnalysisStatus.PENDING,
+    /** Markdown returned by the provider. Kept while a regeneration is running. */
+    val content: String = "",
+    val model: String = "",
+    /** Unix seconds. */
+    val requestedAt: Long,
+    /** Unix seconds. */
+    val generatedAt: Long? = null,
+    val error: String? = null,
+)
+
+object ActivityAnalysisStatus {
+    const val PENDING = "pending"
+    const val GENERATING = "generating"
+    const val READY = "ready"
+    const val ERROR = "error"
+
+    fun isBusy(status: String?): Boolean = status == PENDING || status == GENERATING
+}
+
 /** Every FIT message/field, for the data explorer and cross-plots. */
 @Entity(
     tableName = "fit_messages",
@@ -382,6 +420,24 @@ interface ActivityDao {
 }
 
 @Dao
+interface ActivityAnalysisDao {
+    @Query("SELECT * FROM activity_analyses")
+    fun observeAll(): Flow<List<ActivityAnalysisEntity>>
+
+    @Query("SELECT * FROM activity_analyses WHERE activityId = :activityId")
+    suspend fun byActivity(activityId: Long): ActivityAnalysisEntity?
+
+    @Query("SELECT * FROM activity_analyses WHERE status IN ('pending', 'generating')")
+    suspend fun unfinished(): List<ActivityAnalysisEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(analysis: ActivityAnalysisEntity)
+
+    @Query("DELETE FROM activity_analyses WHERE activityId = :activityId")
+    suspend fun delete(activityId: Long)
+}
+
+@Dao
 interface PacePlanDao {
     @Query("SELECT * FROM pace_plans ORDER BY updatedAt DESC")
     fun observeAll(): Flow<List<PacePlanEntity>>
@@ -448,6 +504,7 @@ interface WorkoutDao {
         ImportedActivityFileEntity::class,
         PlannedWorkoutEntity::class,
         PacePlanEntity::class,
+        ActivityAnalysisEntity::class,
     ],
     version = AppDatabase.SCHEMA_VERSION,
     exportSchema = false,
@@ -456,10 +513,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun activityDao(): ActivityDao
     abstract fun workoutDao(): WorkoutDao
     abstract fun pacePlanDao(): PacePlanDao
+    abstract fun activityAnalysisDao(): ActivityAnalysisDao
 
     companion object {
         const val DB_NAME = "opengarmin.db"
-        const val SCHEMA_VERSION = 10
+        const val SCHEMA_VERSION = 11
 
         @Volatile
         private var instance: AppDatabase? = null
@@ -676,6 +734,24 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `activity_analyses` (" +
+                        "`activityId` INTEGER NOT NULL, " +
+                        "`status` TEXT NOT NULL, " +
+                        "`content` TEXT NOT NULL, " +
+                        "`model` TEXT NOT NULL, " +
+                        "`requestedAt` INTEGER NOT NULL, " +
+                        "`generatedAt` INTEGER, " +
+                        "`error` TEXT, " +
+                        "PRIMARY KEY(`activityId`), " +
+                        "FOREIGN KEY(`activityId`) REFERENCES `activities`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE)",
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -692,6 +768,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_7_8,
                     MIGRATION_8_9,
                     MIGRATION_9_10,
+                    MIGRATION_10_11,
                 ).build().also { instance = it }
             }
 
@@ -739,8 +816,10 @@ class ActivityRepository(private val database: () -> AppDatabase) {
     private val dao: ActivityDao get() = database().activityDao()
     private val workoutDao: WorkoutDao get() = database().workoutDao()
     private val pacePlanDao: PacePlanDao get() = database().pacePlanDao()
+    private val analysisDao: ActivityAnalysisDao get() = database().activityAnalysisDao()
 
     val activities: Flow<List<ActivityEntity>> get() = dao.observeAll()
+    val activityAnalyses: Flow<List<ActivityAnalysisEntity>> get() = analysisDao.observeAll()
     val wellnessDays: Flow<List<WellnessDayEntity>> get() = dao.observeWellnessDays()
     val plannedWorkouts: Flow<List<PlannedWorkoutEntity>> get() = workoutDao.observeAll()
     val pacePlans: Flow<List<PacePlanEntity>> get() = pacePlanDao.observeAll()
@@ -815,6 +894,65 @@ class ActivityRepository(private val database: () -> AppDatabase) {
     suspend fun trainingRows(): List<TrainingRow> = dao.trainingRows()
 
     suspend fun activity(id: Long): ActivityEntity? = dao.activityById(id)
+
+    suspend fun activityAnalysis(activityId: Long): ActivityAnalysisEntity? =
+        analysisDao.byActivity(activityId)
+
+    suspend fun unfinishedAnalyses(): List<ActivityAnalysisEntity> = analysisDao.unfinished()
+
+    /**
+     * Marks an analysis as queued without discarding a previous result. Returns
+     * false when this is an automatic request and the activity is already ready,
+     * so re-syncs do not spend tokens re-analyzing the same workout.
+     */
+    suspend fun markAnalysisPending(activityId: Long, force: Boolean): Boolean {
+        if (dao.activityById(activityId) == null) return false
+        val existing = analysisDao.byActivity(activityId)
+        if (!force && existing?.status == ActivityAnalysisStatus.READY) return false
+        analysisDao.upsert(
+            (existing ?: ActivityAnalysisEntity(activityId = activityId, requestedAt = nowSeconds()))
+                .copy(
+                    status = ActivityAnalysisStatus.PENDING,
+                    requestedAt = nowSeconds(),
+                    error = null,
+                ),
+        )
+        return true
+    }
+
+    suspend fun markAnalysisGenerating(activityId: Long) {
+        val existing = analysisDao.byActivity(activityId) ?: return
+        analysisDao.upsert(
+            existing.copy(status = ActivityAnalysisStatus.GENERATING, error = null),
+        )
+    }
+
+    suspend fun saveAnalysisReady(activityId: Long, content: String, model: String) {
+        val existing = analysisDao.byActivity(activityId)
+            ?: ActivityAnalysisEntity(activityId = activityId, requestedAt = nowSeconds())
+        analysisDao.upsert(
+            existing.copy(
+                status = ActivityAnalysisStatus.READY,
+                content = content,
+                model = model,
+                generatedAt = nowSeconds(),
+                error = null,
+            ),
+        )
+    }
+
+    suspend fun markAnalysisError(activityId: Long, message: String) {
+        val existing = analysisDao.byActivity(activityId)
+            ?: ActivityAnalysisEntity(activityId = activityId, requestedAt = nowSeconds())
+        analysisDao.upsert(
+            existing.copy(
+                status = ActivityAnalysisStatus.ERROR,
+                error = message.take(500),
+            ),
+        )
+    }
+
+    suspend fun deleteAnalysis(activityId: Long) = analysisDao.delete(activityId)
 
     suspend fun saveWorkout(workout: PlannedWorkoutEntity): PlannedWorkoutEntity {
         val now = System.currentTimeMillis() / 1000

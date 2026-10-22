@@ -37,6 +37,9 @@ class ActivityImporter(
     /** Invoked on the main thread after a sync import so the controller can refresh its notification. */
     var onImportProgress: (() -> Unit)? = null
 
+    /** Invoked after a new activity is stored, for automatic background analysis. */
+    var onActivityImported: ((ActivityEntity) -> Unit)? = null
+
     fun setKnownWellnessUids(uids: Set<String>) {
         knownWellnessUids = uids
     }
@@ -79,6 +82,7 @@ class ActivityImporter(
                         "IMPORTED ${formatDate(entity.startTime)} ${sportName(entity.sport)} " +
                             "%.2f km".format(entity.distanceMeters / 1000.0),
                     )
+                    onActivityImported?.invoke(entity)
                 }
             }.onFailure { e ->
                 ui.importErrorThisSync = e.message ?: "FIT import failed"
@@ -125,6 +129,7 @@ class ActivityImporter(
                     ui.importedThisSync++
                     ui.lastImportedLabel = importedLabel(entity)
                     ui.log("IMPORTED from file: ${entity.fileName}")
+                    onActivityImported?.invoke(entity)
                 }
             }.onFailure { e ->
                 stored?.delete()

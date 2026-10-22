@@ -1,6 +1,7 @@
 package dev.opengarmin.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -14,6 +15,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
+import dev.opengarmin.app.analysis.ActivityAnalysisNotifications
+import dev.opengarmin.app.analysis.ActivityAnalysisScheduler
 import dev.opengarmin.app.coach.ChatStore
 import dev.opengarmin.app.coach.CoachController
 import dev.opengarmin.app.coach.GpsSummary
@@ -23,6 +26,7 @@ import dev.opengarmin.app.coach.RunningDynamicsSummary
 import dev.opengarmin.app.coach.ToolScope
 import dev.opengarmin.app.coach.WorkoutDetail
 import dev.opengarmin.app.coach.tools.ToolRegistry
+import dev.opengarmin.app.data.ActivityAnalysisEntity
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.ActivityExport
 import dev.opengarmin.app.data.ActivityExportException
@@ -74,6 +78,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var uiState: SyncUiState
     private lateinit var importer: ActivityImporter
     private lateinit var syncController: SyncSessionController
+    private lateinit var analysisScheduler: ActivityAnalysisScheduler
     private val dataJobs = mutableListOf<Job>()
 
     private val activities = mutableStateListOf<ActivityEntity>()
@@ -96,6 +101,8 @@ class MainActivity : ComponentActivity() {
     private var backupBusy by mutableStateOf(false)
     private var exportStatus by mutableStateOf<String?>(null)
     private var exportBusy by mutableStateOf(false)
+    private var analyses by mutableStateOf<Map<Long, ActivityAnalysisEntity>>(emptyMap())
+    private var pendingOpenActivityId by mutableStateOf<Long?>(null)
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -111,6 +118,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingOpenActivityId = intent
+            .getLongExtra(ActivityAnalysisNotifications.EXTRA_ACTIVITY_ID, -1L)
+            .takeIf { it > 0L }
 
         Configuration.getInstance().apply {
             userAgentValue = packageName
@@ -132,12 +142,19 @@ class MainActivity : ComponentActivity() {
             settings = settings,
         )
         uiState = SyncUiState()
+        analysisScheduler = ActivityAnalysisScheduler(this, repository, providerStore, settings)
         importer = ActivityImporter(
             context = this,
             repository = repository,
             scope = lifecycleScope,
             ui = uiState,
         )
+        importer.onActivityImported = { activity ->
+            lifecycleScope.launch {
+                runCatching { analysisScheduler.enqueue(activity.id) }
+                    .onFailure { log("ANALYSIS queue failed: ${it.message}") }
+            }
+        }
         syncController = SyncSessionController(
             context = this,
             scope = lifecycleScope,
@@ -163,6 +180,21 @@ class MainActivity : ComponentActivity() {
                 .getOrDefault(known)
             importer.setKnownWellnessUids(known)
             runCatching { repository.backfillDerived(filesDir) }
+            // A process death can leave an analysis queued/reading even though
+            // WorkManager no longer has the job. Re-queue it, or surface an
+            // actionable error when automatic analysis is no longer configured.
+            runCatching { repository.unfinishedAnalyses() }.getOrDefault(emptyList()).forEach { row ->
+                if (providerStore.load().isConfigured) {
+                    runCatching { analysisScheduler.enqueue(row.activityId, force = true) }
+                } else {
+                    runCatching {
+                        repository.markAnalysisError(
+                            row.activityId,
+                            "Analysis was interrupted. Tap Generate to try again.",
+                        )
+                    }
+                }
+            }
         }
 
         setContent {
@@ -186,6 +218,9 @@ class MainActivity : ComponentActivity() {
                     selectedInsights = selectedInsights,
                     selectedDynamics = selectedDynamics,
                     selectedGps = selectedGps,
+                    selectedAnalysis = selectedActivity?.let { analyses[it.id] },
+                    openActivityId = pendingOpenActivityId,
+                    onOpenActivityHandled = { pendingOpenActivityId = null },
                     selectedFitExportAvailable = selectedActivity?.let {
                         File(filesDir, it.fileName).isFile
                     } == true,
@@ -220,6 +255,15 @@ class MainActivity : ComponentActivity() {
                     onExploreData = { openDataExplorer(it) },
                     onCloseData = { closeDataExplorer() },
                     onExportActivity = { activity, format, uri -> exportActivity(activity, format, uri) },
+                    onGenerateAnalysis = { activity ->
+                        ensureNotificationPermission()
+                        lifecycleScope.launch {
+                            val queued = runCatching {
+                                analysisScheduler.enqueue(activity.id, force = true)
+                            }.getOrDefault(false)
+                            if (!queued) log("ANALYSIS not queued: configure an AI provider first")
+                        }
+                    },
                     onImportFit = { uri -> importer.importFitFromUri(uri) },
                     onSaveWorkout = { workout -> saveWorkout(workout) },
                     onDeleteWorkout = { id -> deleteWorkout(id) },
@@ -252,6 +296,14 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingOpenActivityId = intent
+            .getLongExtra(ActivityAnalysisNotifications.EXTRA_ACTIVITY_ID, -1L)
+            .takeIf { it > 0L }
     }
 
     override fun onStart() {
@@ -287,6 +339,11 @@ class MainActivity : ComponentActivity() {
             repository.pacePlans.collect { list ->
                 pacePlans.clear()
                 pacePlans.addAll(list)
+            }
+        }
+        dataJobs += lifecycleScope.launch {
+            repository.activityAnalyses.collect { list ->
+                analyses = list.associateBy { it.activityId }
             }
         }
         dataJobs += lifecycleScope.launch {
@@ -387,6 +444,8 @@ class MainActivity : ComponentActivity() {
             }
             backupBusy = false
             result.onSuccess { imported ->
+                // In-flight analyses belong to the replaced database.
+                runCatching { analysisScheduler.cancelAll() }
                 selectedActivity = null
                 selectedRecords = emptyList()
                 selectedLaps = emptyList()

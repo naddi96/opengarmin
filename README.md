@@ -139,6 +139,11 @@ You can also run the workflow manually from the Actions tab and supply a version
 - Full activity detail with Overview, Stats, Charts and Laps tabs; pace/speed,
   moving time, run/walk detection, heart rate, training effect, power, running
   dynamics, elevation, calories, Body Battery and watch zone breakdowns.
+- **AI analysis** on activity detail: a cached, provider-generated read of the
+  workout with pacing, heart-rate and load notes plus a next-step suggestion.
+  When a provider is configured, new activities are analyzed automatically after
+  a sync and a notification is posted when the result is ready; older or skipped
+  activities offer **Generate** on demand.
 - Interactive, colour-coded charts with pinch-zoom, pan and tap-to-inspect values,
   switchable between time and distance axes.
 - Per-activity export to FIT, GPX, TCX or CSV through the system document picker.
@@ -273,7 +278,10 @@ OpenGarmin is designed around a simple rule: **health data belongs on your devic
 - Watch data, FIT files and derived metrics stay in app-private storage.
 - The coach is optional. When used, your message, recent chat history, compact
   tool results and the optional profile are sent to the endpoint **you** configure.
-  Local models (Ollama, LM Studio, vLLM) keep processing on your device or LAN.
+  Activity analysis is optional too: when enabled, compact workout aggregates
+  (never the GPS route or raw sample stream) and the optional profile are sent to
+  that same endpoint. Local models (Ollama, LM Studio, vLLM) keep processing on
+  your device or LAN.
 - API keys are encrypted at rest with Android Keystore AES-GCM, never returned in
   plaintext to the UI, and never written to logs or chat history.
 - The device log contains protocol lines only; payloads, keys, HTTP bodies and

@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.coach.CoachController
 import dev.opengarmin.app.coach.GpsSummary
 import dev.opengarmin.app.coach.RunningDynamicsSummary
+import dev.opengarmin.app.data.ActivityAnalysisEntity
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.ActivityExportFormat
 import dev.opengarmin.app.data.ActivityInsights
@@ -92,6 +93,9 @@ fun PulseApp(
     selectedInsights: ActivityInsights?,
     selectedDynamics: RunningDynamicsSummary?,
     selectedGps: GpsSummary?,
+    selectedAnalysis: ActivityAnalysisEntity?,
+    openActivityId: Long?,
+    onOpenActivityHandled: () -> Unit,
     selectedFitExportAvailable: Boolean,
     exportStatus: String?,
     exportBusy: Boolean,
@@ -116,6 +120,7 @@ fun PulseApp(
     onExploreData: (ActivityEntity) -> Unit,
     onCloseData: () -> Unit,
     onExportActivity: (ActivityEntity, ActivityExportFormat, android.net.Uri) -> Unit,
+    onGenerateAnalysis: (ActivityEntity) -> Unit,
     onImportFit: (android.net.Uri) -> Unit,
     onSaveWorkout: (PlannedWorkoutEntity) -> Unit,
     onDeleteWorkout: (Long) -> Unit,
@@ -142,6 +147,22 @@ fun PulseApp(
     val detailActivity = activities.firstOrNull { it.id == detailId }
     val dataTarget = activities.firstOrNull { it.id == dataId } ?: dataActivity ?: detailActivity
     val provider: ProviderConfig = remember(providerVersion, route) { providerStore.load() }
+
+    LaunchedEffect(openActivityId, activities) {
+        val id = openActivityId ?: return@LaunchedEffect
+        val activity = activities.firstOrNull { it.id == id }
+        when {
+            activity != null -> {
+                onSelectActivity(activity)
+                detailId = activity.id
+                routeName = AppRoute.Detail.name
+                onOpenActivityHandled()
+            }
+            // Wait for the database flow on a cold start. Once the list is
+            // present and the activity is gone, drop the stale notification.
+            activities.isNotEmpty() -> onOpenActivityHandled()
+        }
+    }
 
     fun openSettings() {
         routeName = AppRoute.Settings.name
@@ -333,10 +354,13 @@ fun PulseApp(
                         insights = selectedInsights,
                         dynamics = selectedDynamics,
                         gps = selectedGps,
+                        analysis = selectedAnalysis,
+                        providerConfigured = provider.isConfigured,
                         maxHeartRate = settings.maxHeartRate,
                         fitExportAvailable = selectedFitExportAvailable,
                         exportStatus = exportStatus,
                         exportBusy = exportBusy,
+                        onGenerateAnalysis = { onGenerateAnalysis(detailActivity) },
                         onExport = { format, uri -> onExportActivity(detailActivity, format, uri) },
                         onBack = {
                             onClearSelection()

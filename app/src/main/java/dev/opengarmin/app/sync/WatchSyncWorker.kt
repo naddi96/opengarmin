@@ -11,10 +11,12 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import dev.opengarmin.app.analysis.ActivityAnalysisScheduler
 import dev.opengarmin.app.ble.GarminBleClient
 import dev.opengarmin.app.data.ActivityRepository
 import dev.opengarmin.app.data.AppDatabase
 import dev.opengarmin.app.data.WellnessFileTypes
+import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -337,6 +339,13 @@ class WatchSyncWorker(
         private val onStatus: (ForegroundState) -> Unit,
     ) {
         private val repository = ActivityRepository { AppDatabase.get(context) }
+        private val settings = PulseSettings(context)
+        private val analysisScheduler = ActivityAnalysisScheduler(
+            context = context,
+            repository = repository,
+            providerStore = ProviderStore(context),
+            settings = settings,
+        )
         private val filesDir = context.filesDir
         private val knownActivities: MutableSet<String> = ConcurrentHashMap.newKeySet()
         private val knownWellness: MutableSet<String> = ConcurrentHashMap.newKeySet()
@@ -459,7 +468,10 @@ class WatchSyncWorker(
                 runCatching {
                     repository.importFit(decoded.name, decoded.readBytes(), itemUid)
                 }.onSuccess { entity ->
-                    if (entity != null) importedActivities.incrementAndGet()
+                    if (entity != null) {
+                        importedActivities.incrementAndGet()
+                        runCatching { analysisScheduler.enqueue(entity.id) }
+                    }
                 }.onFailure { error ->
                     importError.compareAndSet(null, error.message ?: "FIT import failed")
                 }

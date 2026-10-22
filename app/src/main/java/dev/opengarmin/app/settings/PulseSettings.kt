@@ -53,6 +53,10 @@ class PulseSettings(context: Context) {
         private set
     var watchName by mutableStateOf(prefs.getString(KEY_WATCH_NAME, "") ?: "")
         private set
+    var autoActivityAnalysisEnabled by mutableStateOf(
+        prefs.getBoolean(KEY_AUTO_ANALYSIS, true),
+    )
+        private set
     var periodicSyncEnabled by mutableStateOf(
         prefs.getBoolean(KEY_PERIODIC_ENABLED, dev.opengarmin.app.sync.SyncPolicy.DEFAULT_ENABLED),
     )
@@ -111,12 +115,18 @@ class PulseSettings(context: Context) {
             KEY_LAST_DURATION -> lastSyncDurationMs = prefs.getLong(KEY_LAST_DURATION, 0L).takeIf { it > 0L }
             KEY_LAST_TRIGGER -> lastSyncTrigger = prefs.getString(KEY_LAST_TRIGGER, "") ?: ""
             KEY_LAST_KIND -> lastSyncKind = prefs.getString(KEY_LAST_KIND, "") ?: ""
+            KEY_AUTO_ANALYSIS -> autoActivityAnalysisEnabled = prefs.getBoolean(KEY_AUTO_ANALYSIS, true)
             KEY_PERIODIC_ENABLED -> periodicSyncEnabled = prefs.getBoolean(KEY_PERIODIC_ENABLED, false)
             KEY_PERIODIC_INTERVAL -> periodicSyncIntervalMinutes = dev.opengarmin.app.sync.SyncPolicy.normalizeInterval(
                 prefs.getInt(KEY_PERIODIC_INTERVAL, dev.opengarmin.app.sync.SyncPolicy.DEFAULT_INTERVAL_MINUTES),
             )
             KEY_PERIODIC_CHARGING_ONLY -> periodicSyncChargingOnly = prefs.getBoolean(KEY_PERIODIC_CHARGING_ONLY, false)
         }
+    }
+
+    fun updateAutoActivityAnalysisEnabled(value: Boolean) {
+        autoActivityAnalysisEnabled = value
+        prefs.edit().putBoolean(KEY_AUTO_ANALYSIS, value).apply()
     }
 
     fun updatePeriodicSyncEnabled(value: Boolean) {
@@ -295,6 +305,7 @@ class PulseSettings(context: Context) {
         private const val KEY_LAST_STATUS = "last_sync_status"
         private const val KEY_LAST_ERROR = "last_sync_error"
         private const val KEY_WATCH_NAME = "watch_name"
+        private const val KEY_AUTO_ANALYSIS = "auto_activity_analysis"
         private const val KEY_PERIODIC_ENABLED = "periodic_sync_enabled"
         private const val KEY_PERIODIC_INTERVAL = "periodic_sync_interval"
         private const val KEY_PERIODIC_CHARGING_ONLY = "periodic_sync_charging_only"
