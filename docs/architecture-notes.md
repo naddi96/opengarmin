@@ -290,9 +290,12 @@ files (FR255: `FIT_TYPE_29/32`, `FIT_TYPE_41`). The app pulls them and parses
 `monitoring`, `monitoring_hr_data`, `stress_level` (including Body Battery field
 3), `spo2_data`, `respiration_rate`, and `hrv_value`. Any non-activity file of
 type `FIT_TYPE_49` (SLEEP_DATA) or `FIT_TYPE_44` (BIOMETRIC) found in the item
-list is pulled too, and `sleep_level`, `sleep_assessment`, `hrv_status_summary`,
-and Firstbeat `fbt_lha_daily_data` are parsed into the daily row and
-`sleep_stages`. Already-imported wellness UIDs are recorded in
+list is pulled too, and `sleep_level`, `sleep_assessment`, `event` (sleep
+start/stop), `hrv_status_summary`, and Firstbeat `fbt_lha_daily_data` are
+parsed into the daily row and `sleep_stages`. A `sleep_level` timestamp marks
+the *end* of the stage it names; the sleep event pair supplies the in-bed
+window, so stage totals match the watch instead of shifting every label by one
+interval. Already-imported wellness UIDs are recorded in
 `imported_wellness_files` so normal syncs stay incremental.
 
 Monitoring days use the watch's `local_timestamp` wall clock when present (the

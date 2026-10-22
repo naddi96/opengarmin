@@ -72,6 +72,13 @@ data class WellnessDayDraft(
 
 object WellnessParser {
 
+    /** FIT event value the watch writes at the start and end of a sleep session. */
+    private const val SLEEP_EVENT = 74
+
+    /** FIT event_type values: 0 = start, 1 = stop. */
+    private const val EVENT_START = 0
+    private const val EVENT_STOP = 1
+
     private enum class Stage(val label: String) {
         Unmeasurable("unmeasurable"),
         Awake("awake"),
@@ -84,7 +91,7 @@ object WellnessParser {
         if (messages.isEmpty()) return emptyList()
         val raw = collectRawWellness(messages, zone) ?: return emptyList()
         val monitoring = aggregateMonitoring(raw.monitoringByDate)
-        val sleep = buildSleepSessions(raw.sleepTransitions, raw.sleepAssessments, zone)
+        val sleep = buildSleepSessions(raw.sleepTransitions, raw.sleepAssessments, raw.sleepEvents, zone)
         return buildDailyDrafts(raw, monitoring, sleep)
     }
 
@@ -99,6 +106,7 @@ object WellnessParser {
         val lhaByDate: Map<String, Fit.Message>,
         val sleepTransitions: List<Pair<Long, Stage>>,
         val sleepAssessments: List<Pair<Long, Int?>>,
+        val sleepEvents: List<Pair<Long, Int>>,
     )
 
     private fun collectRawWellness(messages: List<Fit.Message>, zone: ZoneId): RawWellness? {
@@ -118,6 +126,7 @@ object WellnessParser {
         val lhaByDate = HashMap<String, Fit.Message>()
         val sleepTransitions = ArrayList<Pair<Long, Stage>>()
         val sleepAssessments = ArrayList<Pair<Long, Int?>>()
+        val sleepEvents = ArrayList<Pair<Long, Int>>()
 
         var referenceTimestamp = ordered.firstOrNull { it.timestamp != null }?.timestamp ?: fallbackTimestamp
         for (message in ordered) {
@@ -207,6 +216,18 @@ object WellnessParser {
                         ?: int(message, "sleep_quality_score")
                     sleepAssessments.add(timestamp to score)
                 }
+
+                // Sleep files bracket the session with event(start) and
+                // event(stop). They give the real in-bed window, which the
+                // stage messages alone do not (the first stage message marks
+                // the end of the first stage, not its start).
+                "event" -> {
+                    if (int(message, "event") == SLEEP_EVENT) {
+                        int(message, "event_type")?.let { type ->
+                            sleepEvents.add(messageTimestamp(message, referenceTimestamp) to type)
+                        }
+                    }
+                }
             }
         }
 
@@ -220,6 +241,7 @@ object WellnessParser {
             lhaByDate = lhaByDate,
             sleepTransitions = sleepTransitions,
             sleepAssessments = sleepAssessments,
+            sleepEvents = sleepEvents,
         )
     }
 
@@ -382,10 +404,18 @@ object WellnessParser {
      * start before midnight, so sessions are split on a >6 h gap and then
      * dated by their end. The longest session wins when a day has both a nap
      * and a night.
+     *
+     * Each `sleep_level` message marks the *end* of the stage it names: the
+     * last message is written at wake-up, and the first one closes the short
+     * stage that starts when the watch detects sleep. Reading the timestamp as
+     * a stage start shifts every label by one interval, turning short
+     * awakenings into long ones and undercounting total sleep. The real
+     * in-bed boundaries come from the sleep event messages.
      */
     private fun buildSleepSessions(
         transitions: List<Pair<Long, Stage>>,
         assessments: List<Pair<Long, Int?>>,
+        events: List<Pair<Long, Int>>,
         zone: ZoneId,
     ): Map<String, SleepDraft> {
         if (transitions.isEmpty()) return emptyMap()
@@ -405,15 +435,26 @@ object WellnessParser {
 
         val byDate = HashMap<String, SleepDraft>()
         for (session in sessions) {
+            val first = session.first().first
             val last = session.last().first
             val assessment = assessments
-                .filter { it.first in session.first().first..(last + 3 * 3600L) }
+                .filter { it.first in first..(last + 3 * 3600L) }
                 .minByOrNull { kotlin.math.abs(it.first - last) }
-            val end = assessment?.first?.takeIf { it >= last } ?: last
-            val date = dateOf(end, zone)
+            val sessionStart = events
+                .filter { it.second == EVENT_START && it.first <= first }
+                .maxByOrNull { it.first }
+                ?.first
+            val sessionEnd = events
+                .filter { it.second == EVENT_STOP && it.first >= last }
+                .minByOrNull { it.first }
+                ?.first
+                ?: assessment?.first?.takeIf { it >= last }
+                ?: last
+            val date = dateOf(sessionEnd, zone)
             val candidate = SleepDraft().apply {
                 for (transition in session) this.transitions.add(transition)
-                assessmentTimestamp = assessment?.first
+                start = sessionStart
+                end = sessionEnd
                 score = assessment?.second
             }
             val existing = byDate[date]
@@ -426,44 +467,59 @@ object WellnessParser {
 
     private class SleepDraft {
         val transitions = ArrayList<Pair<Long, Stage>>()
-        var assessmentTimestamp: Long? = null
+        var start: Long? = null
+        var end: Long? = null
         var score: Int? = null
 
         fun duration(): Long =
-            (transitions.lastOrNull()?.first ?: 0L) - (transitions.firstOrNull()?.first ?: 0L)
+            (end ?: transitions.lastOrNull()?.first ?: 0L) -
+                (start ?: transitions.firstOrNull()?.first ?: 0L)
 
         fun resolve(samples: List<WellnessSampleDraft>): ResolvedSleep? {
             if (transitions.isEmpty()) return null
             transitions.sortBy { it.first }
-            val start = transitions.first().first
-            val end = assessmentTimestamp
-                ?: transitions.last().first
-            val resolvedEnd = maxOf(end, transitions.last().first)
+            val firstTransition = transitions.first().first
+            val lastTransition = transitions.last().first
+            val sessionStart = minOf(start ?: firstTransition, firstTransition)
+            val sessionEnd = maxOf(end ?: lastTransition, lastTransition)
             val stages = ArrayList<SleepStageDraft>()
             var deep = 0
             var light = 0
             var rem = 0
             var awake = 0
-            transitions.forEachIndexed { index, (timestamp, stage) ->
-                val next = transitions.getOrNull(index + 1)?.first ?: resolvedEnd
-                val duration = (next - timestamp).coerceAtLeast(0).toInt()
-                if (duration <= 0) return@forEachIndexed
-                stages.add(SleepStageDraft(timestamp, next, stage.label))
-                when (stage) {
-                    Stage.Deep -> deep += duration
-                    Stage.Light -> light += duration
-                    Stage.Rem -> rem += duration
-                    Stage.Awake -> awake += duration
-                    Stage.Unmeasurable -> Unit
+            var cursor = sessionStart
+            for ((timestamp, stage) in transitions) {
+                val stageEnd = timestamp.coerceAtLeast(cursor)
+                val duration = (stageEnd - cursor).toInt()
+                if (duration > 0) {
+                    stages.add(SleepStageDraft(cursor, stageEnd, stage.label))
+                    when (stage) {
+                        Stage.Deep -> deep += duration
+                        Stage.Light -> light += duration
+                        Stage.Rem -> rem += duration
+                        Stage.Awake -> awake += duration
+                        Stage.Unmeasurable -> Unit
+                    }
                 }
+                cursor = stageEnd
+            }
+            // Time between the last transition and the stop event is awake.
+            // The watch normally writes the final transition at wake-up, so
+            // this tail is usually empty.
+            if (sessionEnd > cursor) {
+                val duration = (sessionEnd - cursor).toInt()
+                stages.add(SleepStageDraft(cursor, sessionEnd, Stage.Awake.label))
+                awake += duration
             }
             if (stages.isEmpty()) return null
-            val inSleep = samples.filter { it.timestamp in start..resolvedEnd }
+            val resolvedStart = stages.first().startTime
+            val resolvedEnd = stages.last().endTime
+            val inSleep = samples.filter { it.timestamp in resolvedStart..resolvedEnd }
             val spo2 = inSleep.filter { it.kind == "spo2" }.map { it.value.roundToInt() }
             val respiration = inSleep.filter { it.kind == "respiration" }.map { it.value }
             val hr = inSleep.filter { it.kind == "hr" }.map { it.value.roundToInt() }
             return ResolvedSleep(
-                start = start,
+                start = resolvedStart,
                 end = resolvedEnd,
                 score = score,
                 quality = sleepQuality(score),

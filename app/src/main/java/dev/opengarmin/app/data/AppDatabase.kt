@@ -1317,10 +1317,10 @@ class ActivityRepository(private val database: () -> AppDatabase) {
         } ?: return
         val known = dao.importedWellnessFileIds().toHashSet()
         for (file in files) {
-            // v2 re-parses once after adding Firstbeat rMSSD/sleep fields, so
-            // users upgrading at least once get historical HRV from files that
-            // were already marked as imported by the previous parser.
-            val key = "file-v2:${file.name}"
+            // v3 re-parses once after fixing the sleep-level interval
+            // semantics, so users upgrading at least once get corrected sleep
+            // totals from files that were already marked as imported.
+            val key = "file-v3:${file.name}"
             if (key in known) continue
             val bytes = runCatching { file.readBytes() }.getOrNull() ?: continue
             val parsed = runCatching { Fit.parse(bytes) }.getOrNull() ?: continue
@@ -1329,7 +1329,7 @@ class ActivityRepository(private val database: () -> AppDatabase) {
                 continue
             }
             val days = runCatching { importWellness(bytes) }.getOrDefault(emptyList())
-            if (days.isNotEmpty()) markWellnessFileImported(key, "backfill-v2")
+            if (days.isNotEmpty()) markWellnessFileImported(key, "backfill-v3")
         }
     }
 

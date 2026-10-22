@@ -58,10 +58,17 @@ class WellnessParserTest {
     @Test
     fun `assigns overnight sleep and hrv to the wake date`() {
         val messages = listOf(
-            sleep(epoch(2026, 10, 17, 23, 20), 3),
-            sleep(epoch(2026, 10, 18, 0, 0), 2),
-            sleep(epoch(2026, 10, 18, 3, 0), 4),
-            sleep(epoch(2026, 10, 18, 6, 50), 1),
+            sleepEvent(epoch(2026, 10, 17, 23, 20), 0),
+            sleep(epoch(2026, 10, 17, 23, 50), 3),
+            sleep(epoch(2026, 10, 18, 0, 20), 2),
+            sleep(epoch(2026, 10, 18, 1, 0), 4),
+            sleep(epoch(2026, 10, 18, 3, 0), 2),
+            sleep(epoch(2026, 10, 18, 3, 40), 3),
+            sleep(epoch(2026, 10, 18, 4, 10), 4),
+            sleep(epoch(2026, 10, 18, 4, 15), 1),
+            sleep(epoch(2026, 10, 18, 5, 0), 2),
+            sleep(epoch(2026, 10, 18, 6, 50), 4),
+            sleepEvent(epoch(2026, 10, 18, 6, 54), 1),
             message(
                 "sleep_assessment",
                 epoch(2026, 10, 18, 6, 54),
@@ -85,15 +92,50 @@ class WellnessParserTest {
         assertEquals(epoch(2026, 10, 18, 6, 54), day.sleepEnd)
         assertEquals(82, day.sleepScore)
         assertEquals("Good", day.sleepQuality)
-        assertEquals(40 * 60, day.deepSleepSeconds)
-        assertEquals(3 * 3600, day.lightSleepSeconds)
-        assertEquals(3 * 3600 + 50 * 60, day.remSleepSeconds)
-        assertEquals(4 * 60, day.awakeSleepSeconds)
+        assertEquals((30 + 40) * 60, day.deepSleepSeconds)
+        assertEquals((30 + 120 + 45) * 60, day.lightSleepSeconds)
+        assertEquals((40 + 30 + 110) * 60, day.remSleepSeconds)
+        assertEquals((5 + 4) * 60, day.awakeSleepSeconds)
         assertEquals(48.0, day.hrvLastNight!!, 0.01)
         assertEquals(49.0, day.hrvWeeklyAvg!!, 0.01)
         assertEquals("Balanced", day.hrvStatus)
-        assertEquals(4, day.sleepStages.size)
+        assertEquals(10, day.sleepStages.size)
         assertNotNull(day.sleepStages.firstOrNull { it.stage == "deep" })
+    }
+
+    @Test
+    fun `sleep level messages mark stage ends so short awakenings stay short`() {
+        // Pattern written by an FR255: the first stage starts at the sleep
+        // event, and every level message closes the interval it names. The
+        // old start-based parse shifted all labels and reported ~4h18m asleep
+        // with 1h09m awake; the watch showed 5h15m asleep.
+        val messages = listOf(
+            sleepEvent(epoch(2026, 10, 22, 0, 38), 0),
+            sleep(epoch(2026, 10, 22, 0, 41), 2),
+            sleep(epoch(2026, 10, 22, 1, 21), 3),
+            sleep(epoch(2026, 10, 22, 1, 22), 1),
+            sleep(epoch(2026, 10, 22, 1, 39), 2),
+            sleep(epoch(2026, 10, 22, 1, 50), 3),
+            sleep(epoch(2026, 10, 22, 2, 27), 2),
+            sleep(epoch(2026, 10, 22, 2, 28), 1),
+            sleep(epoch(2026, 10, 22, 3, 9), 2),
+            sleep(epoch(2026, 10, 22, 3, 21), 3),
+            sleep(epoch(2026, 10, 22, 4, 4), 2),
+            sleep(epoch(2026, 10, 22, 4, 17), 1),
+            sleep(epoch(2026, 10, 22, 4, 53), 2),
+            sleep(epoch(2026, 10, 22, 5, 2), 4),
+            sleep(epoch(2026, 10, 22, 5, 47), 2),
+            sleep(epoch(2026, 10, 22, 6, 8), 4),
+            sleepEvent(epoch(2026, 10, 22, 6, 8), 1),
+        )
+
+        val day = WellnessParser.parse(messages, zone).single()
+
+        assertEquals("2026-10-22", day.date)
+        assertEquals(epoch(2026, 10, 22, 0, 38), day.sleepStart)
+        assertEquals(epoch(2026, 10, 22, 6, 8), day.sleepEnd)
+        assertEquals(15 * 60, day.awakeSleepSeconds)
+        assertEquals(5 * 3600 + 15 * 60, day.deepSleepSeconds!! + day.lightSleepSeconds!! + day.remSleepSeconds!!)
     }
 
     @Test
@@ -216,6 +258,14 @@ class WellnessParserTest {
 
     private fun sleep(timestamp: Long, stage: Int) =
         message("sleep_level", timestamp, field(0, "sleep_level", stage))
+
+    private fun sleepEvent(timestamp: Long, type: Int) =
+        message(
+            "event",
+            timestamp,
+            field(0, "event", 74),
+            field(1, "event_type", type),
+        )
 
     private fun message(name: String, timestamp: Long, vararg fields: Fit.FieldValue) =
         Fit.Message(0, name, timestamp, fields.toList())
