@@ -42,6 +42,8 @@ import dev.opengarmin.app.data.PlannedWorkoutEntity
 import dev.opengarmin.app.data.RecordEntity
 import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessSampleEntity
+import dev.opengarmin.app.diagnostics.AppEvent
+import dev.opengarmin.app.diagnostics.Diagnostics
 import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivityImporter
@@ -103,6 +105,9 @@ class MainActivity : ComponentActivity() {
     private var exportBusy by mutableStateOf(false)
     private var analyses by mutableStateOf<Map<Long, ActivityAnalysisEntity>>(emptyMap())
     private var pendingOpenActivityId by mutableStateOf<Long?>(null)
+    private val diagnosticEvents = mutableStateListOf<AppEvent>()
+    private var diagnosticsLoading by mutableStateOf(false)
+    private var diagnosticsStatus by mutableStateOf<String?>(null)
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -152,7 +157,16 @@ class MainActivity : ComponentActivity() {
         importer.onActivityImported = { activity ->
             lifecycleScope.launch {
                 runCatching { analysisScheduler.enqueue(activity.id) }
-                    .onFailure { log("ANALYSIS queue failed: ${it.message}") }
+                    .onFailure {
+                        Diagnostics.record(
+                            area = Diagnostics.AREA_ANALYSIS,
+                            code = "QUEUE_FAILED",
+                            message = it.message ?: "Could not queue the activity analysis.",
+                            throwable = it,
+                            context = mapOf("activityId" to activity.id.toString()),
+                        )
+                        log("ANALYSIS queue failed: ${it.message}")
+                    }
             }
         }
         syncController = SyncSessionController(
@@ -277,6 +291,12 @@ class MainActivity : ComponentActivity() {
                     backupBusy = backupBusy,
                     onExportBackup = { uri -> exportBackup(uri) },
                     onImportBackup = { uri -> importBackup(uri) },
+                    diagnosticEvents = diagnosticEvents,
+                    diagnosticsLoading = diagnosticsLoading,
+                    diagnosticsStatus = diagnosticsStatus,
+                    onLoadDiagnostics = { loadDiagnostics() },
+                    onClearDiagnostics = { clearDiagnostics() },
+                    onExportDiagnostics = { uri -> exportDiagnostics(uri) },
                     onBackgroundSyncChanged = {
                         runCatching {
                             SyncScheduler.apply(this, settings, replaceSchedule = true)
@@ -400,6 +420,16 @@ class MainActivity : ComponentActivity() {
             exportStatus = result.fold(
                 onSuccess = { name -> "Exported $name. Nothing was uploaded." },
                 onFailure = { error ->
+                    Diagnostics.record(
+                        area = Diagnostics.AREA_EXPORT,
+                        code = "ACTIVITY_EXPORT_FAILED",
+                        message = error.message ?: "Activity export failed.",
+                        throwable = error,
+                        context = mapOf(
+                            "activityId" to activity.id.toString(),
+                            "format" to format.name,
+                        ),
+                    )
                     // The picker has already created the destination document;
                     // remove the empty/partial file so a failed export does not
                     // leave a misleading artifact behind.
@@ -424,6 +454,14 @@ class MainActivity : ComponentActivity() {
                 onSuccess = { "Backup saved. It contains the database and coach conversations." },
                 onFailure = { it.message ?: "Could not create the backup." },
             )
+            result.onFailure { error ->
+                Diagnostics.record(
+                    area = Diagnostics.AREA_BACKUP,
+                    code = "BACKUP_EXPORT_FAILED",
+                    message = error.message ?: "Could not create the backup.",
+                    throwable = error,
+                )
+            }
             log("BACKUP export: ${result.fold({ "ok" }, { it.message ?: "failed" })}")
         }
     }
@@ -473,6 +511,12 @@ class MainActivity : ComponentActivity() {
             }.onFailure { error ->
                 observeDatabase()
                 backupStatus = error.message ?: "Could not restore the backup."
+                Diagnostics.record(
+                    area = Diagnostics.AREA_BACKUP,
+                    code = "BACKUP_IMPORT_FAILED",
+                    message = error.message ?: "Could not restore the backup.",
+                    throwable = error,
+                )
                 log("BACKUP restore failed: ${error.message}")
             }
         }
@@ -577,6 +621,55 @@ class MainActivity : ComponentActivity() {
         } else {
             arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION)
         }
+
+    private fun loadDiagnostics() {
+        diagnosticsLoading = true
+        diagnosticsStatus = null
+        lifecycleScope.launch {
+            val rows = withContext(Dispatchers.IO) { Diagnostics.events(limit = 500) }
+            diagnosticEvents.clear()
+            diagnosticEvents.addAll(rows)
+            diagnosticsLoading = false
+        }
+    }
+
+    private fun clearDiagnostics() {
+        diagnosticsStatus = "Clearing…"
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) { Diagnostics.clear() }
+            loadDiagnostics()
+            diagnosticsStatus = "Diagnostics cleared."
+        }
+    }
+
+    private fun exportDiagnostics(uri: Uri) {
+        diagnosticsStatus = "Exporting…"
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val json = Diagnostics.exportJson()
+                        ?: error("The diagnostics store is unavailable.")
+                    contentResolver.openOutputStream(uri)?.use { output ->
+                        output.write(json.toByteArray(Charsets.UTF_8))
+                    } ?: error("Could not open the selected location for writing.")
+                }
+            }
+            diagnosticsStatus = result.fold(
+                onSuccess = { "Diagnostics exported. Nothing was uploaded." },
+                onFailure = { error ->
+                    runCatching { DocumentsContract.deleteDocument(contentResolver, uri) }
+                        .recoverCatching { contentResolver.delete(uri, null, null) }
+                    Diagnostics.record(
+                        area = Diagnostics.AREA_BACKUP,
+                        code = "DIAGNOSTICS_EXPORT_FAILED",
+                        message = error.message ?: "Diagnostics export failed.",
+                        throwable = error,
+                    )
+                    "Could not export: ${error.message ?: "unknown error"}"
+                },
+            )
+        }
+    }
 
     private fun log(message: String) {
         uiState.log(message)

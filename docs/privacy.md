@@ -57,6 +57,29 @@ Tool execution logs only names/timing at most.
 
 The device log screen is read-only and shows the same redacted protocol log.
 
+## Local diagnostics
+
+- Sync, import, analysis, coach, backup/export and uncaught-exception failures
+  are written to a **separate** local SQLite file,
+  `opengarmin-diagnostics.db`, not to the Room health database.
+- The file is app-private, excluded from backup export/restore, and never
+  uploaded. Events are only read by the hidden diagnostics screen (seven taps
+  on the version row in Settings) and by the manual **Export JSON** action.
+- Messages and stack traces are redacted before writing (provider keys,
+  `Authorization`/`Bearer` values, `token`/`password` assignments, MAC
+  addresses and long hex identifiers) and capped in size. Event context is an
+  allowlisted map supplied by the caller; health payloads, chat text and FIT
+  record contents are not written.
+- Retention is capped at 30 days or 5,000 grouped rows, whichever is reached
+  first. The table aggregates repeated failures with an occurrence count.
+- Uncaught exceptions are written synchronously before the process dies; if
+  that write fails, a capped text fallback is stored in app-private storage and
+  imported on the next launch. On Android 11+, historic crash/ANR/low-memory
+  exits are imported from `ApplicationExitInfo`, skipping crashes already
+  captured.
+- The normal log reader cannot see this data from other apps, and clearing it
+  in the diagnostics screen deletes the rows.
+
 The sync progress notification is a low-importance, private-visibility
 notification. It shows the current activity index/file size and the last
 imported activity's date, sport, and distance; its content is hidden on the lock

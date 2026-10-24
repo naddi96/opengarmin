@@ -6,6 +6,7 @@ import androidx.work.WorkerParameters
 import dev.opengarmin.app.data.ActivityAnalysisStatus
 import dev.opengarmin.app.data.ActivityRepository
 import dev.opengarmin.app.data.AppDatabase
+import dev.opengarmin.app.diagnostics.Diagnostics
 import dev.opengarmin.app.llm.LlmException
 import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
@@ -58,6 +59,17 @@ class ActivityAnalysisWorker(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: LlmException) {
+            Diagnostics.record(
+                area = Diagnostics.AREA_ANALYSIS,
+                code = "LLM_${error.kind.name.uppercase()}",
+                message = error.userMessage(),
+                throwable = error,
+                context = mapOf(
+                    "activityId" to activityId.toString(),
+                    "statusCode" to (error.statusCode?.toString() ?: "none"),
+                    "retryable" to error.isRetryableAnalysisFailure().toString(),
+                ),
+            )
             repository.markAnalysisError(activityId, error.userMessage())
             if (error.isRetryableAnalysisFailure() && runAttemptCount < MAX_RETRIES) {
                 Result.retry()
@@ -65,9 +77,23 @@ class ActivityAnalysisWorker(
                 Result.success()
             }
         } catch (error: ActivityAnalysisException) {
+            Diagnostics.record(
+                area = Diagnostics.AREA_ANALYSIS,
+                code = "ANALYSIS_FAILED",
+                message = error.message ?: "Could not generate the analysis.",
+                throwable = error,
+                context = mapOf("activityId" to activityId.toString()),
+            )
             repository.markAnalysisError(activityId, error.message ?: "Could not generate the analysis.")
             Result.success()
         } catch (error: Exception) {
+            Diagnostics.record(
+                area = Diagnostics.AREA_ANALYSIS,
+                code = "ANALYSIS_UNEXPECTED",
+                message = error.message ?: "Could not generate the analysis.",
+                throwable = error,
+                context = mapOf("activityId" to activityId.toString()),
+            )
             repository.markAnalysisError(
                 activityId,
                 error.message?.takeIf { it.isNotBlank() }

@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.opengarmin.app.coach.tools.ToolRegistry
+import dev.opengarmin.app.diagnostics.Diagnostics
 import dev.opengarmin.app.llm.LlmException
 import dev.opengarmin.app.llm.LlmMessage
 import dev.opengarmin.app.llm.LlmToolDefinition
@@ -249,11 +250,24 @@ class CoachController(
             }
             throw e
         } catch (e: LlmException) {
+            Diagnostics.record(
+                area = Diagnostics.AREA_COACH,
+                code = "LLM_${e.kind.name.uppercase()}",
+                message = e.message,
+                throwable = e,
+                context = mapOf("statusCode" to (e.statusCode?.toString() ?: "none")),
+            )
             if (turnGeneration == generation) {
                 markError(assistantId, e.userMessage())
                 lastError = e.userMessage()
             }
         } catch (e: Exception) {
+            Diagnostics.record(
+                area = Diagnostics.AREA_COACH,
+                code = "CHAT_UNEXPECTED",
+                message = e.message ?: "Chat turn failed.",
+                throwable = e,
+            )
             if (turnGeneration == generation) {
                 markError(assistantId, "Something went wrong while answering. Try again.")
                 lastError = "Something went wrong while answering. Try again."

@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.opengarmin.app.diagnostics.Diagnostics
 import java.time.Year
 
 /**
@@ -83,6 +84,9 @@ class PulseSettings(context: Context) {
         private set
     var lastSyncKind by mutableStateOf(prefs.getString(KEY_LAST_KIND, "") ?: "")
         private set
+    /** Set after seven taps on the About version row; reveals the diagnostics screen. */
+    var diagnosticsUnlocked by mutableStateOf(prefs.getBoolean(KEY_DIAGNOSTICS_UNLOCKED, false))
+        private set
 
     private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         applyPersistedValue(key)
@@ -121,6 +125,7 @@ class PulseSettings(context: Context) {
                 prefs.getInt(KEY_PERIODIC_INTERVAL, dev.opengarmin.app.sync.SyncPolicy.DEFAULT_INTERVAL_MINUTES),
             )
             KEY_PERIODIC_CHARGING_ONLY -> periodicSyncChargingOnly = prefs.getBoolean(KEY_PERIODIC_CHARGING_ONLY, false)
+            KEY_DIAGNOSTICS_UNLOCKED -> diagnosticsUnlocked = prefs.getBoolean(KEY_DIAGNOSTICS_UNLOCKED, false)
         }
     }
 
@@ -234,6 +239,11 @@ class PulseSettings(context: Context) {
         prefs.edit().putString(KEY_WATCH_NAME, name).apply()
     }
 
+    fun unlockDiagnostics() {
+        diagnosticsUnlocked = true
+        prefs.edit().putBoolean(KEY_DIAGNOSTICS_UNLOCKED, true).apply()
+    }
+
     fun recordSyncSuccess(durationMs: Long? = null, trigger: String = lastSyncTrigger) {
         val now = System.currentTimeMillis()
         lastSyncAt = now
@@ -288,6 +298,17 @@ class PulseSettings(context: Context) {
                 if (durationMs != null) putLong(KEY_LAST_DURATION, durationMs)
             }
             .apply()
+        Diagnostics.record(
+            area = Diagnostics.AREA_SYNC,
+            code = "SYNC_${kind.uppercase()}",
+            message = message,
+            level = if (kind == "cancelled") Diagnostics.LEVEL_WARN else Diagnostics.LEVEL_ERROR,
+            context = buildMap {
+                put("trigger", trigger)
+                put("kind", kind)
+                durationMs?.let { put("durationMs", it.toString()) }
+            },
+        )
     }
 
     companion object {
@@ -313,5 +334,6 @@ class PulseSettings(context: Context) {
         private const val KEY_LAST_DURATION = "last_sync_duration_ms"
         private const val KEY_LAST_TRIGGER = "last_sync_trigger"
         private const val KEY_LAST_KIND = "last_sync_kind"
+        private const val KEY_DIAGNOSTICS_UNLOCKED = "diagnostics_unlocked"
     }
 }

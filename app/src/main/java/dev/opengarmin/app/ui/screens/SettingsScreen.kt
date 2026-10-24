@@ -19,11 +19,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
@@ -70,6 +72,7 @@ fun SettingsScreen(
     onImportBackup: (Uri) -> Unit,
     onBackgroundSyncChanged: () -> Unit,
     onRunBackgroundSyncNow: () -> Unit,
+    onShowDiagnostics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var goalText by remember(settings.stepGoal) { mutableStateOf(settings.stepGoal.toString()) }
@@ -94,6 +97,7 @@ fun SettingsScreen(
     }
     var savedMessage by remember { mutableStateOf<String?>(null) }
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
+    var versionTaps by remember { mutableIntStateOf(0) }
     val focusManager = LocalFocusManager.current
     val fitPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onImportFit(uri)
@@ -582,7 +586,17 @@ fun SettingsScreen(
                 modifier = Modifier.padding(PulseSpacing.xl),
                 verticalArrangement = Arrangement.spacedBy(PulseSpacing.xs),
             ) {
-                Text("Pulse / OpenGarmin ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall, color = PulseColors.Text)
+                Text(
+                    "Pulse / OpenGarmin ${BuildConfig.VERSION_NAME}",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = PulseColors.Text,
+                    modifier = Modifier.clickable {
+                        versionTaps++
+                        if (versionTaps >= 7 && !settings.diagnosticsUnlocked) {
+                            settings.unlockDiagnostics()
+                        }
+                    },
+                )
                 Text(
                     "Local-first fitness companion. The coach is informational, not medical advice, and cannot diagnose or treat conditions.",
                     style = MaterialTheme.typography.bodySmall,
@@ -593,6 +607,19 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.labelSmall,
                     color = PulseColors.TextMuted,
                 )
+                if (settings.diagnosticsUnlocked || versionTaps >= 7) {
+                    Text(
+                        "Diagnostics",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = PulseColors.TextMuted,
+                    )
+                    PrimaryButton("Open diagnostics", onShowDiagnostics)
+                    Text(
+                        "Local error history for sync, import, analysis, coach and crash failures. Stored on this device only, never uploaded.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
             }
         }
         Spacer(Modifier.padding(bottom = PulseSpacing.xl))

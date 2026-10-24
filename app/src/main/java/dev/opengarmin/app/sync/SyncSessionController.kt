@@ -16,6 +16,7 @@ import dev.opengarmin.app.data.PacePlanEntity
 import dev.opengarmin.app.data.PacePlanSendStatus
 import dev.opengarmin.app.data.PlannedWorkoutEntity
 import dev.opengarmin.app.data.WorkoutSendStatus
+import dev.opengarmin.app.diagnostics.Diagnostics
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.util.formatFileSize
 import dev.opengarmin.protocol.FitPaceBand
@@ -302,6 +303,12 @@ class SyncSessionController(
                 }
             },
             onWorkoutFailed = { id, name, message ->
+                Diagnostics.record(
+                    area = Diagnostics.AREA_SYNC,
+                    code = "UPLOAD_FAILED",
+                    message = message,
+                    context = mapOf("id" to id.toString(), "name" to name),
+                )
                 val kind = pendingWorkoutSend?.kind ?: UploadKind.WORKOUT
                 pendingWorkoutSend = null
                 when (kind) {

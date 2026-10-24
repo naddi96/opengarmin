@@ -5,6 +5,7 @@ import android.net.Uri
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.ActivityRepository
 import dev.opengarmin.app.data.WellnessFileTypes
+import dev.opengarmin.app.diagnostics.Diagnostics
 import dev.opengarmin.app.util.formatDate
 import dev.opengarmin.app.sportName
 import kotlinx.coroutines.CoroutineScope
@@ -85,6 +86,13 @@ class ActivityImporter(
                     onActivityImported?.invoke(entity)
                 }
             }.onFailure { e ->
+                Diagnostics.record(
+                    area = Diagnostics.AREA_IMPORT,
+                    code = "FIT_IMPORT_FAILED",
+                    message = e.message ?: "FIT import failed",
+                    throwable = e,
+                    context = mapOf("file" to file.name),
+                )
                 ui.importErrorThisSync = e.message ?: "FIT import failed"
                 ui.log("FIT import failed: ${e.message}")
             }
@@ -102,6 +110,12 @@ class ActivityImporter(
                 }.getOrNull()
             }
             if (bytes == null) {
+                Diagnostics.record(
+                    area = Diagnostics.AREA_IMPORT,
+                    code = "FIT_READ_FAILED",
+                    message = "Could not read the selected FIT file.",
+                    context = mapOf("uri" to uri.toString()),
+                )
                 ui.log("FIT import failed: could not read the selected file")
                 return@launch
             }
@@ -133,6 +147,13 @@ class ActivityImporter(
                 }
             }.onFailure { e ->
                 stored?.delete()
+                Diagnostics.record(
+                    area = Diagnostics.AREA_IMPORT,
+                    code = "FIT_IMPORT_FAILED",
+                    message = e.message ?: "FIT import failed",
+                    throwable = e,
+                    context = mapOf("file" to name),
+                )
                 ui.log("FIT import failed: ${e.message}")
             }
         }
@@ -173,6 +194,13 @@ class ActivityImporter(
                     }
                 }
             }.onFailure { e ->
+                Diagnostics.record(
+                    area = Diagnostics.AREA_IMPORT,
+                    code = "WELLNESS_IMPORT_FAILED",
+                    message = e.message ?: "Wellness import failed",
+                    throwable = e,
+                    context = mapOf("type" to type, "itemUid" to itemUid),
+                )
                 ui.log("WELLNESS import failed: ${e.message}")
             }
         }

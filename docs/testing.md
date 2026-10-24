@@ -165,6 +165,10 @@ Manual matrix used for the UI/coach pass:
   error and leave the current database intact.
 - Accessibility spot checks: 44 dp controls, TalkBack labels, focus order,
   200% font scale.
+- Diagnostics: tap the version row in Settings seven times, open Diagnostics,
+  trigger a sync/import failure (for example disable Bluetooth), confirm it is
+  listed with a stable code and occurrence count, expand it, export the JSON,
+  and clear the log. Force-stop and relaunch to verify the log persists.
 
 Manual flows above were last exercised on a **Pixel 10a / Android 17** against a
 Forerunner 255 on 2026-10-18.

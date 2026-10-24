@@ -47,6 +47,7 @@ import dev.opengarmin.app.data.TrainingSummary
 import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.data.WorkoutSendStatus
+import dev.opengarmin.app.diagnostics.AppEvent
 import dev.opengarmin.app.llm.ProviderConfig
 import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
@@ -60,6 +61,7 @@ import dev.opengarmin.app.ui.screens.ActivitiesScreen
 import dev.opengarmin.app.ui.screens.ActivityDetailScreen
 import dev.opengarmin.app.ui.screens.CoachScreen
 import dev.opengarmin.app.ui.screens.DataExplorer
+import dev.opengarmin.app.ui.screens.DiagnosticsScreen
 import dev.opengarmin.app.ui.screens.HealthScreen
 import dev.opengarmin.app.ui.screens.PaceRunScreen
 import dev.opengarmin.app.ui.screens.PaceStrategyScreen
@@ -74,7 +76,7 @@ import dev.opengarmin.app.ui.theme.PulseSpacing
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 
-private enum class AppRoute { Tabs, Trends, Detail, Plan, PacePro, PaceRun, Settings, Provider, Data, Log }
+private enum class AppRoute { Tabs, Trends, Detail, Plan, PacePro, PaceRun, Settings, Provider, Data, Log, Diagnostics }
 
 @Composable
 fun PulseApp(
@@ -132,6 +134,12 @@ fun PulseApp(
     backupBusy: Boolean,
     onExportBackup: (android.net.Uri) -> Unit,
     onImportBackup: (android.net.Uri) -> Unit,
+    diagnosticEvents: List<AppEvent>,
+    diagnosticsLoading: Boolean,
+    diagnosticsStatus: String?,
+    onLoadDiagnostics: () -> Unit,
+    onClearDiagnostics: () -> Unit,
+    onExportDiagnostics: (android.net.Uri) -> Unit,
     onBackgroundSyncChanged: () -> Unit,
     onRunBackgroundSyncNow: () -> Unit,
 ) {
@@ -162,6 +170,10 @@ fun PulseApp(
             // present and the activity is gone, drop the stale notification.
             activities.isNotEmpty() -> onOpenActivityHandled()
         }
+    }
+
+    LaunchedEffect(route) {
+        if (route == AppRoute.Diagnostics) onLoadDiagnostics()
     }
 
     fun openSettings() {
@@ -209,7 +221,8 @@ fun PulseApp(
                 coachController.refreshProvider()
                 routeName = providerReturnName
             }
-            AppRoute.Settings, AppRoute.Log -> routeName = if (route == AppRoute.Log) AppRoute.Settings.name else AppRoute.Tabs.name
+            AppRoute.Settings -> routeName = AppRoute.Tabs.name
+            AppRoute.Log, AppRoute.Diagnostics -> routeName = AppRoute.Settings.name
             AppRoute.Tabs -> Unit
         }
     }
@@ -403,6 +416,7 @@ fun PulseApp(
                 onImportBackup = onImportBackup,
                 onBackgroundSyncChanged = onBackgroundSyncChanged,
                 onRunBackgroundSyncNow = onRunBackgroundSyncNow,
+                onShowDiagnostics = { routeName = AppRoute.Diagnostics.name },
             )
             AppRoute.Provider -> ProviderSettingsScreen(
                 store = providerStore,
@@ -453,6 +467,18 @@ fun PulseApp(
                 deviceInfo = deviceInfo,
                 onBack = { routeName = AppRoute.Settings.name },
                 onStop = onStop,
+            )
+            AppRoute.Diagnostics -> DiagnosticsScreen(
+                events = diagnosticEvents,
+                loading = diagnosticsLoading,
+                status = diagnosticsStatus,
+                onBack = { routeName = AppRoute.Settings.name },
+                onRefresh = onLoadDiagnostics,
+                onClear = onClearDiagnostics,
+                onExport = onExportDiagnostics,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = PulseSpacing.xxl, end = PulseSpacing.xxl, top = PulseSpacing.screenTop),
             )
         }
     }
