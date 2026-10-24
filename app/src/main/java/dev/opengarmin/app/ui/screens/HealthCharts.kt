@@ -246,6 +246,35 @@ internal fun ScoreGauge(
 
 internal data class GaugeBand(val fraction: Float, val color: Color)
 
+/** Circle gauge model for an HRV night, shared by the tile and detail screen. */
+internal data class HrvGaugeModel(val bands: List<GaugeBand>, val marker: Float)
+
+internal fun hrvGaugeModel(
+    center: Double,
+    baselineLow: Double?,
+    baselineHigh: Double?,
+    baselineLowUpper: Double?,
+): HrvGaugeModel? {
+    val low = baselineLow ?: return null
+    val high = baselineHigh ?: return null
+    val lowThreshold = (baselineLowUpper ?: (low * 0.9)).coerceAtMost(low)
+    val domainLow = minOf(lowThreshold - 10.0, center - 5.0, 0.0).coerceAtLeast(0.0)
+    val domainHigh = maxOf(high + 15.0, center + 5.0)
+    val span = (domainHigh - domainLow).coerceAtLeast(1.0)
+    val lowEnd = ((lowThreshold - domainLow) / span).toFloat().coerceIn(0f, 1f)
+    val balancedStart = ((low - domainLow) / span).toFloat().coerceIn(0f, 1f)
+    val balancedEnd = ((high - domainLow) / span).toFloat().coerceIn(0f, 1f)
+    return HrvGaugeModel(
+        bands = listOf(
+            GaugeBand(lowEnd, PulseColors.Coral),
+            GaugeBand((balancedStart - lowEnd).coerceAtLeast(0f), PulseColors.Orange),
+            GaugeBand((balancedEnd - balancedStart).coerceAtLeast(0f), PulseColors.Green),
+            GaugeBand((1f - balancedEnd).coerceAtLeast(0f), PulseColors.Orange),
+        ),
+        marker = ((center - domainLow) / span).toFloat(),
+    )
+}
+
 /**
  * Gauge split into bands (HRV status, VO₂ fitness) with a marker for [marker].
  * Fractions are 0..1 across the 270° sweep.
@@ -259,10 +288,11 @@ internal fun BandGauge(
     caption: String,
     modifier: Modifier = Modifier,
     size: Dp = 190.dp,
+    compact: Boolean = false,
 ) {
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            val stroke = 11.dp.toPx()
+            val stroke = (if (compact) 7.dp else 11.dp).toPx()
             val inset = stroke / 2f
             val arcSize = Size(this.size.width - stroke, this.size.height - stroke)
             var start = 0f
@@ -288,18 +318,22 @@ internal fun BandGauge(
                 x = center.x + radius * kotlin.math.cos(angle).toFloat(),
                 y = center.y + radius * kotlin.math.sin(angle).toFloat(),
             )
-            drawCircle(PulseColors.Background, radius = 9.dp.toPx(), center = point)
-            drawCircle(PulseColors.Text, radius = 6.dp.toPx(), center = point)
+            drawCircle(PulseColors.Background, radius = (if (compact) 6.dp else 9.dp).toPx(), center = point)
+            drawCircle(PulseColors.Text, radius = (if (compact) 4.dp else 6.dp).toPx(), center = point)
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(value, style = MaterialTheme.typography.displayMedium, color = PulseColors.Text)
+                Text(
+                    value,
+                    style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.displayMedium,
+                    color = PulseColors.Text,
+                )
                 if (unit.isNotBlank()) {
                     Text(
                         unit,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.labelSmall,
                         color = PulseColors.TextMuted,
-                        modifier = Modifier.padding(start = 3.dp, bottom = 5.dp),
+                        modifier = Modifier.padding(start = 3.dp, bottom = if (compact) 3.dp else 5.dp),
                     )
                 }
             }

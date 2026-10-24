@@ -1,6 +1,7 @@
 package dev.opengarmin.app.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.data.HealthMetrics
+import dev.opengarmin.app.data.HrvNight
 import dev.opengarmin.app.data.SleepNight
 import dev.opengarmin.app.data.TrainingSummary
 import dev.opengarmin.app.data.WellnessDayEntity
@@ -120,16 +122,9 @@ fun HealthScreen(
                 onClick = { onOpenMetric(HealthMetric.SLEEP) },
                 modifier = Modifier.weight(1f),
             )
-            HubTile(
-                label = "HRV",
-                icon = Icons.Outlined.FavoriteBorder,
-                accent = PulseColors.Green,
-                value = hrvNight?.weeklyAverage?.let { "%.0f".format(it) } ?: "—",
-                unit = "ms",
-                status = hrvStatus ?: "No status",
-                statusColor = hrvStatusColor(hrvStatus),
-                sparkline = hrvNights.mapNotNull { it.weeklyAverage?.toFloat() },
-                bars = false,
+            HrvHubTile(
+                night = hrvNight,
+                status = hrvStatus,
                 onClick = { onOpenMetric(HealthMetric.HRV) },
                 modifier = Modifier.weight(1f),
             )
@@ -399,6 +394,76 @@ private fun HubTile(
             }
             Spacer(Modifier.weight(1f))
             Sparkline(values = sparkline, color = accent, bars = bars, height = 28.dp)
+        }
+    }
+}
+
+@Composable
+private fun HrvHubTile(
+    night: HrvNight?,
+    status: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val center = night?.weeklyAverage
+    val gauge = center?.let {
+        hrvGaugeModel(it, night.baselineLow, night.baselineHigh, night.baselineLowUpper)
+    }
+    PulseCard(modifier = modifier.height(158.dp), onClick = onClick) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = PulseSpacing.lgPlus, vertical = PulseSpacing.mdPlus),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+                ) {
+                    Icon(Icons.Outlined.FavoriteBorder, null, tint = PulseColors.Green, modifier = Modifier.size(14.dp))
+                    Text("HRV", style = MaterialTheme.typography.labelMedium, color = PulseColors.TextMuted)
+                }
+                Icon(
+                    Icons.Outlined.ChevronRight,
+                    contentDescription = null,
+                    tint = PulseColors.TextMuted,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+            if (gauge != null && center != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    BandGauge(
+                        bands = gauge.bands,
+                        marker = gauge.marker,
+                        value = "%.0f".format(center),
+                        unit = "ms",
+                        caption = status ?: "7-day average",
+                        size = 108.dp,
+                        compact = true,
+                    )
+                }
+            } else {
+                Spacer(Modifier.weight(1f))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text("—", style = MaterialTheme.typography.titleLarge, color = PulseColors.Text)
+                }
+                Text(
+                    status ?: "No status",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = hrvStatusColor(status),
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
     }
 }

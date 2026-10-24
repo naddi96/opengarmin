@@ -144,27 +144,17 @@ private fun HrvDay(
             verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
         ) {
             if (center != null && low != null && high != null) {
-                val lowThreshold = (lowUpper ?: (low * 0.9)).coerceAtMost(low)
-                val domainLow = minOf(lowThreshold - 10.0, center - 5.0, 0.0).coerceAtLeast(0.0)
-                val domainHigh = maxOf(high + 15.0, center + 5.0)
-                val span = (domainHigh - domainLow).coerceAtLeast(1.0)
-                val lowEnd = ((lowThreshold - domainLow) / span).toFloat().coerceIn(0f, 1f)
-                val balancedStart = ((low - domainLow) / span).toFloat().coerceIn(0f, 1f)
-                val balancedEnd = ((high - domainLow) / span).toFloat().coerceIn(0f, 1f)
-                val bands = listOf(
-                    GaugeBand(lowEnd, PulseColors.Coral),
-                    GaugeBand((balancedStart - lowEnd).coerceAtLeast(0f), PulseColors.Orange),
-                    GaugeBand((balancedEnd - balancedStart).coerceAtLeast(0f), PulseColors.Green),
-                    GaugeBand((1f - balancedEnd).coerceAtLeast(0f), PulseColors.Orange),
-                )
-                BandGauge(
-                    bands = bands,
-                    marker = ((center - domainLow) / span).toFloat(),
-                    value = "%.0f".format(center),
-                    unit = "ms",
-                    caption = "7-day average",
-                    size = 190.dp,
-                )
+                val gauge = hrvGaugeModel(center, low, high, lowUpper)
+                if (gauge != null) {
+                    BandGauge(
+                        bands = gauge.bands,
+                        marker = gauge.marker,
+                        value = "%.0f".format(center),
+                        unit = "ms",
+                        caption = "7-day average",
+                        size = 190.dp,
+                    )
+                }
             } else if (center != null) {
                 ScoreGauge(
                     progress = (center / 100.0).toFloat(),
