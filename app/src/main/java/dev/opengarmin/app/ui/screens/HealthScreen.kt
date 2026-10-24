@@ -98,6 +98,14 @@ fun HealthScreen(
             onClick = { onOpenMetric(HealthMetric.BODY_BATTERY) },
         )
 
+        val hrvNights = HealthMetrics.hrvNights(
+            days,
+            HealthMetrics.parseDate(day.date) ?: LocalDate.now(),
+            7,
+        )
+        val hrvNight = hrvNights.lastOrNull()
+        val hrvStatus = hrvNight?.let { HealthMetrics.effectiveHrvStatus(it) } ?: day.hrvStatus
+
         Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
             HubTile(
                 label = "Sleep",
@@ -116,17 +124,11 @@ fun HealthScreen(
                 label = "HRV",
                 icon = Icons.Outlined.FavoriteBorder,
                 accent = PulseColors.Green,
-                value = HealthMetrics.hrvNights(days, HealthMetrics.parseDate(day.date) ?: LocalDate.now(), 7)
-                    .mapNotNull { it.value }
-                    .takeIf { it.isNotEmpty() }
-                    ?.average()
-                    ?.let { "%.0f".format(it) }
-                    ?: "—",
+                value = hrvNight?.weeklyAverage?.let { "%.0f".format(it) } ?: "—",
                 unit = "ms",
-                status = day.hrvStatus ?: "No status",
-                statusColor = hrvStatusColor(day.hrvStatus),
-                sparkline = HealthMetrics.hrvNights(days, HealthMetrics.parseDate(day.date) ?: LocalDate.now(), 7)
-                    .mapNotNull { it.value?.toFloat() },
+                status = hrvStatus ?: "No status",
+                statusColor = hrvStatusColor(hrvStatus),
+                sparkline = hrvNights.mapNotNull { it.weeklyAverage?.toFloat() },
                 bars = false,
                 onClick = { onOpenMetric(HealthMetric.HRV) },
                 modifier = Modifier.weight(1f),

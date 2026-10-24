@@ -137,6 +137,71 @@ class HealthMetricsTest {
     }
 
     @Test
+    fun `hrv status separates an unbalanced dip from a low value`() {
+        val date = LocalDate.of(2026, 10, 24)
+        val unbalanced = HrvNight(
+            date = date,
+            value = 31.0,
+            status = null,
+            baselineLow = 32.0,
+            baselineHigh = 45.0,
+            weeklyAverage = 30.0,
+            baselineLowUpper = 28.0,
+        )
+        val low = unbalanced.copy(weeklyAverage = 27.0)
+        val balanced = unbalanced.copy(weeklyAverage = 39.0)
+
+        assertEquals("Unbalanced", HealthMetrics.effectiveHrvStatus(unbalanced))
+        assertEquals("Low", HealthMetrics.effectiveHrvStatus(low))
+        assertEquals("Balanced", HealthMetrics.effectiveHrvStatus(balanced))
+    }
+
+    @Test
+    fun `hrv range follows the weekly average when a summary provides one`() {
+        val date = LocalDate.of(2026, 10, 24)
+        val night = HrvNight(
+            date = date,
+            value = 31.0,
+            status = null,
+            baselineLow = 32.0,
+            baselineHigh = 45.0,
+            weeklyAverage = 39.0,
+        )
+
+        assertEquals(1, HealthMetrics.hrvInRangeCount(listOf(night)))
+        assertEquals(1, HealthMetrics.currentInRangeStreak(listOf(night)))
+    }
+
+    @Test
+    fun `hrv nights prefer the watch weekly average and fall back to a trailing mean`() {
+        val days = listOf(
+            dayWithHrv("2026-10-18", 31.0),
+            dayWithHrv("2026-10-19", 42.0),
+            dayWithHrv("2026-10-20", 35.0, weekly = 39.0),
+        )
+
+        val nights = HealthMetrics.hrvNights(days, LocalDate.of(2026, 10, 20), 3)
+
+        assertEquals(listOf(31.0, 36.5, 39.0), nights.map { it.weeklyAverage })
+    }
+
+    @Test
+    fun `hrv nights estimate a baseline when the watch reports none`() {
+        val start = LocalDate.of(2026, 9, 1)
+        val days = (0..30).map { offset ->
+            dayWithHrv(start.plusDays(offset.toLong()).toString(), 28.0 + (offset % 10))
+        }
+
+        val night = HealthMetrics.hrvNights(days, start.plusDays(30), 1).single()
+
+        assertTrue(night.baselineEstimated)
+        assertTrue(night.baselineLow != null)
+        assertTrue(night.baselineHigh != null)
+        assertTrue(night.baselineLowUpper != null)
+        assertTrue(HealthMetrics.effectiveHrvStatus(night) != null)
+    }
+
+    @Test
     fun `body battery delta uses the samples around an activity`() {
         val start = 3_000_000L
         val samples = listOf(
@@ -195,6 +260,23 @@ class HealthMetricsTest {
         updatedAt = 0,
         bodyBatteryMax = bodyBatteryMax,
         bodyBatteryMin = bodyBatteryMin,
+    )
+
+    private fun dayWithHrv(date: String, hrv: Double, weekly: Double? = null) = WellnessDayEntity(
+        date = date,
+        steps = 0,
+        distanceMeters = 0.0,
+        activeCalories = 0,
+        activeSeconds = 0,
+        restingHeartRate = null,
+        avgHeartRate = null,
+        maxHeartRate = null,
+        stressAvg = null,
+        spo2Avg = null,
+        respirationAvg = null,
+        updatedAt = 0,
+        hrvLastNight = hrv,
+        hrvWeeklyAvg = weekly,
     )
 
     private fun night(date: String, score: Int) = SleepNight(

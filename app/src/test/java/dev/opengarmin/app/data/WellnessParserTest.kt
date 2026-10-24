@@ -79,6 +79,7 @@ class WellnessParserTest {
                 epoch(2026, 10, 18, 6, 55),
                 field(0, "weekly_average", 49.0),
                 field(1, "last_night_average", 48.0),
+                field(3, "baseline_low_upper", 41.0),
                 field(4, "baseline_balanced_lower", 44.0),
                 field(5, "baseline_balanced_upper", 55.0),
                 field(6, "status", 4),
@@ -98,6 +99,7 @@ class WellnessParserTest {
         assertEquals((5 + 4) * 60, day.awakeSleepSeconds)
         assertEquals(48.0, day.hrvLastNight!!, 0.01)
         assertEquals(49.0, day.hrvWeeklyAvg!!, 0.01)
+        assertEquals(41.0, day.hrvBaselineLowUpper!!, 0.01)
         assertEquals("Balanced", day.hrvStatus)
         assertEquals(10, day.sleepStages.size)
         assertNotNull(day.sleepStages.firstOrNull { it.stage == "deep" })

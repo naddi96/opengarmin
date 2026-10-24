@@ -215,6 +215,7 @@ data class WellnessDayEntity(
     val hrvStatus: String? = null,
     val hrvBaselineLow: Double? = null,
     val hrvBaselineHigh: Double? = null,
+    val hrvBaselineLowUpper: Double? = null,
     // Intensity minutes reported by the watch monitoring file, when available.
     val moderateMinutes: Int? = null,
     val vigorousMinutes: Int? = null,
@@ -517,7 +518,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "opengarmin.db"
-        const val SCHEMA_VERSION = 11
+        const val SCHEMA_VERSION = 12
 
         @Volatile
         private var instance: AppDatabase? = null
@@ -752,6 +753,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `wellness_days` ADD COLUMN `hrvBaselineLowUpper` REAL")
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -769,6 +776,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_8_9,
                     MIGRATION_9_10,
                     MIGRATION_10_11,
+                    MIGRATION_11_12,
                 ).build().also { instance = it }
             }
 
@@ -1192,6 +1200,7 @@ class ActivityRepository(private val database: () -> AppDatabase) {
         hrvStatus = hrvStatus,
         hrvBaselineLow = hrvBaselineLow,
         hrvBaselineHigh = hrvBaselineHigh,
+        hrvBaselineLowUpper = hrvBaselineLowUpper,
         moderateMinutes = moderateMinutes,
         vigorousMinutes = vigorousMinutes,
     )
@@ -1232,6 +1241,7 @@ class ActivityRepository(private val database: () -> AppDatabase) {
         hrvStatus = draft.hrvStatus ?: hrvStatus,
         hrvBaselineLow = draft.hrvBaselineLow ?: hrvBaselineLow,
         hrvBaselineHigh = draft.hrvBaselineHigh ?: hrvBaselineHigh,
+        hrvBaselineLowUpper = draft.hrvBaselineLowUpper ?: hrvBaselineLowUpper,
         moderateMinutes = draft.moderateMinutes ?: moderateMinutes,
         vigorousMinutes = draft.vigorousMinutes ?: vigorousMinutes,
         updatedAt = nowSeconds(),

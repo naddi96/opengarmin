@@ -55,11 +55,23 @@ data class SleepNight(
 
 data class HrvNight(
     val date: LocalDate,
+    /** Last night's rMSSD average. */
     val value: Double?,
     val status: String?,
+    /** Balanced baseline range reported by the watch. */
     val baselineLow: Double?,
     val baselineHigh: Double?,
-)
+    /** Garmin's 7-day rolling rMSSD average. */
+    val weeklyAverage: Double? = null,
+    /** Upper boundary of the low-HRV band (below this is Low, not Unbalanced). */
+    val baselineLowUpper: Double? = null,
+    /** True when the watch did not report a baseline and the range is local. */
+    val baselineEstimated: Boolean = false,
+) {
+    /** The value Garmin compares with the baseline and plots on the 7d/4w charts. */
+    val statusValue: Double?
+        get() = weeklyAverage ?: value
+}
 
 data class DailyAverage(val date: LocalDate, val value: Double)
 
@@ -151,7 +163,7 @@ object HealthMetrics {
         end: LocalDate,
         windowDays: Int,
     ): List<WellnessDayEntity> {
-        val start = end.minusDays((windowDays - 1).coerceAtLeast(1).toLong())
+        val start = end.minusDays((windowDays - 1).coerceAtLeast(0).toLong())
         return days.mapNotNull { day ->
             val date = parseDate(day.date) ?: return@mapNotNull null
             day.takeIf { !date.isBefore(start) && !date.isAfter(end) }
@@ -222,18 +234,94 @@ object HealthMetrics {
         }
     }
 
-    fun hrvNights(days: List<WellnessDayEntity>, end: LocalDate, windowDays: Int): List<HrvNight> =
-        daysInWindow(days, end, windowDays).mapNotNull { day ->
+    fun hrvNights(days: List<WellnessDayEntity>, end: LocalDate, windowDays: Int): List<HrvNight> {
+        val ordered = days.sortedBy { it.date }
+        return daysInWindow(days, end, windowDays).mapNotNull { day ->
             val date = parseDate(day.date) ?: return@mapNotNull null
             if (day.hrvLastNight == null && day.hrvStatus == null) return@mapNotNull null
+            val watchLow = day.hrvBaselineLow
+            val watchHigh = day.hrvBaselineHigh
+            val hasWatchBaseline = watchLow != null && watchHigh != null
+            val estimate = if (hasWatchBaseline) null else estimatedHrvBaseline(ordered, date)
             HrvNight(
                 date = date,
                 value = day.hrvLastNight,
                 status = day.hrvStatus,
-                baselineLow = day.hrvBaselineLow,
-                baselineHigh = day.hrvBaselineHigh,
+                baselineLow = watchLow ?: estimate?.low,
+                baselineHigh = watchHigh ?: estimate?.high,
+                weeklyAverage = day.hrvWeeklyAvg?.takeIf { it > 0.0 } ?: trailingHrvAverage(ordered, date),
+                baselineLowUpper = day.hrvBaselineLowUpper ?: estimate?.lowUpper,
+                baselineEstimated = !hasWatchBaseline && estimate != null,
             )
         }
+    }
+
+    /** A local approximation of Garmin's three-week personal baseline. */
+    private data class HrvBaselineEstimate(
+        val low: Double,
+        val high: Double,
+        val lowUpper: Double,
+    )
+
+    /**
+     * Garmin's exact baseline statistics are not published. When the watch
+     * omits the summary, use the last three weeks of nightly rMSSD for the
+     * balanced band (25th–90th percentile) and the last three months for the
+     * "well below" threshold (10th percentile plus a small guard band). The
+     * watch's own values always win when present.
+     */
+    private fun estimatedHrvBaseline(
+        days: List<WellnessDayEntity>,
+        date: LocalDate,
+    ): HrvBaselineEstimate? {
+        val balancedValues = daysInWindow(days, date.minusDays(1), 21)
+            .mapNotNull { it.hrvLastNight?.takeIf { value -> value > 0.0 } }
+        if (balancedValues.size < 14) return null
+        val longValues = daysInWindow(days, date.minusDays(1), 90)
+            .mapNotNull { it.hrvLastNight?.takeIf { value -> value > 0.0 } }
+        val lowValues = longValues.takeIf { it.size >= 14 } ?: balancedValues
+        return HrvBaselineEstimate(
+            low = percentile(balancedValues, 0.25),
+            high = percentile(balancedValues, 0.90),
+            lowUpper = percentile(lowValues, 0.10) + 1.0,
+        )
+    }
+
+    private fun percentile(values: List<Double>, fraction: Double): Double {
+        val sorted = values.sorted()
+        val position = (sorted.size - 1) * fraction
+        val lower = position.toInt()
+        val upper = (lower + 1).coerceAtMost(sorted.lastIndex)
+        val weight = position - lower
+        return sorted[lower] * (1.0 - weight) + sorted[upper] * weight
+    }
+
+    /** Mean of the nightly rMSSD values in the seven days ending on [date]. */
+    fun trailingHrvAverage(days: List<WellnessDayEntity>, date: LocalDate): Double? =
+        daysInWindow(days, date, 7)
+            .mapNotNull { it.hrvLastNight?.takeIf { value -> value > 0.0 } }
+            .takeIf { it.isNotEmpty() }
+            ?.average()
+
+    /**
+     * Garmin compares the seven-day average with the personal baseline. Below
+     * [HrvNight.baselineLowUpper] is Low; between that and the balanced range
+     * is Unbalanced. The status summary normally carries the answer already,
+     * so this is only a fallback for older rows.
+     */
+    fun effectiveHrvStatus(night: HrvNight): String? {
+        night.status?.let { return it }
+        val value = night.statusValue ?: return null
+        val low = night.baselineLow ?: return null
+        val high = night.baselineHigh ?: return null
+        val lowUpper = night.baselineLowUpper ?: low
+        return when {
+            value < lowUpper -> "Low"
+            value < low -> "Unbalanced"
+            value > high -> "Unbalanced"
+            else -> "Balanced"
+        }
+    }
 
     fun stressDays(days: List<WellnessDayEntity>, end: LocalDate, windowDays: Int): List<DailyAverage> =
         daysInWindow(days, end, windowDays).mapNotNull { day ->
@@ -410,7 +498,7 @@ object HealthMetrics {
     fun hrvInRangeCount(nights: List<HrvNight>): Int = nights.count { night ->
         val low = night.baselineLow
         val high = night.baselineHigh
-        val value = night.value
+        val value = night.statusValue
         if (low == null || high == null || value == null) {
             night.status.equals("Balanced", ignoreCase = true)
         } else {
@@ -423,7 +511,7 @@ object HealthMetrics {
         for (night in nights.sortedByDescending { it.date }) {
             val low = night.baselineLow
             val high = night.baselineHigh
-            val value = night.value
+            val value = night.statusValue
             val inRange = if (low != null && high != null && value != null) {
                 value in low..high
             } else {

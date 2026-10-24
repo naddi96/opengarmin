@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.opengarmin.app.data.HealthMetrics
 import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessMetrics
 import dev.opengarmin.app.data.WellnessSampleEntity
@@ -68,7 +69,11 @@ fun TodayScreen(
     val day = WellnessMetrics.latestDay(days)
     val now = LocalDateTime.now()
     val today = LocalDate.now()
-    val hrvValue = WellnessMetrics.hrvMs(day, hrSamples)
+    val hrvNight = day?.let { current ->
+        HealthMetrics.hrvNights(days, HealthMetrics.parseDate(current.date) ?: today, 1).firstOrNull()
+    }
+    val hrvValue = hrvNight?.weeklyAverage ?: WellnessMetrics.hrvMs(day, hrSamples)
+    val hrvStatus = hrvNight?.let { HealthMetrics.effectiveHrvStatus(it) } ?: day?.hrvStatus
     val dateLabel = now.format(DateTimeFormatter.ofPattern("EEEE, d MMM", Locale.getDefault()))
     val greeting = when (now.hour) {
         in 5..11 -> "Good morning"
@@ -292,7 +297,7 @@ fun TodayScreen(
                 unit = if (hrvValue != null) "ms" else null,
                 icon = Icons.Outlined.MonitorHeart,
                 iconColor = PulseColors.Teal,
-                footnote = day.hrvStatus ?: if (hrvValue != null) "Overnight" else "Not synced yet",
+                footnote = hrvStatus ?: if (hrvValue != null) "Overnight" else "Not synced yet",
                 modifier = Modifier.weight(1f),
             )
         }

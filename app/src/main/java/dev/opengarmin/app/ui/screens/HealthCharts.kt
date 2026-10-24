@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.HealthMetrics
+import dev.opengarmin.app.data.HrvNight
 import dev.opengarmin.app.data.SleepBucket
 import dev.opengarmin.app.data.SleepNight
 import dev.opengarmin.app.data.SleepStageEntity
@@ -1060,58 +1061,95 @@ internal fun HrvOvernightChart(
 /** HRV status history: circle/square/triangle shapes over the baseline band. */
 @Composable
 internal fun HrvStatusChart(
-    values: List<Pair<String?, Double?>>,
-    baselineLow: Double?,
-    baselineHigh: Double?,
+    nights: List<HrvNight>,
     modifier: Modifier = Modifier,
 ) {
-    val valid = values.filter { it.second != null }
-    if (valid.isEmpty()) {
+    val plotted = nights.mapNotNull { night ->
+        val value = night.statusValue ?: return@mapNotNull null
+        night to value
+    }
+    if (plotted.isEmpty()) {
         Text("No HRV history in this range yet.", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
         return
     }
-    Canvas(
-        modifier
-            .fillMaxWidth()
-            .height(160.dp)
-            .semantics { contentDescription = "HRV status shapes against the baseline range" },
-    ) {
-        val numbers = valid.mapNotNull { it.second?.toFloat() }
-        var low = numbers.min()
-        var high = numbers.max()
-        baselineLow?.let { low = minOf(low, it.toFloat() - 4f) }
-        baselineHigh?.let { high = maxOf(high, it.toFloat() + 4f) }
-        val span = (high - low).coerceAtLeast(1f)
-        val top = 10.dp.toPx()
-        val bottom = size.height - 10.dp.toPx()
-        fun yFor(value: Float) = bottom - ((value - low) / span) * (bottom - top)
-        if (baselineLow != null && baselineHigh != null) {
-            drawRect(
-                color = PulseColors.Text.copy(alpha = 0.09f),
-                topLeft = Offset(0f, yFor(baselineHigh.toFloat())),
-                size = Size(size.width, (yFor(baselineLow.toFloat()) - yFor(baselineHigh.toFloat())).coerceAtLeast(1f)),
-            )
-        }
-        val slot = size.width / valid.size
-        valid.forEachIndexed { index, (status, value) ->
-            if (value == null) return@forEachIndexed
-            val center = Offset(slot * index + slot / 2f, yFor(value.toFloat()))
-            when (status?.lowercase(Locale.getDefault())) {
-                "balanced" -> drawCircle(hrvStatusColor(status), radius = 4.5f, center = center)
-                "unbalanced" -> drawRect(
-                    color = hrvStatusColor(status),
-                    topLeft = Offset(center.x - 4f, center.y - 4f),
-                    size = Size(8f, 8f),
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Canvas(
+            modifier
+                .fillMaxWidth()
+                .height(160.dp)
+                .semantics { contentDescription = "HRV status shapes against the baseline range" },
+        ) {
+            val scaleValues = plotted.map { it.second.toFloat() } + plotted.flatMap { (night, _) ->
+                listOfNotNull(night.baselineLow?.toFloat(), night.baselineHigh?.toFloat())
+            }
+            val low = (scaleValues.minOrNull() ?: 0f) - 4f
+            val high = (scaleValues.maxOrNull() ?: 1f) + 4f
+            val span = (high - low).coerceAtLeast(1f)
+            val top = 10.dp.toPx()
+            val bottom = size.height - 10.dp.toPx()
+            val slot = size.width / plotted.size
+            fun xFor(index: Int) = slot * index + slot / 2f
+            fun yFor(value: Double) = bottom - ((value.toFloat() - low) / span) * (bottom - top)
+
+            listOf(0f, 0.5f, 1f).forEach { fraction ->
+                val y = top + (bottom - top) * fraction
+                drawLine(
+                    color = PulseColors.Text.copy(alpha = 0.06f),
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 1f,
                 )
-                else -> {
-                    val path = Path().apply {
-                        moveTo(center.x, center.y - 5f)
-                        lineTo(center.x + 5f, center.y + 4f)
-                        lineTo(center.x - 5f, center.y + 4f)
-                        close()
-                    }
-                    drawPath(path, color = hrvStatusColor(status))
+            }
+
+            // The baseline is recalculated every day from the trailing three
+            // weeks, so the band is a polygon rather than one fixed rectangle.
+            val band = plotted.mapIndexedNotNull { index, (night, _) ->
+                val bandLow = night.baselineLow ?: return@mapIndexedNotNull null
+                val bandHigh = night.baselineHigh ?: return@mapIndexedNotNull null
+                Triple(xFor(index), yFor(bandHigh), yFor(bandLow))
+            }
+            if (band.size >= 2) {
+                val path = Path().apply {
+                    moveTo(band.first().first, band.first().second)
+                    band.drop(1).forEach { lineTo(it.first, it.second) }
+                    band.asReversed().forEach { lineTo(it.first, it.third) }
+                    close()
                 }
+                drawPath(path, color = PulseColors.Text.copy(alpha = 0.09f))
+            } else if (band.size == 1) {
+                val point = band.first()
+                drawRect(
+                    color = PulseColors.Text.copy(alpha = 0.09f),
+                    topLeft = Offset(point.first - slot / 2f, point.second),
+                    size = Size(slot, (point.third - point.second).coerceAtLeast(1f)),
+                )
+            }
+
+            plotted.forEachIndexed { index, (night, value) ->
+                val center = Offset(xFor(index), yFor(value))
+                val status = HealthMetrics.effectiveHrvStatus(night)
+                when (status?.lowercase(Locale.getDefault())) {
+                    "balanced" -> drawCircle(hrvStatusColor(status), radius = 5.2f, center = center)
+                    "unbalanced" -> drawRect(
+                        color = hrvStatusColor(status),
+                        topLeft = Offset(center.x - 5f, center.y - 5f),
+                        size = Size(10f, 10f),
+                    )
+                    else -> {
+                        val path = Path().apply {
+                            moveTo(center.x, center.y - 6f)
+                            lineTo(center.x + 6f, center.y + 5f)
+                            lineTo(center.x - 6f, center.y + 5f)
+                            close()
+                        }
+                        drawPath(path, color = hrvStatusColor(status))
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            listOf(plotted.first().first.date, plotted.last().first.date).forEach {
+                Text(dayLabel(it), style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted)
             }
         }
     }

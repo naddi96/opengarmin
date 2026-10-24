@@ -93,21 +93,19 @@ internal fun HrvDetailScreen(
             EmptyMetricCard("HRV has not synced for this date. It comes from the overnight recording.")
         } else if (window == HealthWindow.DAY) {
             val lastNight = day.hrvLastNight ?: hrvSamples.map { it.value }.takeIf { it.isNotEmpty() }?.average()
-            val weekly = HealthMetrics.hrvNights(days, anchor, 7)
-                .mapNotNull { it.value }
-                .takeIf { it.isNotEmpty() }
-                ?.average()
+            val night = HealthMetrics.hrvNights(days, anchor, 1).firstOrNull()
             HrvDay(
                 day = day,
+                hrvNight = night,
                 lastNight = lastNight,
-                weekly = weekly,
+                weekly = night?.weeklyAverage,
                 samples = hrvSamples,
                 days = days,
                 anchor = anchor,
             )
         } else {
             val nights = HealthMetrics.hrvNights(days, anchor, window.days)
-            HrvHistory(nights = nights, days = days)
+            HrvHistory(nights = nights)
         }
         Spacer(Modifier.height(PulseSpacing.lg))
     }
@@ -116,19 +114,28 @@ internal fun HrvDetailScreen(
 @Composable
 private fun HrvDay(
     day: WellnessDayEntity,
+    hrvNight: HrvNight?,
     lastNight: Double?,
     weekly: Double?,
     samples: List<WellnessSampleEntity>,
     days: List<WellnessDayEntity>,
     anchor: LocalDate,
 ) {
-    val status = day.hrvStatus
-    val low = day.hrvBaselineLow
-    val high = day.hrvBaselineHigh
+    val status = hrvNight?.let { HealthMetrics.effectiveHrvStatus(it) } ?: day.hrvStatus
+    val low = hrvNight?.baselineLow ?: day.hrvBaselineLow
+    val high = hrvNight?.baselineHigh ?: day.hrvBaselineHigh
+    val lowUpper = hrvNight?.baselineLowUpper ?: day.hrvBaselineLowUpper
+    val estimated = hrvNight?.baselineEstimated == true
     val center = weekly ?: lastNight
     val delta = if (lastNight != null && weekly != null) lastNight - weekly else null
     val peak = samples.maxByOrNull { it.value }
-    val baselineText = if (low != null && high != null) "Baseline range is ${"%.0f".format(low)}–${"%.0f".format(high)} ms." else "No baseline range reported by the watch."
+    val baselineText = when {
+        low != null && high != null && estimated ->
+            "Estimated baseline range is ${"%.0f".format(low)}–${"%.0f".format(high)} ms, from the last three weeks of overnight HRV."
+        low != null && high != null ->
+            "Baseline range is ${"%.0f".format(low)}–${"%.0f".format(high)} ms."
+        else -> "No baseline range reported by the watch."
+    }
 
     MetricCard {
         Column(
@@ -137,10 +144,11 @@ private fun HrvDay(
             verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
         ) {
             if (center != null && low != null && high != null) {
-                val domainLow = minOf(low - 10.0, center - 5.0, 0.0).coerceAtLeast(0.0)
+                val lowThreshold = (lowUpper ?: (low * 0.9)).coerceAtMost(low)
+                val domainLow = minOf(lowThreshold - 10.0, center - 5.0, 0.0).coerceAtLeast(0.0)
                 val domainHigh = maxOf(high + 15.0, center + 5.0)
                 val span = (domainHigh - domainLow).coerceAtLeast(1.0)
-                val lowEnd = ((low * 0.9 - domainLow) / span).toFloat().coerceIn(0f, 1f)
+                val lowEnd = ((lowThreshold - domainLow) / span).toFloat().coerceIn(0f, 1f)
                 val balancedStart = ((low - domainLow) / span).toFloat().coerceIn(0f, 1f)
                 val balancedEnd = ((high - domainLow) / span).toFloat().coerceIn(0f, 1f)
                 val bands = listOf(
@@ -229,15 +237,14 @@ private fun HrvDay(
 
     SectionHeader("Recent nights")
     HealthMetrics.hrvNights(days, anchor, 7).sortedByDescending { it.date }.take(5).forEach { night ->
-        val average = rollingHrvAverage(days, night.date)
         MetricDayRow(
             name = HealthMetrics.formatDayName(night.date),
             sub = HealthMetrics.formatDayDate(night.date),
-            left = average?.let { "%.0f ms".format(it) } ?: "—",
+            left = night.weeklyAverage?.let { "%.0f ms".format(it) } ?: "—",
             leftLabel = "7-day avg",
             right = night.value?.let { "%.0f ms".format(it) } ?: "—",
             rightLabel = "last night",
-            leftColor = hrvStatusColor(effectiveHrvStatus(night)),
+            leftColor = hrvStatusColor(HealthMetrics.effectiveHrvStatus(night)),
         )
     }
 }
@@ -245,7 +252,6 @@ private fun HrvDay(
 @Composable
 private fun HrvHistory(
     nights: List<HrvNight>,
-    days: List<WellnessDayEntity>,
 ) {
     if (nights.isEmpty()) {
         EmptyMetricCard("No HRV history in this range.")
@@ -275,7 +281,7 @@ private fun HrvHistory(
                         )
                     }
                 }
-                latest?.let { effectiveHrvStatus(it) }?.let { status ->
+                latest?.let { HealthMetrics.effectiveHrvStatus(it) }?.let { status ->
                     Box(
                         Modifier
                             .clip(CircleShape)
@@ -290,20 +296,23 @@ private fun HrvHistory(
 
         MetricCard {
             Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
-                CardTitle("Nightly HRV vs baseline")
+                CardTitle("7-day averages", "HRV in ms")
                 Legend(
                     listOf(
                         Triple("Balanced", PulseColors.Green, false),
                         Triple("Unbalanced", PulseColors.Orange, false),
                         Triple("Low", PulseColors.Coral, false),
-                        Triple("Baseline", PulseColors.Text.copy(alpha = 0.35f), false),
+                        Triple(if (nights.any { it.baselineEstimated }) "Baseline (est.)" else "Baseline", PulseColors.Text.copy(alpha = 0.35f), false),
                     ),
                 )
-                HrvStatusChart(
-                    values = nights.map { effectiveHrvStatus(it) to it.value },
-                    baselineLow = baseline?.baselineLow,
-                    baselineHigh = baseline?.baselineHigh,
-                )
+                HrvStatusChart(nights = nights)
+                if (nights.any { it.baselineEstimated }) {
+                    Text(
+                        "The watch did not report its baseline. The band is estimated from the last three weeks of overnight HRV.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
                 InsightLine(
                     text = buildAnnotatedString {
                         append("You have been in your baseline range for ")
@@ -338,7 +347,8 @@ private fun HrvHistory(
             listOf(
                 "Range average" to (HealthMetrics.average(nights.mapNotNull { it.value })?.roundToInt()?.let { "$it ms" } ?: "—"),
                 if (baseLow != null && baseHigh != null) {
-                    "Baseline" to "%.0f–%.0f ms".format(baseLow, baseHigh)
+                    (if (baseline.baselineEstimated) "Baseline (est.)" else "Baseline") to
+                        "%.0f–%.0f ms".format(baseLow, baseHigh)
                 } else {
                     "Nights recorded" to nights.size.toString()
                 },
@@ -349,15 +359,14 @@ private fun HrvHistory(
 
     SectionHeader("Recent nights")
     nights.sortedByDescending { it.date }.take(5).forEach { night ->
-        val average = rollingHrvAverage(days, night.date)
         MetricDayRow(
             name = HealthMetrics.formatDayName(night.date),
             sub = HealthMetrics.formatDayDate(night.date),
-            left = average?.let { "%.0f ms".format(it) } ?: "—",
+            left = night.weeklyAverage?.let { "%.0f ms".format(it) } ?: "—",
             leftLabel = "7-day avg",
             right = night.value?.let { "%.0f ms".format(it) } ?: "—",
             rightLabel = "last night",
-            leftColor = hrvStatusColor(effectiveHrvStatus(night)),
+            leftColor = hrvStatusColor(HealthMetrics.effectiveHrvStatus(night)),
         )
     }
 }
@@ -372,27 +381,6 @@ private fun HrvCell(label: String, value: String, sub: String?, color: Color, mo
         }
     }
 }
-
-/** Falls back to the baseline range when the watch did not store a status. */
-private fun effectiveHrvStatus(night: HrvNight): String? {
-    night.status?.let { return it }
-    val value = night.value ?: return null
-    val low = night.baselineLow ?: return null
-    val high = night.baselineHigh ?: return null
-    return when {
-        value < low -> "Low"
-        value > high -> "Unbalanced"
-        else -> "Balanced"
-    }
-}
-
-private fun rollingHrvAverage(days: List<WellnessDayEntity>, date: LocalDate): Double? =
-    days.filter { it.date <= date.toString() }
-        .sortedByDescending { it.date }
-        .take(7)
-        .mapNotNull { it.hrvLastNight }
-        .takeIf { it.isNotEmpty() }
-        ?.average()
 
 private fun hrvSubtitle(
     anchor: LocalDate,
