@@ -21,6 +21,7 @@ object PulseColors {
 
     val Accent = Color(0xFFC7F26B)
     val Teal = Color(0xFF5ED6C1)
+    val Green = Color(0xFF59D98E)
     val Coral = Color(0xFFFF7A66)
     val Blue = Color(0xFF8FA8FF)
     val Orange = Color(0xFFFFB45E)

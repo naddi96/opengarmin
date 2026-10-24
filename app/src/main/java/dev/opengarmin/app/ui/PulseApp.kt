@@ -62,6 +62,8 @@ import dev.opengarmin.app.ui.screens.ActivityDetailScreen
 import dev.opengarmin.app.ui.screens.CoachScreen
 import dev.opengarmin.app.ui.screens.DataExplorer
 import dev.opengarmin.app.ui.screens.DiagnosticsScreen
+import dev.opengarmin.app.ui.screens.HealthMetric
+import dev.opengarmin.app.ui.screens.HealthMetricScreen
 import dev.opengarmin.app.ui.screens.HealthScreen
 import dev.opengarmin.app.ui.screens.PaceRunScreen
 import dev.opengarmin.app.ui.screens.PaceStrategyScreen
@@ -76,7 +78,7 @@ import dev.opengarmin.app.ui.theme.PulseSpacing
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 
-private enum class AppRoute { Tabs, Trends, Detail, Plan, PacePro, PaceRun, Settings, Provider, Data, Log, Diagnostics }
+private enum class AppRoute { Tabs, Trends, Detail, Plan, PacePro, PaceRun, Settings, Provider, Data, Log, HealthMetric, Diagnostics }
 
 @Composable
 fun PulseApp(
@@ -147,11 +149,14 @@ fun PulseApp(
     var routeName by rememberSaveable { mutableStateOf(AppRoute.Tabs.name) }
     var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
     var dataId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var healthMetricName by rememberSaveable { mutableStateOf(HealthMetric.BODY_BATTERY.name) }
+    var healthReturnTabName by rememberSaveable { mutableStateOf(PulseTab.Health.name) }
     var paceRunPlan by remember { mutableStateOf<PacePlanEntity?>(null) }
     var providerReturnName by rememberSaveable { mutableStateOf(AppRoute.Settings.name) }
     var providerVersion by remember { mutableIntStateOf(0) }
     val tab = PulseTab.entries.firstOrNull { it.name == tabName } ?: PulseTab.Today
     val route = runCatching { AppRoute.valueOf(routeName) }.getOrDefault(AppRoute.Tabs)
+    val healthMetric = HealthMetric.entries.firstOrNull { it.name == healthMetricName } ?: HealthMetric.BODY_BATTERY
     val detailActivity = activities.firstOrNull { it.id == detailId }
     val dataTarget = activities.firstOrNull { it.id == dataId } ?: dataActivity ?: detailActivity
     val provider: ProviderConfig = remember(providerVersion, route) { providerStore.load() }
@@ -185,6 +190,12 @@ fun PulseApp(
         routeName = AppRoute.Provider.name
     }
 
+    fun openHealthMetric(metric: HealthMetric, returnTab: PulseTab) {
+        healthMetricName = metric.name
+        healthReturnTabName = returnTab.name
+        routeName = AppRoute.HealthMetric.name
+    }
+
     val planSummary = if (plannedWorkouts.isEmpty()) {
         "Build a session and send it to the watch"
     } else {
@@ -204,6 +215,10 @@ fun PulseApp(
                 routeName = if (detailActivity != null) AppRoute.Detail.name else AppRoute.Tabs.name
             }
             AppRoute.Trends -> routeName = AppRoute.Tabs.name
+            AppRoute.HealthMetric -> {
+                tabName = healthReturnTabName
+                routeName = AppRoute.Tabs.name
+            }
             AppRoute.Plan -> routeName = AppRoute.Tabs.name
             AppRoute.PacePro -> routeName = AppRoute.Tabs.name
             AppRoute.PaceRun -> {
@@ -253,10 +268,12 @@ fun PulseApp(
                             PulseTab.Health -> HealthScreen(
                                 days = wellnessDays,
                                 samples = hrSamples,
-                                sleepStages = sleepStages,
                                 training = trainingSummary,
+                                syncLabel = syncLabel,
+                                birthYear = settings.birthYear,
+                                biologicalSex = settings.biologicalSex,
                                 onOpenTrends = { routeName = AppRoute.Trends.name },
-                                onOpenTraining = { tabName = PulseTab.Training.name },
+                                onOpenMetric = { openHealthMetric(it, PulseTab.Health) },
                                 onAskCoach = { tabName = PulseTab.Coach.name },
                                 onSync = onSync,
                             )
@@ -273,6 +290,7 @@ fun PulseApp(
                                 onOpenPace = { routeName = AppRoute.PacePro.name },
                                 pacePlanSummary = paceSummary,
                                 racePredictions = racePredictions,
+                                onOpenVo2Max = { openHealthMetric(HealthMetric.VO2_MAX, PulseTab.Training) },
                             )
                             PulseTab.Activities -> ActivitiesScreen(
                                 activities = activities,
@@ -300,6 +318,21 @@ fun PulseApp(
                     )
                 }
             }
+            AppRoute.HealthMetric -> HealthMetricScreen(
+                metric = healthMetric,
+                days = wellnessDays,
+                samples = hrSamples,
+                sleepStages = sleepStages,
+                activities = activities,
+                training = trainingSummary,
+                birthYear = settings.birthYear,
+                biologicalSex = settings.biologicalSex,
+                onBack = {
+                    tabName = healthReturnTabName
+                    routeName = AppRoute.Tabs.name
+                },
+                onOpenMetric = { metric -> openHealthMetric(metric, PulseTab.Health) },
+            )
             AppRoute.Trends -> TrendsScreen(
                 days = wellnessDays,
                 hrSamples = hrSamples,

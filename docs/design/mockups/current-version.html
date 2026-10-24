@@ -27,6 +27,7 @@
     --yellow:#FFD166;
     --magenta:#E879F9;
     --violet:#B39DFF;
+    --green:#59D98E;
   }
 
   *{box-sizing:border-box}
@@ -280,6 +281,82 @@
   .te-bar span{flex:1;height:100%}
   .te-knob{position:absolute;left:48%;top:-4px;width:18px;height:18px;border-radius:50%;background:var(--accent);border:3px solid var(--bg)}
 
+
+  /* ---------- AI analysis card ---------- */
+  .ai-card{background:var(--surface-2);border-color:var(--border-2);padding:14px 16px 16px}
+  .ai-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .ai-badge{font-size:10px;color:var(--muted);border:1px solid var(--border-strong);border-radius:999px;padding:3px 8px;white-space:nowrap}
+  .ai-empty{display:flex;align-items:center;gap:12px;margin-top:10px}
+  .ai-empty p{margin:0;font-size:12.5px;line-height:1.45;color:var(--muted);flex:1}
+  .ai-empty .btn-lime{padding:11px 14px;font-size:13px;white-space:nowrap}
+  .ai-summary{font-size:13.5px;line-height:1.5;margin-top:9px;color:var(--text)}
+  .ai-points{display:flex;flex-direction:column;gap:8px;margin-top:11px}
+  .ai-point{display:flex;gap:9px;font-size:12.5px;line-height:1.45}
+  .ai-point .dot{margin-top:5px}
+  .ai-point b{font-weight:700}
+  .ai-point .t{color:var(--muted)}
+  .ai-next{margin-top:12px;padding:10px 12px;border-radius:14px;background:rgba(199,242,107,.07);border:1px solid rgba(199,242,107,.22);font-size:12.5px;line-height:1.45}
+  .ai-next b{color:var(--accent);font-weight:700}
+  .ai-foot{display:flex;align-items:center;justify-content:space-between;margin-top:11px;font-size:10.5px;color:var(--muted)}
+  .ai-foot .regen{display:inline-flex;align-items:center;gap:5px;color:var(--accent);font-weight:700;font-size:12px}
+  .ai-foot .regen .ic{width:13px;height:13px}
+  .compact-map svg{height:110px}
+
+
+  /* ---------- health hub & metric detail ---------- */
+  .badge-orange{background:rgba(255,180,94,.16);color:var(--orange);padding:2px 8px;font-size:11px}
+  .badge-blue{background:rgba(143,168,255,.16);color:var(--blue);padding:2px 8px;font-size:11px}
+  .badge-lime2{background:rgba(199,242,107,.16);color:var(--accent);padding:2px 8px;font-size:11px}
+  .badge-green{background:rgba(89,217,142,.16);color:var(--green)}
+  .hub-tile{padding:13px 14px 12px;border-radius:20px}
+  .hub-top{display:flex;align-items:center;justify-content:space-between;font-size:12px}
+  .hub-top .l{display:flex;align-items:center;gap:6px}
+  .hub-top .l span{color:var(--muted)}
+  .hub-val{font-family:'Space Grotesk',system-ui,sans-serif;font-size:28px;font-weight:700;line-height:1.1;margin-top:7px}
+  .hub-val span{font-size:12px;font-weight:500;color:var(--muted)}
+  .hub-sub{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);margin-top:4px;white-space:nowrap}
+  .hub-spark{margin-top:9px}
+  .hub-coach{padding:12px 16px 14px}
+  .date-nav{display:flex;align-items:center;justify-content:space-between;margin:-2px 0}
+  .date-nav .label{font-size:13.5px;font-weight:700}
+  .date-nav .arrow{width:32px;height:32px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:grid;place-items:center}
+  .date-nav .arrow .ic{width:16px;height:16px}
+  .date-nav .arrow.off{opacity:.35}
+  .card-title{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+  .card-title h3{font-family:'Space Grotesk',system-ui,sans-serif;font-size:16px;margin:0}
+  .card-title .aux{font-size:11.5px;color:var(--muted)}
+  .card-title .aux b{color:var(--text);font-weight:500}
+  .need-row{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:6px}
+  .need-row b{color:var(--orange);font-weight:700}
+  .stages{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:6px;padding-top:12px;border-top:1px solid var(--border)}
+  .stage .lbl{font-size:10.5px;color:var(--muted);display:flex;align-items:center;gap:5px}
+  .stage .lbl i{width:7px;height:7px;border-radius:50%;display:inline-block}
+  .stage .val{font-family:'Space Grotesk',system-ui,sans-serif;font-size:15px;font-weight:700;margin-top:3px;white-space:nowrap}
+  .stage .pct{font-size:10.5px;color:var(--muted)}
+  .kv3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 10px}
+  .kv2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+  .kv .lbl{font-size:10.5px;color:var(--muted);line-height:1.25}
+  .kv .val{font-family:'Space Grotesk',system-ui,sans-serif;font-size:19px;font-weight:700;line-height:1.15;margin-top:3px;white-space:nowrap}
+  .kv .val span{font-size:10.5px;font-weight:500;color:var(--muted)}
+  .kv .val em{font-style:normal;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:700}
+  .insight-line{display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding:10px 12px;border-radius:14px;background:rgba(199,242,107,.06);border:1px solid rgba(199,242,107,.18);font-size:12.5px;line-height:1.45}
+  .insight-line .ic{margin-top:2px}
+  .insight-line b{font-weight:700}
+  .levels{flex:1;display:flex;flex-direction:column;gap:9px}
+  .lv{display:flex;align-items:center;gap:8px;font-size:12.5px}
+  .lv i{width:8px;height:8px;border-radius:50%;flex:none}
+  .lv .n{color:var(--muted);flex:1}
+  .lv b{font-family:'Space Grotesk',system-ui,sans-serif;font-size:14px;font-weight:700}
+  .lv .p{width:30px;text-align:right;font-size:11px;color:var(--muted)}
+  .day-row{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:11px 14px}
+  .day-row .name{font-family:'Space Grotesk',system-ui,sans-serif;font-size:15px;font-weight:700}
+  .day-row .sub{font-size:11px;color:var(--muted);margin-top:1px}
+  .day-row .cell{display:grid;grid-template-columns:auto auto;align-items:center;column-gap:5px;text-align:right;font-size:14px}
+  .day-row .cell b{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700}
+  .day-row .cell i{grid-column:1/-1;font-style:normal;font-size:10px;color:var(--muted);line-height:1.2}
+  .link-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px}
+  .chips .chip{font-size:12px;padding:7px 11px}
+
   /* ---------- plan ---------- */
   .plan-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:13px 16px}
   .plan-row h3{font-family:'Space Grotesk',system-ui,sans-serif;font-size:19px;margin:0;line-height:1.2}
@@ -349,6 +426,7 @@
     <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
     <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2.5" y="7.5" width="17" height="9" rx="2"/><path d="M21.5 10.5v3"/><rect x="5" y="10" width="10" height="4" rx="1" fill="currentColor" stroke="none"/></symbol>
     <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M3 9a13 13 0 0 1 18 0"/><path d="M6.5 12.5a8 8 0 0 1 11 0"/><path d="M10 16a3.2 3.2 0 0 1 4 0"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.2"/><circle cx="12" cy="7.8" r=".6" fill="currentColor"/></symbol>
     <symbol id="i-signal" viewBox="0 0 24 24"><path d="M4 19v-3"/><path d="M9 19v-6"/><path d="M14 19v-9"/><path d="M19 19V5"/></symbol>
   </defs>
 </svg>
@@ -365,7 +443,7 @@
     <b>docs/screenshots</b>. Nothing here is wired to the app — this is a static design reference.
   </p>
   <div class="meta">
-    <span><b>9</b> screens</span>
+    <span><b>18</b> screens</span>
     <span>390 × 844</span>
     <span>DM Sans / Space Grotesk</span>
     <span>Local-first · no telemetry</span>
@@ -486,158 +564,431 @@
     <figcaption><strong>Today</strong>Steps ring, current heart rate, sleep/HRV tiles and the daily coach insight. <em>Primary tab.</em></figcaption>
   </figure>
 
-  <!-- ============================================================ HEALTH -->
+  <!-- ============================================================ HEALTH HUB + METRIC DETAIL -->
   <figure class="device-wrap">
-    <div class="device" role="img" aria-label="Health screen mockup">
-      <div class="statusbar">
-        <span>23:22</span>
-        <div class="status-icons">
-          <svg class="sic"><use href="#i-signal"/></svg>
-          <svg class="sic"><use href="#i-wifi"/></svg>
-          <svg class="sic"><use href="#i-battery"/></svg>
-          <span class="battery-pct">52</span>
-        </div>
-      </div>
-
-      <div class="screen" style="gap:11px">
+    <div class="device" role="img" aria-label="Health hub screen mockup">
+      <div class="statusbar"><span>20:31</span><div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg><svg class="sic"><use href="#i-wifi"/></svg><svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">50</span></div></div>
+      <div class="screen">
         <div class="title-row">
-          <div>
-            <h2 class="display screen-title">Health</h2>
-            <div class="subtitle">mer 21 ott · from your watch</div>
-          </div>
-          <button class="pill-btn"><svg class="ic" style="width:15px;height:15px"><use href="#i-trends"/></svg>Trends</button>
+          <div><h2 class="display screen-title">Health</h2><div class="subtitle">gio 22 ott · synced 1 min ago</div></div>
+          <button class="pill-btn"><svg class="ic" style="width:15px;height:15px;"><use href="#i-trends"/></svg>Trends</button>
         </div>
 
-        <!-- body battery -->
-        <div class="card">
+        <div class="card insight hub-coach">
+          <div class="eyebrow"><svg class="ic" style="width:14px;height:14px;"><use href="#i-moon"/></svg>Tonight</div>
+          <div class="insight-text" style="margin-top:6px">Last night was short (<b>5h 15m</b>). Lights out around <b>23:00</b> gives you 9 h before your usual 08:12 wake-up.</div>
+        </div>
+
+        <div class="card" style="padding-bottom:13px">
           <div class="stat-head">
-            <div class="kicker" style="color:var(--teal)"><svg class="ic" style="width:15px;height:15px"><use href="#i-bolt"/></svg><span style="color:var(--muted)">Body Battery</span></div>
-            <div class="muted" style="font-size:11.5px;text-align:right;line-height:1.4">Woke up at<br><b style="color:var(--text);font-size:13px">42</b></div>
+            <div class="kicker" style="color:var(--teal)"><svg class="ic" style="width:15px;height:15px;"><use href="#i-bolt"/></svg><span style="color:var(--muted)">Body Battery</span></div>
+            <div class="muted" style="font-size:11.5px">Peak <b style="color:var(--text)">69</b> at 08:08</div>
           </div>
-          <div class="stat-line">
-            <span class="big" style="font-size:38px;color:var(--teal)">33</span>
-            <span class="unit">/ 100 · Low</span>
-          </div>
-          <svg viewBox="0 0 300 86" preserveAspectRatio="none" style="display:block;width:100%;height:70px;margin-top:7px" aria-hidden="true">
-            <polygon fill="#5ED6C1" fill-opacity=".13" points="0,70 6,68 6,30 10,28 10,26 16,26 16,30 24,30 24,33 34,33 34,36 46,36 46,39 60,39 60,42 76,42 76,45 94,45 94,48 114,48 114,51 136,51 136,54 160,54 160,57 186,57 186,60 214,60 214,63 242,63 242,66 268,66 268,69 300,69 300,86 0,86"/>
-            <polyline fill="none" stroke="#5ED6C1" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"
-                      points="0,70 6,68 6,30 10,28 10,26 16,26 16,30 24,30 24,33 34,33 34,36 46,36 46,39 60,39 60,42 76,42 76,45 94,45 94,48 114,48 114,51 136,51 136,54 160,54 160,57 186,57 186,60 214,60 214,63 242,63 242,66 268,66 268,69 300,69"/>
-            <circle cx="300" cy="69" r="3" fill="#5ED6C1"/>
-          </svg>
-          <div class="chart-axis"><span>00:01</span><span>19:10</span><span>21:13</span><span>Now</span></div>
-          <div class="three-stats">
-            <div><div class="lbl">Overnight</div><div class="val" style="color:var(--teal)">+3</div></div>
-            <div><div class="lbl">Drained</div><div class="val" style="color:var(--coral)">−62</div></div>
-            <div><div class="lbl">Recharged</div><div class="val" style="color:var(--teal)">+53</div></div>
+          <div class="stat-line"><span class="big" style="font-size:38px;color:var(--teal)">26</span><span class="unit">/ 100 · Low</span></div>
+          <div style="margin-top:6px"><svg viewBox="0 0 314 62" width="100%" style="display:block;height:auto"  aria-hidden="true"><polygon fill="#5ED6C1" fill-opacity=".13" points="0,43.4 1.7,43.6 3.5,43.7 5.2,43.9 7,44 8.7,44.1 10.5,44.3 12.2,44.4 14,44.5 15.7,44.6 17.4,44.7 19.2,44.8 20.9,44.9 22.7,44.9 24.4,45 26.2,45.1 27.9,45.2 29.7,45.3 31.4,45.4 33.1,45.5 34.9,45.3 36.6,44.6 38.4,43.9 40.1,43.2 41.9,42.5 43.6,41.8 45.4,41.1 47.1,40.4 48.8,39.7 50.6,39 52.3,38.3 54.1,37.6 55.8,36.9 57.6,36.2 59.3,35.5 61.1,34.8 62.8,34.1 64.5,33.4 66.3,32.8 68,32.3 69.8,31.9 71.5,31.4 73.3,30.9 75,30.5 76.8,30 78.5,29.6 80.2,29.1 82,28.6 83.7,28.2 85.5,27.7 87.2,27.2 89,26.8 90.7,26.3 92.5,25.8 94.2,25.4 95.9,24.9 97.7,24.4 99.4,24 101.2,23.5 102.9,23 104.7,22.6 106.4,22.1 108.2,22.4 109.9,22.6 111.6,22.9 113.4,23.2 115.1,23.4 116.9,23.7 118.6,23.9 120.4,24.2 122.1,24.5 123.9,24.7 125.6,25 127.3,25.2 129.1,25.5 130.8,25.8 132.6,26 134.3,26.2 136.1,26.5 137.8,26.7 139.6,27 141.3,27.2 143,27.5 144.8,27.7 146.5,27.9 148.3,28.2 150,28.4 151.8,28.7 153.5,28.9 155.3,29.2 157,29.4 158.7,29.6 160.5,29.7 162.2,29.9 164,30.1 165.7,30.3 167.5,30.4 169.2,30.6 171,30.8 172.7,31 174.4,31.1 176.2,31.3 177.9,31.5 179.7,31.7 181.4,31.8 183.2,32 184.9,32.2 186.7,32.3 188.4,32.5 190.1,32.7 191.9,32.9 193.6,33 195.4,33.2 197.1,33.4 198.9,33.6 200.6,33.7 202.4,33.9 204.1,34.1 205.8,34.3 207.6,34.4 209.3,34.6 211.1,34.7 212.8,34.8 214.6,34.9 216.3,35 218.1,35.1 219.8,35.2 221.5,35.3 223.3,35.4 225,35.5 226.8,35.6 228.5,35.7 230.3,35.8 232,36 233.8,36.1 235.5,36.2 237.2,36.4 239,36.7 240.7,37 242.5,37.4 244.2,38.1 246,38.9 247.7,39.6 249.5,40.4 251.2,41.1 252.9,41.9 254.7,42.3 256.4,42.7 258.2,43.1 259.9,43.5 261.7,44 263.4,44 265.2,44 266.9,44 268.4,62 0,62"/>
+      <polyline fill="none" stroke="#5ED6C1" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="0,43.4 1.7,43.6 3.5,43.7 5.2,43.9 7,44 8.7,44.1 10.5,44.3 12.2,44.4 14,44.5 15.7,44.6 17.4,44.7 19.2,44.8 20.9,44.9 22.7,44.9 24.4,45 26.2,45.1 27.9,45.2 29.7,45.3 31.4,45.4 33.1,45.5 34.9,45.3 36.6,44.6 38.4,43.9 40.1,43.2 41.9,42.5 43.6,41.8 45.4,41.1 47.1,40.4 48.8,39.7 50.6,39 52.3,38.3 54.1,37.6 55.8,36.9 57.6,36.2 59.3,35.5 61.1,34.8 62.8,34.1 64.5,33.4 66.3,32.8 68,32.3 69.8,31.9 71.5,31.4 73.3,30.9 75,30.5 76.8,30 78.5,29.6 80.2,29.1 82,28.6 83.7,28.2 85.5,27.7 87.2,27.2 89,26.8 90.7,26.3 92.5,25.8 94.2,25.4 95.9,24.9 97.7,24.4 99.4,24 101.2,23.5 102.9,23 104.7,22.6 106.4,22.1 108.2,22.4 109.9,22.6 111.6,22.9 113.4,23.2 115.1,23.4 116.9,23.7 118.6,23.9 120.4,24.2 122.1,24.5 123.9,24.7 125.6,25 127.3,25.2 129.1,25.5 130.8,25.8 132.6,26 134.3,26.2 136.1,26.5 137.8,26.7 139.6,27 141.3,27.2 143,27.5 144.8,27.7 146.5,27.9 148.3,28.2 150,28.4 151.8,28.7 153.5,28.9 155.3,29.2 157,29.4 158.7,29.6 160.5,29.7 162.2,29.9 164,30.1 165.7,30.3 167.5,30.4 169.2,30.6 171,30.8 172.7,31 174.4,31.1 176.2,31.3 177.9,31.5 179.7,31.7 181.4,31.8 183.2,32 184.9,32.2 186.7,32.3 188.4,32.5 190.1,32.7 191.9,32.9 193.6,33 195.4,33.2 197.1,33.4 198.9,33.6 200.6,33.7 202.4,33.9 204.1,34.1 205.8,34.3 207.6,34.4 209.3,34.6 211.1,34.7 212.8,34.8 214.6,34.9 216.3,35 218.1,35.1 219.8,35.2 221.5,35.3 223.3,35.4 225,35.5 226.8,35.6 228.5,35.7 230.3,35.8 232,36 233.8,36.1 235.5,36.2 237.2,36.4 239,36.7 240.7,37 242.5,37.4 244.2,38.1 246,38.9 247.7,39.6 249.5,40.4 251.2,41.1 252.9,41.9 254.7,42.3 256.4,42.7 258.2,43.1 259.9,43.5 261.7,44 263.4,44 265.2,44 266.9,44"/>
+      <circle cx="106.4" cy="22.1" r="3" fill="#0E1311" stroke="#5ED6C1" stroke-width="2"/>
+      <circle cx="268.4" cy="44" r="3.5" fill="#5ED6C1"/></svg></div>
+          <div class="chart-axis"><span>00:00</span><span>08:08</span><span>16:00</span><span>Now</span></div>
+          <div class="three-stats" style="margin-top:8px">
+            <div><div class="lbl">Overnight</div><div class="val" style="color:var(--teal)">+44</div></div>
+            <div><div class="lbl">Charged today</div><div class="val" style="color:var(--teal)">+49</div></div>
+            <div><div class="lbl">Drained</div><div class="val" style="color:var(--coral)">−54</div></div>
           </div>
         </div>
 
-        <!-- stress -->
-        <div class="card">
-          <div class="kicker"><svg class="ic" style="width:15px;height:15px;color:var(--yellow)"><use href="#i-hrv"/></svg>Stress</div>
-          <div class="stat-line">
-            <span class="big" style="font-size:36px">37</span>
-            <span class="unit">avg · Low (0–100)</span>
+        <div class="tile-grid" style="gap:11px">
+          <div class="card hub-tile">
+            <div class="hub-top"><span class="l" style="color:#8FA8FF"><svg class="ic" style="width:14px;height:14px;"><use href="#i-moon"/></svg><span>Sleep</span></span><svg class="ic" style="width:14px;height:14px;opacity:.6;color:var(--muted)"><use href="#i-chev"/></svg></div>
+            <div class="hub-val">63 <span>score</span></div>
+            <div class="hub-sub"><span class="badge badge-orange">Fair</span> 5h 15m</div>
+            <svg viewBox="0 0 141 30" width="100%" style="display:block;height:auto" class="hub-spark" aria-hidden="true"><rect x="0.0" y="9.3" width="15" height="20.7" rx="3" fill="#8FA8FF" fill-opacity="0.35"/><rect x="20.4" y="10.5" width="15" height="19.5" rx="3" fill="#8FA8FF" fill-opacity="0.35"/><rect x="40.8" y="7.5" width="15" height="22.5" rx="3" fill="#8FA8FF" fill-opacity="0.35"/><rect x="61.2" y="6.6" width="15" height="23.4" rx="3" fill="#8FA8FF" fill-opacity="0.35"/><rect x="81.6" y="9.0" width="15" height="21.0" rx="3" fill="#8FA8FF" fill-opacity="0.35"/><rect x="102.0" y="4.5" width="15" height="25.5" rx="3" fill="#8FA8FF" fill-opacity="0.35"/><rect x="122.4" y="11.1" width="15" height="18.9" rx="3" fill="#8FA8FF" fill-opacity="1"/></svg>
           </div>
-          <div class="seg-bar" aria-hidden="true">
-            <span style="width:46%;background:var(--blue)"></span>
-            <span style="width:26%;background:var(--teal)"></span>
-            <span style="width:17%;background:var(--yellow)"></span>
-            <span style="width:11%;background:var(--coral)"></span>
+          <div class="card hub-tile">
+            <div class="hub-top"><span class="l" style="color:#59D98E"><svg class="ic" style="width:14px;height:14px;"><use href="#i-hrv"/></svg><span>HRV</span></span><svg class="ic" style="width:14px;height:14px;opacity:.6;color:var(--muted)"><use href="#i-chev"/></svg></div>
+            <div class="hub-val">36 <span>ms</span></div>
+            <div class="hub-sub"><span class="dot" style="background:var(--green);width:7px;height:7px"></span>Balanced</div>
+            <svg viewBox="0 0 141 30" width="100%" style="display:block;height:auto" class="hub-spark" aria-hidden="true"><rect x="0" y="2" width="141" height="17" rx="4" fill="#fff" fill-opacity=".07"/><circle cx="4.0" cy="19.5" r="2.6" fill="#59D98E"/><circle cx="26.0" cy="19.5" r="2.6" fill="#59D98E"/><circle cx="48.0" cy="19.5" r="2.6" fill="#59D98E"/><circle cx="70.0" cy="19.5" r="2.6" fill="#59D98E"/><circle cx="92.0" cy="18.5" r="2.6" fill="#59D98E"/><circle cx="114.0" cy="18.5" r="2.6" fill="#59D98E"/><circle cx="136.0" cy="17.4" r="3.4" fill="#59D98E"/></svg>
           </div>
-          <div class="legend">
-            <span><i style="background:var(--blue)"></i>Rest 44%</span>
-            <span><i style="background:var(--teal)"></i>Low 26%</span>
-            <span><i style="background:var(--yellow)"></i>Medium 17%</span>
-            <span><i style="background:var(--coral)"></i>High 11%</span>
+          <div class="card hub-tile">
+            <div class="hub-top"><span class="l" style="color:#FFD166"><svg class="ic" style="width:14px;height:14px;"><use href="#i-hrv"/></svg><span>Stress</span></span><svg class="ic" style="width:14px;height:14px;opacity:.6;color:var(--muted)"><use href="#i-chev"/></svg></div>
+            <div class="hub-val">25 <span>avg</span></div>
+            <div class="hub-sub"><span class="badge badge-blue">Rest</span> 73% of day</div>
+            <svg viewBox="0 0 141 30" width="100%" style="display:block;height:auto" class="hub-spark" aria-hidden="true"><rect x="0.0" y="6.2" width="15" height="23.8" rx="3" fill="#FFD166" fill-opacity="0.35"/><rect x="20.4" y="6.2" width="15" height="23.8" rx="3" fill="#FFD166" fill-opacity="0.35"/><rect x="40.8" y="5.3" width="15" height="24.7" rx="3" fill="#FFD166" fill-opacity="0.35"/><rect x="61.2" y="11.0" width="15" height="19.0" rx="3" fill="#FFD166" fill-opacity="0.35"/><rect x="81.6" y="12.9" width="15" height="17.1" rx="3" fill="#FFD166" fill-opacity="0.35"/><rect x="102.0" y="10.1" width="15" height="19.9" rx="3" fill="#FFD166" fill-opacity="0.35"/><rect x="122.4" y="6.2" width="15" height="23.8" rx="3" fill="#FFD166" fill-opacity="1"/></svg>
           </div>
-          <svg viewBox="0 0 300 68" preserveAspectRatio="none" style="display:block;width:100%;height:56px;margin-top:10px" aria-hidden="true">
-            <g fill="#FFD166">
-              <rect x="0"   y="54" width="12" height="6"  rx="2"/>
-              <rect x="18"  y="56" width="12" height="4"  rx="2"/>
-              <rect x="36"  y="55" width="12" height="5"  rx="2"/>
-              <rect x="54"  y="56" width="12" height="4"  rx="2"/>
-              <rect x="72"  y="34" width="12" height="26" rx="2"/>
-              <rect x="90"  y="30" width="12" height="30" rx="2"/>
-              <rect x="108" y="32" width="12" height="28" rx="2"/>
-              <rect x="126" y="30" width="12" height="30" rx="2"/>
-              <rect x="144" y="42" width="12" height="18" rx="2"/>
-              <rect x="162" y="34" width="12" height="26" rx="2"/>
-              <rect x="180" y="55" width="12" height="5"  rx="2"/>
-              <rect x="198" y="56" width="12" height="4"  rx="2"/>
-              <rect x="216" y="44" width="12" height="16" rx="2"/>
-              <rect x="234" y="28" width="12" height="32" rx="2"/>
-              <rect x="252" y="24" width="12" height="36" rx="2"/>
-              <rect x="270" y="50" width="12" height="10" rx="2"/>
-              <rect x="288" y="55" width="12" height="5"  rx="2"/>
-            </g>
-          </svg>
+          <div class="card hub-tile">
+            <div class="hub-top"><span class="l" style="color:#C7F26B"><svg class="ic" style="width:14px;height:14px;"><use href="#i-run"/></svg><span>VO₂ max</span></span><svg class="ic" style="width:14px;height:14px;opacity:.6;color:var(--muted)"><use href="#i-chev"/></svg></div>
+            <div class="hub-val">53 <span></span></div>
+            <div class="hub-sub"><span class="badge badge-lime2">Excellent</span> top 10%</div>
+            <svg viewBox="0 0 141 30" width="100%" style="display:block;height:auto" class="hub-spark" aria-hidden="true"><polyline fill="none" stroke="#C7F26B" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" points="3,14.8 22.3,14.8 41.6,17 60.9,21.4 80.2,23.6 99.5,19.2 118.8,21.4 138.1,6"/><circle cx="138.1" cy="6" r="3.2" fill="#C7F26B"/></svg>
+          </div>
         </div>
-
-        <!-- sleep -->
-        <div class="card">
-          <div class="kicker"><svg class="ic" style="width:15px;height:15px;color:var(--blue)"><use href="#i-moon"/></svg>Sleep</div>
-          <div style="display:flex;align-items:center;gap:18px;margin-top:8px">
-            <div class="ring" style="width:76px;height:76px">
-              <svg width="76" height="76" viewBox="0 0 76 76" aria-hidden="true">
-                <circle cx="38" cy="38" r="31" fill="none" stroke="#26322D" stroke-width="8"/>
-                <circle cx="38" cy="38" r="31" fill="none" stroke="#8FA8FF" stroke-width="8" stroke-linecap="round"
-                        stroke-dasharray="165.6 194.8" transform="rotate(-90 38 38)"/>
-              </svg>
-              <div class="ring-label"><span class="display" style="font-size:22px">85</span></div>
-            </div>
-            <div>
-              <div class="display" style="font-size:26px">6h 39m</div>
-              <div class="muted" style="font-size:12px;margin-top:3px">Good · 01:05 – 08:14</div>
-            </div>
-          </div>
-          <svg viewBox="0 0 300 64" preserveAspectRatio="none" style="display:block;width:100%;height:64px;margin-top:8px" aria-hidden="true">
-            <g>
-              <rect x="0"   y="54" width="7" height="10" rx="2" fill="#8FA8FF"/>
-              <rect x="10"  y="30" width="7" height="34" rx="2" fill="#8FA8FF"/>
-              <rect x="20"  y="46" width="7" height="18" rx="2" fill="#B39DFF"/>
-              <rect x="30"  y="24" width="7" height="40" rx="2" fill="#8FA8FF"/>
-              <rect x="40"  y="42" width="7" height="22" rx="2" fill="#E879F9"/>
-              <rect x="50"  y="34" width="7" height="30" rx="2" fill="#B39DFF"/>
-              <rect x="60"  y="20" width="7" height="44" rx="2" fill="#8FA8FF"/>
-              <rect x="70"  y="38" width="7" height="26" rx="2" fill="#8FA8FF"/>
-              <rect x="80"  y="44" width="7" height="20" rx="2" fill="#B39DFF"/>
-              <rect x="90"  y="26" width="7" height="38" rx="2" fill="#E879F9"/>
-              <rect x="100" y="40" width="7" height="24" rx="2" fill="#8FA8FF"/>
-              <rect x="110" y="32" width="7" height="32" rx="2" fill="#B39DFF"/>
-              <rect x="120" y="18" width="7" height="46" rx="2" fill="#8FA8FF"/>
-              <rect x="130" y="36" width="7" height="28" rx="2" fill="#8FA8FF"/>
-              <rect x="140" y="46" width="7" height="18" rx="2" fill="#B39DFF"/>
-              <rect x="150" y="28" width="7" height="36" rx="2" fill="#E879F9"/>
-              <rect x="160" y="42" width="7" height="22" rx="2" fill="#8FA8FF"/>
-              <rect x="170" y="34" width="7" height="30" rx="2" fill="#8FA8FF"/>
-              <rect x="180" y="22" width="7" height="42" rx="2" fill="#B39DFF"/>
-              <rect x="190" y="38" width="7" height="26" rx="2" fill="#8FA8FF"/>
-              <rect x="200" y="48" width="7" height="16" rx="2" fill="#B39DFF"/>
-              <rect x="210" y="26" width="7" height="38" rx="2" fill="#8FA8FF"/>
-              <rect x="220" y="44" width="7" height="20" rx="2" fill="#E879F9"/>
-              <rect x="230" y="36" width="7" height="28" rx="2" fill="#8FA8FF"/>
-              <rect x="240" y="24" width="7" height="40" rx="2" fill="#8FA8FF"/>
-              <rect x="250" y="40" width="7" height="24" rx="2" fill="#B39DFF"/>
-              <rect x="260" y="50" width="7" height="14" rx="2" fill="#8FA8FF"/>
-              <rect x="270" y="30" width="7" height="34" rx="2" fill="#8FA8FF"/>
-              <rect x="280" y="46" width="7" height="18" rx="2" fill="#B39DFF"/>
-              <rect x="290" y="38" width="7" height="26" rx="2" fill="#8FA8FF"/>
-            </g>
-          </svg>
-        </div>
+      
       </div>
-
-      <nav class="tabbar" aria-label="Primary">
-        <div class="tab"><svg class="ic"><use href="#i-home"/></svg>Today</div>
-        <div class="tab active"><svg class="ic"><use href="#i-heart"/></svg>Health</div>
-        <div class="tab"><svg class="ic"><use href="#i-chart"/></svg>Training</div>
-        <div class="tab"><svg class="ic"><use href="#i-run"/></svg>Activities</div>
-        <div class="tab"><svg class="ic"><use href="#i-spark"/></svg>Coach</div>
-      </nav>
+      <nav class="tabbar" aria-label="Primary"><div class="tab"><svg class="ic"><use href="#i-home"/></svg>Today</div><div class="tab active"><svg class="ic"><use href="#i-heart"/></svg>Health</div><div class="tab"><svg class="ic"><use href="#i-chart"/></svg>Training</div><div class="tab"><svg class="ic"><use href="#i-run"/></svg>Activities</div><div class="tab"><svg class="ic"><use href="#i-spark"/></svg>Coach</div></nav>
       <div class="homebar"></div>
     </div>
-    <figcaption><strong>Health</strong>Body Battery, stress distribution and sleep staging, all decoded from watch wellness data. <em>Primary tab.</em></figcaption>
+    <figcaption><strong>Health</strong>Now a hub: a coach line for tonight, Body Battery with today’s peak, and one tappable tile per metric (Sleep, HRV, Stress, VO₂ max), each with a 7-day sparkline and a plain-language status. <em>Primary tab.</em></figcaption>
+  </figure>
+
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Body Battery day screen mockup">
+      <div class="statusbar"><span>20:50</span><div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg><svg class="sic"><use href="#i-wifi"/></svg><svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">48</span></div></div>
+      <div class="screen">
+        <div class="detail-head">
+          <button class="icon-btn" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+          <div class="detail-title"><h2>Body Battery</h2><div class="subtitle">gio 22 ott · updated 20:50</div></div>
+          <button class="icon-btn" aria-label="About this metric"><svg class="ic"><use href="#i-info"/></svg></button></div>
+        <div class="segmented"><div class="segment active">Day</div><div class="segment">7d</div><div class="segment">4w</div></div>
+        <div class="date-nav"><span class="arrow"><svg class="ic"><use href="#i-back"/></svg></span>
+          <span class="label">Today</span>
+          <span class="arrow off"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+
+        <div class="card" style="padding:12px 16px 14px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="position:relative;width:150px;flex:none"><svg viewBox="0 0 200 160" width="150" aria-hidden="true"><path d="M44.15 148.55 A74 74 0 1 1 155.85 148.55" fill="none" stroke="#26322D" stroke-width="11" stroke-linecap="round"/><path d="M44.15 148.55 A74 74 0 0 1 34.14 66.27" fill="none" stroke="#5ED6C1" stroke-width="11" stroke-linecap="round"/></svg>
+              <div style="position:absolute;left:0;right:0;top:50px;text-align:center"><div class="display" style="font-size:38px;line-height:1;color:var(--teal)">26</div><div class="muted" style="font-size:11px;margin-top:3px">of 100 · Low</div></div></div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:12px">
+              <div><div class="muted" style="font-size:11px">Charged</div><div class="display" style="font-size:24px;color:var(--teal)">+49</div></div>
+              <div><div class="muted" style="font-size:11px">Drained</div><div class="display" style="font-size:24px;color:var(--coral)">−54</div></div>
+            </div>
+          </div>
+          <div class="insight-line" style="margin-top:6px"><svg class="ic" style="width:13px;height:13px;color:var(--accent)"><use href="#i-spark"/></svg><span><b>Training day.</b> Hard effort plus rest is good for body and mind. Now wind down and aim for a good night’s sleep.</span></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><h3>Daily timeline</h3><span class="aux">Peak <b>69</b> at 08:08</span></div>
+          <div style="margin-top:8px"><svg viewBox="0 0 314 176" width="100%" style="display:block;height:auto"  aria-hidden="true"><line x1="0" x2="314" y1="128" y2="128" stroke="#2A3530"/><text x="0" y="125" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">0</text><line x1="0" x2="314" y1="97.5" y2="97.5" stroke="#2A3530"/><text x="0" y="94.5" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">25</text><line x1="0" x2="314" y1="67" y2="67" stroke="#2A3530"/><text x="0" y="64" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">50</text><line x1="0" x2="314" y1="36.5" y2="36.5" stroke="#2A3530"/><text x="0" y="33.5" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">75</text><line x1="0" x2="314" y1="6" y2="6" stroke="#2A3530"/><text x="0" y="3" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">100</text><rect x="0" y="107.9" width="1.6" height="20.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="1.3" y="109.4" width="1.6" height="18.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="2.6" y="113.4" width="1.6" height="14.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="3.9" y="101" width="1.6" height="27" fill="#8FA8FF" fill-opacity=".85"/><rect x="5.2" y="115.7" width="1.6" height="12.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="6.5" y="107.2" width="1.6" height="20.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="7.9" y="100.5" width="1.6" height="27.5" fill="#8FA8FF" fill-opacity=".85"/><rect x="9.2" y="114.4" width="1.6" height="13.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="10.5" y="106.3" width="1.6" height="21.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="11.8" y="105.3" width="1.6" height="22.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="13.1" y="46.8" width="1.6" height="81.2" fill="#FFB45E" fill-opacity=".85"/><rect x="14.4" y="108.1" width="1.6" height="19.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="15.7" y="84.4" width="1.6" height="43.6" fill="#FFB45E" fill-opacity=".85"/><rect x="17" y="107.2" width="1.6" height="20.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="18.3" y="105.7" width="1.6" height="22.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="19.6" y="109.2" width="1.6" height="18.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="20.9" y="48.6" width="1.6" height="79.4" fill="#FFB45E" fill-opacity=".85"/><rect x="22.2" y="85.8" width="1.6" height="42.2" fill="#FFB45E" fill-opacity=".85"/><rect x="23.6" y="73.6" width="1.6" height="54.4" fill="#FFB45E" fill-opacity=".85"/><rect x="24.9" y="35.2" width="1.6" height="92.8" fill="#FFB45E" fill-opacity=".85"/><rect x="26.2" y="67.4" width="1.6" height="60.6" fill="#FFB45E" fill-opacity=".85"/><rect x="27.5" y="64.5" width="1.6" height="63.5" fill="#FFB45E" fill-opacity=".85"/><rect x="28.8" y="53.5" width="1.6" height="74.5" fill="#FFB45E" fill-opacity=".85"/><rect x="30.1" y="113.7" width="1.6" height="14.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="31.4" y="100.5" width="1.6" height="27.5" fill="#8FA8FF" fill-opacity=".85"/><rect x="32.7" y="112.3" width="1.6" height="15.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="34" y="115.7" width="1.6" height="12.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="35.3" y="112.8" width="1.6" height="15.2" fill="#8FA8FF" fill-opacity=".85"/><rect x="36.6" y="119.4" width="1.6" height="8.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="37.9" y="107.2" width="1.6" height="20.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="39.2" y="114.9" width="1.6" height="13.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="40.6" y="119.3" width="1.6" height="8.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="41.9" y="118.2" width="1.6" height="9.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="43.2" y="106.7" width="1.6" height="21.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="44.5" y="112.6" width="1.6" height="15.4" fill="#8FA8FF" fill-opacity=".85"/><rect x="45.8" y="118.5" width="1.6" height="9.5" fill="#8FA8FF" fill-opacity=".85"/><rect x="47.1" y="106.1" width="1.6" height="21.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="48.4" y="118.9" width="1.6" height="9.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="49.7" y="106.8" width="1.6" height="21.2" fill="#8FA8FF" fill-opacity=".85"/><rect x="51" y="111.7" width="1.6" height="16.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="52.3" y="115.3" width="1.6" height="12.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="53.6" y="112" width="1.6" height="16" fill="#8FA8FF" fill-opacity=".85"/><rect x="54.9" y="119.4" width="1.6" height="8.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="56.3" y="108" width="1.6" height="20" fill="#8FA8FF" fill-opacity=".85"/><rect x="57.6" y="114.1" width="1.6" height="13.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="58.9" y="106.2" width="1.6" height="21.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="60.2" y="120.4" width="1.6" height="7.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="61.5" y="115.9" width="1.6" height="12.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="62.8" y="117.6" width="1.6" height="10.4" fill="#8FA8FF" fill-opacity=".85"/><rect x="64.1" y="115.9" width="1.6" height="12.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="65.4" y="111.5" width="1.6" height="16.5" fill="#8FA8FF" fill-opacity=".85"/><rect x="66.7" y="109.2" width="1.6" height="18.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="68" y="109.3" width="1.6" height="18.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="69.3" y="113.4" width="1.6" height="14.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="70.7" y="117" width="1.6" height="11" fill="#8FA8FF" fill-opacity=".85"/><rect x="72" y="114.5" width="1.6" height="13.5" fill="#8FA8FF" fill-opacity=".85"/><rect x="73.3" y="106.6" width="1.6" height="21.4" fill="#8FA8FF" fill-opacity=".85"/><rect x="74.6" y="115.2" width="1.6" height="12.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="75.9" y="115.3" width="1.6" height="12.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="77.2" y="118.2" width="1.6" height="9.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="78.5" y="116.9" width="1.6" height="11.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="79.8" y="106.4" width="1.6" height="21.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="81.1" y="106.8" width="1.6" height="21.2" fill="#8FA8FF" fill-opacity=".85"/><rect x="82.4" y="111.8" width="1.6" height="16.2" fill="#8FA8FF" fill-opacity=".85"/><rect x="83.7" y="119.8" width="1.6" height="8.2" fill="#8FA8FF" fill-opacity=".85"/><rect x="85" y="115" width="1.6" height="13" fill="#8FA8FF" fill-opacity=".85"/><rect x="86.4" y="106.5" width="1.6" height="21.5" fill="#8FA8FF" fill-opacity=".85"/><rect x="87.7" y="118.6" width="1.6" height="9.4" fill="#8FA8FF" fill-opacity=".85"/><rect x="89" y="118.7" width="1.6" height="9.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="90.3" y="112.5" width="1.6" height="15.5" fill="#8FA8FF" fill-opacity=".85"/><rect x="91.6" y="119.7" width="1.6" height="8.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="92.9" y="110.4" width="1.6" height="17.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="94.2" y="115.1" width="1.6" height="12.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="95.5" y="118.2" width="1.6" height="9.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="96.8" y="109.4" width="1.6" height="18.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="98.1" y="113.4" width="1.6" height="14.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="99.4" y="120" width="1.6" height="8" fill="#8FA8FF" fill-opacity=".85"/><rect x="100.7" y="118.1" width="1.6" height="9.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="102" y="119.4" width="1.6" height="8.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="103.4" y="117.4" width="1.6" height="10.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="104.7" y="60" width="1.6" height="68" fill="#FFB45E" fill-opacity=".85"/><rect x="106" y="38.3" width="1.6" height="89.7" fill="#FFB45E" fill-opacity=".85"/><rect x="107.3" y="106.7" width="1.6" height="21.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="108.6" y="115.3" width="1.6" height="12.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="109.9" y="100.6" width="1.6" height="27.4" fill="#8FA8FF" fill-opacity=".85"/><rect x="111.2" y="106.9" width="1.6" height="21.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="112.5" y="55.3" width="1.6" height="72.7" fill="#FFB45E" fill-opacity=".85"/><rect x="113.8" y="50.7" width="1.6" height="77.3" fill="#FFB45E" fill-opacity=".85"/><rect x="115.1" y="52.1" width="1.6" height="75.9" fill="#FFB45E" fill-opacity=".85"/><rect x="116.4" y="55.7" width="1.6" height="72.3" fill="#FFB45E" fill-opacity=".85"/><rect x="117.8" y="114.9" width="1.6" height="13.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="119.1" y="109.4" width="1.6" height="18.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="120.4" y="111.9" width="1.6" height="16.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="121.7" y="103.3" width="1.6" height="24.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="123" y="100.8" width="1.6" height="27.2" fill="#8FA8FF" fill-opacity=".85"/><rect x="124.3" y="115.2" width="1.6" height="12.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="125.6" y="105.6" width="1.6" height="22.4" fill="#8FA8FF" fill-opacity=".85"/><rect x="126.9" y="105.3" width="1.6" height="22.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="128.2" y="104.2" width="1.6" height="23.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="129.5" y="108.9" width="1.6" height="19.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="130.8" y="76.6" width="1.6" height="51.4" fill="#FFB45E" fill-opacity=".85"/><rect x="132.1" y="82.7" width="1.6" height="45.3" fill="#FFB45E" fill-opacity=".85"/><rect x="133.4" y="107.8" width="1.6" height="20.2" fill="#8FA8FF" fill-opacity=".85"/><rect x="134.8" y="115.4" width="1.6" height="12.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="136.1" y="110.1" width="1.6" height="17.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="137.4" y="115.7" width="1.6" height="12.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="138.7" y="105.7" width="1.6" height="22.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="140" y="99" width="1.6" height="29" fill="#8FA8FF" fill-opacity=".85"/><rect x="141.3" y="85.8" width="1.6" height="42.2" fill="#FFB45E" fill-opacity=".85"/><rect x="142.6" y="86" width="1.6" height="42" fill="#FFB45E" fill-opacity=".85"/><rect x="143.9" y="68.5" width="1.6" height="59.5" fill="#FFB45E" fill-opacity=".85"/><rect x="145.2" y="99.1" width="1.6" height="28.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="146.5" y="103.1" width="1.6" height="24.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="147.8" y="106.9" width="1.6" height="21.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="149.2" y="105" width="1.6" height="23" fill="#8FA8FF" fill-opacity=".85"/><rect x="150.5" y="111.8" width="1.6" height="16.2" fill="#8FA8FF" fill-opacity=".85"/><rect x="151.8" y="111.4" width="1.6" height="16.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="153.1" y="107" width="1.6" height="21" fill="#8FA8FF" fill-opacity=".85"/><rect x="154.4" y="112.4" width="1.6" height="15.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="155.7" y="108.3" width="1.6" height="19.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="157" y="99.7" width="1.6" height="28.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="158.3" y="115.4" width="1.6" height="12.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="159.6" y="114" width="1.6" height="14" fill="#8FA8FF" fill-opacity=".85"/><rect x="160.9" y="102.1" width="1.6" height="25.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="162.2" y="114.8" width="1.6" height="13.2" fill="#8FA8FF" fill-opacity=".85"/><rect x="163.5" y="111.5" width="1.6" height="16.5" fill="#8FA8FF" fill-opacity=".85"/><rect x="164.8" y="101.3" width="1.6" height="26.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="166.2" y="105.5" width="1.6" height="22.5" fill="#8FA8FF" fill-opacity=".85"/><rect x="167.5" y="112" width="1.6" height="16" fill="#8FA8FF" fill-opacity=".85"/><rect x="168.8" y="114.8" width="1.6" height="13.2" fill="#8FA8FF" fill-opacity=".85"/><rect x="170.1" y="111.1" width="1.6" height="16.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="171.4" y="110.7" width="1.6" height="17.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="172.7" y="102.1" width="1.6" height="25.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="174" y="99.1" width="1.6" height="28.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="175.3" y="102.4" width="1.6" height="25.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="176.6" y="99.9" width="1.6" height="28.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="177.9" y="100.1" width="1.6" height="27.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="179.2" y="82.4" width="1.6" height="45.6" fill="#FFB45E" fill-opacity=".85"/><rect x="180.5" y="105.5" width="1.6" height="22.5" fill="#8FA8FF" fill-opacity=".85"/><rect x="181.9" y="109.9" width="1.6" height="18.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="183.2" y="52.7" width="1.6" height="75.3" fill="#FFB45E" fill-opacity=".85"/><rect x="184.5" y="65.9" width="1.6" height="62.1" fill="#FFB45E" fill-opacity=".85"/><rect x="185.8" y="56.9" width="1.6" height="71.1" fill="#FFB45E" fill-opacity=".85"/><rect x="187.1" y="112.6" width="1.6" height="15.4" fill="#8FA8FF" fill-opacity=".85"/><rect x="188.4" y="51.7" width="1.6" height="76.3" fill="#FFB45E" fill-opacity=".85"/><rect x="189.7" y="52.9" width="1.6" height="75.1" fill="#FFB45E" fill-opacity=".85"/><rect x="191" y="102.8" width="1.6" height="25.2" fill="#8FA8FF" fill-opacity=".85"/><rect x="192.3" y="57" width="1.6" height="71" fill="#FFB45E" fill-opacity=".85"/><rect x="193.6" y="56.4" width="1.6" height="71.6" fill="#FFB45E" fill-opacity=".85"/><rect x="194.9" y="107.8" width="1.6" height="20.2" fill="#8FA8FF" fill-opacity=".85"/><rect x="196.2" y="110.3" width="1.6" height="17.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="197.6" y="45.9" width="1.6" height="82.1" fill="#FFB45E" fill-opacity=".85"/><rect x="198.9" y="110.9" width="1.6" height="17.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="200.2" y="33" width="1.6" height="95" fill="#FFB45E" fill-opacity=".85"/><rect x="201.5" y="81" width="1.6" height="47" fill="#FFB45E" fill-opacity=".85"/><rect x="202.8" y="114.2" width="1.6" height="13.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="204.1" y="101.7" width="1.6" height="26.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="205.4" y="98.8" width="1.6" height="29.2" fill="#8FA8FF" fill-opacity=".85"/><rect x="206.7" y="104.7" width="1.6" height="23.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="208" y="109" width="1.6" height="19" fill="#8FA8FF" fill-opacity=".85"/><rect x="209.3" y="100.6" width="1.6" height="27.4" fill="#8FA8FF" fill-opacity=".85"/><rect x="210.6" y="107.2" width="1.6" height="20.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="212" y="113.5" width="1.6" height="14.5" fill="#8FA8FF" fill-opacity=".85"/><rect x="213.3" y="104" width="1.6" height="24" fill="#8FA8FF" fill-opacity=".85"/><rect x="214.6" y="109.7" width="1.6" height="18.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="215.9" y="111.2" width="1.6" height="16.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="217.2" y="110.3" width="1.6" height="17.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="218.5" y="109.2" width="1.6" height="18.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="219.8" y="112.7" width="1.6" height="15.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="221.1" y="105.3" width="1.6" height="22.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="222.4" y="101" width="1.6" height="27" fill="#8FA8FF" fill-opacity=".85"/><rect x="223.7" y="106.1" width="1.6" height="21.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="225" y="115.6" width="1.6" height="12.4" fill="#8FA8FF" fill-opacity=".85"/><rect x="226.3" y="104.1" width="1.6" height="23.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="227.7" y="115.5" width="1.6" height="12.5" fill="#8FA8FF" fill-opacity=".85"/><rect x="229" y="107.6" width="1.6" height="20.4" fill="#8FA8FF" fill-opacity=".85"/><rect x="230.3" y="101" width="1.6" height="27" fill="#8FA8FF" fill-opacity=".85"/><rect x="231.6" y="104.2" width="1.6" height="23.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="232.9" y="87.9" width="1.6" height="40.1" fill="#FFB45E" fill-opacity=".85"/><rect x="234.2" y="108.1" width="1.6" height="19.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="235.5" y="73.1" width="1.6" height="54.9" fill="#FFB45E" fill-opacity=".85"/><rect x="236.8" y="25.7" width="1.6" height="102.3" fill="#FFB45E" fill-opacity=".85"/><rect x="238.1" y="84.6" width="1.6" height="43.4" fill="#FFB45E" fill-opacity=".85"/><rect x="239.4" y="78.1" width="1.6" height="49.9" fill="#FFB45E" fill-opacity=".85"/><rect x="240.7" y="31.5" width="1.6" height="96.5" fill="#FFB45E" fill-opacity=".85"/><rect x="242" y="98.7" width="1.6" height="29.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="243.3" y="87.1" width="1.6" height="40.9" fill="#FFB45E" fill-opacity=".85"/><rect x="244.7" y="102" width="1.6" height="26" fill="#8FA8FF" fill-opacity=".85"/><rect x="246" y="109" width="1.6" height="19" fill="#8FA8FF" fill-opacity=".85"/><rect x="247.3" y="107.9" width="1.6" height="20.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="248.6" y="105" width="1.6" height="23" fill="#8FA8FF" fill-opacity=".85"/><rect x="249.9" y="99.3" width="1.6" height="28.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="251.2" y="106.3" width="1.6" height="21.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="252.5" y="100.1" width="1.6" height="27.9" fill="#8FA8FF" fill-opacity=".85"/><rect x="253.8" y="99.3" width="1.6" height="28.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="255.1" y="114.4" width="1.6" height="13.6" fill="#8FA8FF" fill-opacity=".85"/><rect x="256.4" y="109.7" width="1.6" height="18.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="257.7" y="100.6" width="1.6" height="27.4" fill="#8FA8FF" fill-opacity=".85"/><rect x="259.1" y="102.7" width="1.6" height="25.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="260.4" y="99.2" width="1.6" height="28.8" fill="#8FA8FF" fill-opacity=".85"/><rect x="261.7" y="112.6" width="1.6" height="15.4" fill="#8FA8FF" fill-opacity=".85"/><rect x="263" y="106.7" width="1.6" height="21.3" fill="#8FA8FF" fill-opacity=".85"/><rect x="264.3" y="99.9" width="1.6" height="28.1" fill="#8FA8FF" fill-opacity=".85"/><rect x="265.6" y="106.6" width="1.6" height="21.4" fill="#8FA8FF" fill-opacity=".85"/><rect x="266.9" y="104.3" width="1.6" height="23.7" fill="#8FA8FF" fill-opacity=".85"/><rect x="268.2" y="99.1" width="1.6" height="28.9" fill="#8FA8FF" fill-opacity=".85"/><polygon fill="#fff" fill-opacity=".07" points="0,90.2 2.2,90.6 4.4,91 6.5,91.4 8.7,91.8 10.9,92.2 13.1,92.6 15.3,93.1 17.4,93.6 19.6,94.1 21.8,94.6 24,95.1 26.2,95.6 28.3,96.1 30.5,96.6 32.7,97.1 34.9,97.2 37.1,95.4 39.2,93.7 41.4,92 43.6,90.3 45.8,88.6 48,86.8 50.2,85.1 52.3,83.4 54.5,81.7 56.7,80 58.9,78.3 61.1,76.5 63.2,74.8 65.4,73.1 67.6,71.5 69.8,70 72,68.4 74.1,66.9 76.3,65.3 78.5,63.8 80.7,62.2 82.9,60.6 85,59.1 87.2,57.5 89.4,56 91.6,54.4 93.8,52.9 95.9,51.3 98.1,49.7 100.3,48.2 102.5,46.6 104.7,45.1 106.8,44 109,44.7 111.2,45.5 113.4,46.3 115.6,47 117.8,47.8 119.9,48.5 122.1,49.3 124.3,50.1 126.5,50.8 128.7,51.6 130.8,52.4 133,53 135.2,53.6 137.4,54.2 139.6,54.8 141.7,55.4 143.9,56 146.1,56.6 148.3,57.2 150.5,57.9 152.6,58.5 154.8,59.1 157,59.7 159.2,59.9 161.4,60.1 163.5,60.3 165.7,60.5 167.9,60.7 170.1,60.9 172.3,61.7 174.4,62.5 176.6,63.3 178.8,64.2 181,65 183.2,65.8 185.3,66.6 187.5,67.4 189.7,68.2 191.9,69 194.1,69.8 196.2,70.7 198.4,71.2 200.6,71.7 202.8,72.2 205,72.7 207.2,73.2 209.3,73.7 211.5,74.2 213.7,74.7 215.9,75.2 218.1,75.7 220.2,76.3 222.4,76.8 224.6,76.9 226.8,77 229,77.2 231.1,77.3 233.3,77.4 235.5,77.6 237.7,77.7 239.9,77.8 242,78 244.2,80.2 246.4,82.4 248.6,84.6 250.8,86.8 252.9,89 255.1,90.5 257.3,92 259.5,93.5 261.7,95.1 263.8,95.5 266,95.9 268.2,96.3 268.2,128.0 0,128.0"/><polyline fill="none" stroke="#EAF1EC" stroke-width="2" stroke-linejoin="round" points="0,90.2 2.2,90.6 4.4,91 6.5,91.4 8.7,91.8 10.9,92.2 13.1,92.6 15.3,93.1 17.4,93.6 19.6,94.1 21.8,94.6 24,95.1 26.2,95.6 28.3,96.1 30.5,96.6 32.7,97.1 34.9,97.2 37.1,95.4 39.2,93.7 41.4,92 43.6,90.3 45.8,88.6 48,86.8 50.2,85.1 52.3,83.4 54.5,81.7 56.7,80 58.9,78.3 61.1,76.5 63.2,74.8 65.4,73.1 67.6,71.5 69.8,70 72,68.4 74.1,66.9 76.3,65.3 78.5,63.8 80.7,62.2 82.9,60.6 85,59.1 87.2,57.5 89.4,56 91.6,54.4 93.8,52.9 95.9,51.3 98.1,49.7 100.3,48.2 102.5,46.6 104.7,45.1 106.8,44 109,44.7 111.2,45.5 113.4,46.3 115.6,47 117.8,47.8 119.9,48.5 122.1,49.3 124.3,50.1 126.5,50.8 128.7,51.6 130.8,52.4 133,53 135.2,53.6 137.4,54.2 139.6,54.8 141.7,55.4 143.9,56 146.1,56.6 148.3,57.2 150.5,57.9 152.6,58.5 154.8,59.1 157,59.7 159.2,59.9 161.4,60.1 163.5,60.3 165.7,60.5 167.9,60.7 170.1,60.9 172.3,61.7 174.4,62.5 176.6,63.3 178.8,64.2 181,65 183.2,65.8 185.3,66.6 187.5,67.4 189.7,68.2 191.9,69 194.1,69.8 196.2,70.7 198.4,71.2 200.6,71.7 202.8,72.2 205,72.7 207.2,73.2 209.3,73.7 211.5,74.2 213.7,74.7 215.9,75.2 218.1,75.7 220.2,76.3 222.4,76.8 224.6,76.9 226.8,77 229,77.2 231.1,77.3 233.3,77.4 235.5,77.6 237.7,77.7 239.9,77.8 242,78 244.2,80.2 246.4,82.4 248.6,84.6 250.8,86.8 252.9,89 255.1,90.5 257.3,92 259.5,93.5 261.7,95.1 263.8,95.5 266,95.9 268.2,96.3"/><circle cx="106.4" cy="43.8" r="4" fill="#0E1311" stroke="#5ED6C1" stroke-width="2"/><line x1="242" x2="242" y1="22" y2="128" stroke="#EAF1EC" stroke-opacity=".5" stroke-dasharray="3 3"/><g><rect x="183" y="0" width="118" height="20" rx="10" fill="#2A3530" stroke="#3B4A43"/><text x="242" y="13.5" text-anchor="middle" font-size="10.5" font-weight="700" fill="#EAF1EC" font-family="DM Sans,sans-serif">18:30 · Run · −11</text></g><circle cx="38.4" cy="144" r="10.5" fill="#8FA8FF"/><svg x="31.9" y="137.5" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0E1311" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-moon"/></svg><circle cx="106.4" cy="144" r="10.5" fill="#8FA096"/><svg x="99.9" y="137.5" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0E1311" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-clock"/></svg><circle cx="242" cy="144" r="10.5" fill="#59D98E"/><svg x="235.5" y="137.5" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0E1311" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-run"/></svg><text x="0" y="170" text-anchor="start" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">00:00</text><text x="78.5" y="170" text-anchor="middle" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">06:00</text><text x="157" y="170" text-anchor="middle" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">12:00</text><text x="235.5" y="170" text-anchor="middle" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">18:00</text><text x="314" y="170" text-anchor="end" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">24:00</text></svg></div>
+          <div class="chips" style="margin-top:10px"><div class="chip active">Body Battery</div><div class="chip">Stress</div><div class="chip">Rest</div></div>
+        </div>
+
+        <div class="section-label">What moved it</div>
+        <div class="day-row"><div style="flex:1"><div class="name" style="font-size:14px">Pisa - Ripetute 6x1000 m</div><div class="sub">59m</div></div><div style="display:flex;gap:8px;align-items:center;font-family:Space Grotesk;font-size:16px"><b style="color:#FF7A66">−11</b><span style="color:#FF7A66">↓</span></div></div>
+        <div class="day-row"><div style="flex:1"><div class="name" style="font-size:14px">Low stress</div><div class="sub">1h 39m</div></div><div style="display:flex;gap:8px;align-items:center;font-family:Space Grotesk;font-size:16px"></div></div>
+        <div class="day-row"><div style="flex:1"><div class="name" style="font-size:14px">Sleep</div><div class="sub">5h 15m</div></div><div style="display:flex;gap:8px;align-items:center;font-family:Space Grotesk;font-size:16px"><b style="color:#5ED6C1">+44</b><span style="color:#5ED6C1">↑</span></div></div>
+      
+      </div>
+      
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Body Battery · day</strong>A gauge and charged/drained totals up front, one sentence on what the day means, then the timeline (Body Battery line over rest and stress bars) with sleep, wake and run markers and a pinned readout. “What moved it” lists the factors with their effect. <em>Opens from the Health hub; Day / 7d / 4w.</em></figcaption>
+  </figure>
+
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Body Battery four week screen mockup">
+      <div class="statusbar"><span>20:50</span><div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg><svg class="sic"><use href="#i-wifi"/></svg><svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">48</span></div></div>
+      <div class="screen">
+        <div class="detail-head">
+          <button class="icon-btn" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+          <div class="detail-title"><h2>Body Battery</h2><div class="subtitle">4 weeks · 25 set – 22 ott</div></div>
+          <button class="icon-btn" aria-label="About this metric"><svg class="ic"><use href="#i-info"/></svg></button></div>
+        <div class="segmented"><div class="segment">Day</div><div class="segment">7d</div><div class="segment active">4w</div></div>
+        <div class="date-nav"><span class="arrow"><svg class="ic"><use href="#i-back"/></svg></span>
+          <span class="label">25 set – 22 ott</span>
+          <span class="arrow off"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+
+        <div class="card">
+          <div class="card-title"><h3>Daily high &amp; low</h3></div>
+          <div class="legend" style="margin:6px 0 8px"><span><i style="background:#5ED6C1"></i>Daily high</span><span><i style="background:#D8DDDA"></i>Daily low</span></div>
+          <svg viewBox="0 0 314 168" width="100%" style="display:block;height:auto"  aria-hidden="true"><line x1="0" x2="314" y1="144" y2="144" stroke="#2A3530"/><text x="0" y="141" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">0</text><line x1="0" x2="314" y1="109.5" y2="109.5" stroke="#2A3530"/><text x="0" y="106.5" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">25</text><line x1="0" x2="314" y1="75" y2="75" stroke="#2A3530"/><text x="0" y="72" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">50</text><line x1="0" x2="314" y1="40.5" y2="40.5" stroke="#2A3530"/><text x="0" y="37.5" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">75</text><line x1="0" x2="314" y1="6" y2="6" stroke="#2A3530"/><text x="0" y="3" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">100</text><rect x="5.4" y="130.2" width="5.2" height="6.9" rx="2.6" fill="#3A4640"/><circle cx="8" cy="130.2" r="3" fill="#5ED6C1"/><circle cx="8" cy="137.1" r="3" fill="#D8DDDA"/><rect x="16.4" y="105.4" width="5.2" height="31.7" rx="2.6" fill="#3A4640"/><circle cx="19" cy="105.4" r="3" fill="#5ED6C1"/><circle cx="19" cy="137.1" r="3" fill="#D8DDDA"/><rect x="27.5" y="108.1" width="5.2" height="29" rx="2.6" fill="#3A4640"/><circle cx="30.1" cy="108.1" r="3" fill="#5ED6C1"/><circle cx="30.1" cy="137.1" r="3" fill="#D8DDDA"/><rect x="38.5" y="81.9" width="5.2" height="55.2" rx="2.6" fill="#3A4640"/><circle cx="41.1" cy="81.9" r="3" fill="#5ED6C1"/><circle cx="41.1" cy="137.1" r="3" fill="#D8DDDA"/><rect x="49.5" y="47.4" width="5.2" height="77.3" rx="2.6" fill="#3A4640"/><circle cx="52.1" cy="47.4" r="3" fill="#5ED6C1"/><circle cx="52.1" cy="124.7" r="3" fill="#D8DDDA"/><rect x="60.6" y="64" width="5.2" height="60.7" rx="2.6" fill="#3A4640"/><circle cx="63.2" cy="64" r="3" fill="#5ED6C1"/><circle cx="63.2" cy="124.7" r="3" fill="#D8DDDA"/><rect x="71.6" y="57.1" width="5.2" height="63.5" rx="2.6" fill="#3A4640"/><circle cx="74.2" cy="57.1" r="3" fill="#5ED6C1"/><circle cx="74.2" cy="120.5" r="3" fill="#D8DDDA"/><rect x="82.7" y="61.2" width="5.2" height="59.3" rx="2.6" fill="#3A4640"/><circle cx="85.3" cy="61.2" r="3" fill="#5ED6C1"/><circle cx="85.3" cy="120.5" r="3" fill="#D8DDDA"/><rect x="93.7" y="65.3" width="5.2" height="62.1" rx="2.6" fill="#3A4640"/><circle cx="96.3" cy="65.3" r="3" fill="#5ED6C1"/><circle cx="96.3" cy="127.4" r="3" fill="#D8DDDA"/><rect x="104.7" y="87.4" width="5.2" height="42.8" rx="2.6" fill="#3A4640"/><circle cx="107.3" cy="87.4" r="3" fill="#5ED6C1"/><circle cx="107.3" cy="130.2" r="3" fill="#D8DDDA"/><rect x="115.8" y="69.5" width="5.2" height="62.1" rx="2.6" fill="#3A4640"/><circle cx="118.4" cy="69.5" r="3" fill="#5ED6C1"/><circle cx="118.4" cy="131.6" r="3" fill="#D8DDDA"/><rect x="126.8" y="54.3" width="5.2" height="71.8" rx="2.6" fill="#3A4640"/><circle cx="129.4" cy="54.3" r="3" fill="#5ED6C1"/><circle cx="129.4" cy="126.1" r="3" fill="#D8DDDA"/><rect x="137.8" y="12.9" width="5.2" height="96.6" rx="2.6" fill="#3A4640"/><circle cx="140.4" cy="12.9" r="3" fill="#5ED6C1"/><circle cx="140.4" cy="109.5" r="3" fill="#D8DDDA"/><rect x="148.9" y="69.5" width="5.2" height="58" rx="2.6" fill="#3A4640"/><circle cx="151.5" cy="69.5" r="3" fill="#5ED6C1"/><circle cx="151.5" cy="127.4" r="3" fill="#D8DDDA"/><rect x="159.9" y="58.4" width="5.2" height="70.4" rx="2.6" fill="#3A4640"/><circle cx="162.5" cy="58.4" r="3" fill="#5ED6C1"/><circle cx="162.5" cy="128.8" r="3" fill="#D8DDDA"/><rect x="171" y="57.1" width="5.2" height="59.3" rx="2.6" fill="#3A4640"/><circle cx="173.6" cy="57.1" r="3" fill="#5ED6C1"/><circle cx="173.6" cy="116.4" r="3" fill="#D8DDDA"/><rect x="182" y="32.2" width="5.2" height="86.9" rx="2.6" fill="#3A4640"/><circle cx="184.6" cy="32.2" r="3" fill="#5ED6C1"/><circle cx="184.6" cy="119.2" r="3" fill="#D8DDDA"/><rect x="193" y="54.3" width="5.2" height="58" rx="2.6" fill="#3A4640"/><circle cx="195.6" cy="54.3" r="3" fill="#5ED6C1"/><circle cx="195.6" cy="112.3" r="3" fill="#D8DDDA"/><rect x="204.1" y="64" width="5.2" height="49.7" rx="2.6" fill="#3A4640"/><circle cx="206.7" cy="64" r="3" fill="#5ED6C1"/><circle cx="206.7" cy="113.6" r="3" fill="#D8DDDA"/><rect x="215.1" y="8.8" width="5.2" height="93.8" rx="2.6" fill="#3A4640"/><circle cx="217.7" cy="8.8" r="3" fill="#5ED6C1"/><circle cx="217.7" cy="102.6" r="3" fill="#D8DDDA"/><rect x="226.1" y="51.5" width="5.2" height="59.3" rx="2.6" fill="#3A4640"/><circle cx="228.7" cy="51.5" r="3" fill="#5ED6C1"/><circle cx="228.7" cy="110.9" r="3" fill="#D8DDDA"/><rect x="237.2" y="59.8" width="5.2" height="55.2" rx="2.6" fill="#3A4640"/><circle cx="239.8" cy="59.8" r="3" fill="#5ED6C1"/><circle cx="239.8" cy="115" r="3" fill="#D8DDDA"/><rect x="248.2" y="55.7" width="5.2" height="63.5" rx="2.6" fill="#3A4640"/><circle cx="250.8" cy="55.7" r="3" fill="#5ED6C1"/><circle cx="250.8" cy="119.2" r="3" fill="#D8DDDA"/><rect x="259.3" y="23.9" width="5.2" height="95.2" rx="2.6" fill="#3A4640"/><circle cx="261.9" cy="23.9" r="3" fill="#5ED6C1"/><circle cx="261.9" cy="119.2" r="3" fill="#D8DDDA"/><rect x="270.3" y="48.8" width="5.2" height="71.8" rx="2.6" fill="#3A4640"/><circle cx="272.9" cy="48.8" r="3" fill="#5ED6C1"/><circle cx="272.9" cy="120.5" r="3" fill="#D8DDDA"/><rect x="281.3" y="30.8" width="5.2" height="71.8" rx="2.6" fill="#3A4640"/><circle cx="283.9" cy="30.8" r="3" fill="#5ED6C1"/><circle cx="283.9" cy="102.6" r="3" fill="#D8DDDA"/><rect x="292.4" y="12.9" width="5.2" height="88.3" rx="2.6" fill="#3A4640"/><circle cx="295" cy="12.9" r="3" fill="#5ED6C1"/><circle cx="295" cy="101.2" r="3" fill="#D8DDDA"/><rect x="303.4" y="48.8" width="5.2" height="60.7" rx="2.6" fill="#5ED6C1"/><circle cx="306" cy="48.8" r="3" fill="#5ED6C1"/><circle cx="306" cy="109.5" r="3" fill="#D8DDDA"/><circle cx="306" cy="48.8" r="6" fill="none" stroke="#EAF1EC" stroke-width="2"/><g><rect x="164" y="0" width="150" height="20" rx="10" fill="#2A3530" stroke="#3B4A43"/><text x="239" y="13.5" text-anchor="middle" font-size="10.5" font-weight="700" fill="#EAF1EC" font-family="DM Sans,sans-serif">22 ott · 69 high · 25 low</text></g><text x="0" y="164" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">25 set</text><text x="314" y="164" text-anchor="end" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">22 ott</text></svg>
+          <div class="kv3" style="grid-template-columns:repeat(3,1fr);margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+            <div class="kv"><div class="lbl">Avg high</div><div class="val">62</div></div>
+            <div class="kv"><div class="lbl">Avg low</div><div class="val">17</div></div>
+            <div class="kv"><div class="lbl">Best day</div><div class="val">98 <span>14 ott</span></div></div>
+          </div>
+          <div class="insight-line"><svg class="ic" style="width:13px;height:13px;color:var(--accent)"><use href="#i-spark"/></svg><span>You recharged to <b>80+ on 4 of the last 10 days</b>, up from the first week of the month.</span></div>
+        </div>
+
+        <div class="day-row"><div style="flex:1"><div class="name">Thursday</div><div class="sub">22 ottobre</div></div><div class="cell"><b>69</b><i>High</i></div><div class="cell" style="margin-left:14px"><b>25</b><i>Low</i></div></div>
+        <div class="day-row"><div style="flex:1"><div class="name">Wednesday</div><div class="sub">21 ottobre</div></div><div class="cell"><b>95</b><i>High</i></div><div class="cell" style="margin-left:14px"><b>31</b><i>Low</i></div></div>
+        <div class="day-row"><div style="flex:1"><div class="name">Tuesday</div><div class="sub">20 ottobre</div></div><div class="cell"><b>82</b><i>High</i></div><div class="cell" style="margin-left:14px"><b>30</b><i>Low</i></div></div>
+      
+      </div>
+      
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Body Battery · 4 weeks</strong>Each day is a high-to-low bar, so recharge quality and how far you drain are readable at a glance. Averages, best day and one takeaway sit beneath, and the daily list is tappable to drill into that day’s timeline. <em>Day / 7d / 4w.</em></figcaption>
+  </figure>
+
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Sleep night screen mockup">
+      <div class="statusbar"><span>20:31</span><div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg><svg class="sic"><use href="#i-wifi"/></svg><svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">50</span></div></div>
+      <div class="screen">
+        <div class="detail-head">
+          <button class="icon-btn" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+          <div class="detail-title"><h2>Sleep</h2><div class="subtitle">gio 22 ott · 02:38 – 08:08</div></div>
+          <button class="icon-btn" aria-label="About this metric"><svg class="ic"><use href="#i-info"/></svg></button></div>
+        <div class="segmented"><div class="segment active">Day</div><div class="segment">7d</div><div class="segment">4w</div><div class="segment">1y</div></div>
+        <div class="date-nav"><span class="arrow"><svg class="ic"><use href="#i-back"/></svg></span>
+          <span class="label">Today</span>
+          <span class="arrow off"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+
+        <div class="card">
+          <div style="display:flex;align-items:center;gap:16px">
+            <div class="ring" style="width:84px;height:84px"><svg width="84" height="84" viewBox="0 0 84 84">
+              <circle cx="42" cy="42" r="34" fill="none" stroke="#26322D" stroke-width="9"/>
+              <circle cx="42" cy="42" r="34" fill="none" stroke="#FFB45E" stroke-width="9" stroke-linecap="round" stroke-dasharray="134.6 214" transform="rotate(-90 42 42)"/></svg>
+              <div class="ring-label"><span class="display" style="font-size:26px">63</span><span class="muted" style="font-size:10px;margin-top:3px">Fair</span></div></div>
+            <div style="flex:1">
+              <div class="display" style="font-size:28px;line-height:1">5h 15m</div>
+              <div class="muted" style="font-size:12px;margin-top:5px">asleep · 5h 30m in bed</div>
+              <div class="track" style="margin-top:11px;height:7px"><span style="width:58%;background:#FFB45E"></span></div>
+              <div class="need-row"><span>Need 9h</span><b>3h 45m short</b></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><h3>Sleep stages</h3><span class="aux">Tap or drag to inspect</span></div>
+          <div style="margin-top:8px"><svg viewBox="0 0 314 168" width="100%" style="display:block;height:auto"  aria-hidden="true"><line x1="0" x2="268" y1="49" y2="49" stroke="#2A3530" stroke-width="1" stroke-dasharray="2 4"/><text x="276" y="38" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">Awake</text><line x1="0" x2="268" y1="80" y2="80" stroke="#2A3530" stroke-width="1" stroke-dasharray="2 4"/><text x="276" y="69" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">REM</text><line x1="0" x2="268" y1="111" y2="111" stroke="#2A3530" stroke-width="1" stroke-dasharray="2 4"/><text x="276" y="100" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">Light</text><line x1="0" x2="268" y1="142" y2="142" stroke="#2A3530" stroke-width="1" stroke-dasharray="2 4"/><text x="276" y="131" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">Deep</text><rect x="0" y="84" width="33.7" height="24" rx="4" fill="#8FA8FF"/><line x1="34.9" x2="34.9" y1="96.0" y2="34.0" stroke="#FFB45E" stroke-opacity=".55" stroke-width="1.5"/><rect x="34.9" y="22" width="2.4" height="24" rx="4" fill="#FFB45E"/><line x1="36.5" x2="36.5" y1="34.0" y2="127.0" stroke="#5B7CFF" stroke-opacity=".55" stroke-width="1.5"/><rect x="36.5" y="115" width="11" height="24" rx="4" fill="#5B7CFF"/><line x1="48.7" x2="48.7" y1="127.0" y2="96.0" stroke="#8FA8FF" stroke-opacity=".55" stroke-width="1.5"/><rect x="48.7" y="84" width="8.5" height="24" rx="4" fill="#8FA8FF"/><line x1="58.5" x2="58.5" y1="96.0" y2="34.0" stroke="#FFB45E" stroke-opacity=".55" stroke-width="1.5"/><rect x="58.5" y="22" width="2.4" height="24" rx="4" fill="#FFB45E"/><line x1="60.1" x2="60.1" y1="34.0" y2="96.0" stroke="#8FA8FF" stroke-opacity=".55" stroke-width="1.5"/><rect x="60.1" y="84" width="10.2" height="24" rx="4" fill="#8FA8FF"/><line x1="71.5" x2="71.5" y1="96.0" y2="127.0" stroke="#5B7CFF" stroke-opacity=".55" stroke-width="1.5"/><rect x="71.5" y="115" width="8.5" height="24" rx="4" fill="#5B7CFF"/><line x1="81.2" x2="81.2" y1="127.0" y2="96.0" stroke="#8FA8FF" stroke-opacity=".55" stroke-width="1.5"/><rect x="81.2" y="84" width="19.1" height="24" rx="4" fill="#8FA8FF"/><line x1="101.5" x2="101.5" y1="96.0" y2="127.0" stroke="#5B7CFF" stroke-opacity=".55" stroke-width="1.5"/><rect x="101.5" y="115" width="27.2" height="24" rx="4" fill="#5B7CFF"/><line x1="129.9" x2="129.9" y1="127.0" y2="96.0" stroke="#8FA8FF" stroke-opacity=".55" stroke-width="1.5"/><rect x="129.9" y="84" width="35.3" height="24" rx="4" fill="#8FA8FF"/><line x1="166.5" x2="166.5" y1="96.0" y2="34.0" stroke="#FFB45E" stroke-opacity=".55" stroke-width="1.5"/><rect x="166.5" y="22" width="7.7" height="24" rx="4" fill="#FFB45E"/><line x1="175.4" x2="175.4" y1="34.0" y2="96.0" stroke="#8FA8FF" stroke-opacity=".55" stroke-width="1.5"/><rect x="175.4" y="84" width="30.5" height="24" rx="4" fill="#8FA8FF"/><line x1="207.1" x2="207.1" y1="96.0" y2="65.0" stroke="#E879F9" stroke-opacity=".55" stroke-width="1.5"/><rect x="207.1" y="53" width="6.1" height="24" rx="4" fill="#E879F9"/><line x1="214.4" x2="214.4" y1="65.0" y2="96.0" stroke="#8FA8FF" stroke-opacity=".55" stroke-width="1.5"/><rect x="214.4" y="84" width="34.5" height="24" rx="4" fill="#8FA8FF"/><line x1="250.1" x2="250.1" y1="96.0" y2="65.0" stroke="#E879F9" stroke-opacity=".55" stroke-width="1.5"/><rect x="250.1" y="53" width="16.7" height="24" rx="4" fill="#E879F9"/><polyline fill="none" stroke="#EAF1EC" stroke-opacity=".9" stroke-width="1.5" stroke-linejoin="round" points="0,95.2 2.4,99.1 4.9,93.2 7.3,102.9 9.7,96.7 12.2,99.1 14.6,103.5 17.1,97.1 19.5,103.8 21.9,98.2 24.4,103.4 26.8,103.1 29.2,98.3 31.7,92.5 34.1,60.4 36.5,60.2 39,87.6 41.4,89.5 43.9,102.5 46.3,108.8 48.7,102.3 51.2,117.4 53.6,107.6 56,117.5 58.5,115.7 60.9,109.4 63.3,99.9 65.8,89.1 68.2,100.9 70.7,97.8 73.1,99.7 75.5,106.2 78,106.4 80.4,116 82.8,117.4 85.3,116 87.7,109.8 90.1,114.1 92.6,116.4 95,113.2 97.5,115.8 99.9,118.7 102.3,112.2 104.8,114.3 107.2,121.5 109.6,117.4 112.1,118.8 114.5,113.6 116.9,113.6 119.4,117.9 121.8,106 124.3,116.3 126.7,110 129.1,103.1 131.6,110.3 134,104.1 136.4,109.2 138.9,98.8 141.3,96.1 143.7,97.5 146.2,91.8 148.6,102.6 151.1,99.8 153.5,103.9 155.9,106.8 158.4,111.3 160.8,108.5 163.2,109 165.7,116.7 168.1,114.9 170.5,124.4 173,116.1 175.4,116 177.9,106.6 180.3,104.5 182.7,107.8 185.2,101.8 187.6,95.4 190,106.4 192.5,101.9 194.9,107.9 197.3,110.5 199.8,113.4 202.2,105.9 204.7,117.7 207.1,118.7 209.5,119.4 212,113.4 214.4,122 216.8,114.1 219.3,109.9 221.7,103.4 224.1,102.5 226.6,100 229,106.6 231.5,102.9 233.9,105.5 236.3,99.8 238.8,100.5 241.2,113.9 243.6,115.3 246.1,108.9 248.5,103.3 250.9,94.1 253.4,87 255.8,91.6 258.3,95.3 260.7,89 263.1,88.3 265.6,84.2 268,77.3"/><line x1="42.2" x2="42.2" y1="22" y2="146" stroke="#EAF1EC" stroke-opacity=".55" stroke-dasharray="3 3"/><circle cx="42.2" cy="98.5" r="4" fill="#0E1311" stroke="#EAF1EC" stroke-width="2"/><g><rect x="0" y="0" width="142" height="20" rx="10" fill="#2A3530" stroke="#3B4A43"/><text x="71" y="13.5" text-anchor="middle" font-size="10.5" font-weight="700" fill="#EAF1EC" font-family="DM Sans,sans-serif">03:30 · Deep · 60 bpm</text></g><text x="0" y="162" text-anchor="start" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">02:38</text><text x="134" y="162" text-anchor="middle" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">05:23</text><text x="268" y="162" text-anchor="end" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">08:08</text></svg></div>
+          <div class="stages"><div class="stage"><div class="lbl"><i style="background:#5B7CFF"></i>Deep</div><div class="val">1h 02m</div><div class="pct">19%</div></div><div class="stage"><div class="lbl"><i style="background:#8FA8FF"></i>Light</div><div class="val">3h 42m</div><div class="pct">67%</div></div><div class="stage"><div class="lbl"><i style="background:#E879F9"></i>REM</div><div class="val">31m</div><div class="pct">9%</div></div><div class="stage"><div class="lbl"><i style="background:#FFB45E"></i>Awake</div><div class="val">15m</div><div class="pct">5%</div></div></div>
+          <div class="chips" style="margin-top:12px"><div class="chip active">Heart rate</div><div class="chip">Body Battery</div><div class="chip">Pulse Ox</div><div class="chip">Respiration</div><div class="chip">HRV</div></div>
+        </div>
+
+        <div class="card">
+          <div class="kv3">
+            <div class="kv"><div class="lbl">Restless moments</div><div class="val">22</div></div>
+            <div class="kv"><div class="lbl">Avg night HR</div><div class="val">57 <span>bpm</span></div></div>
+            <div class="kv"><div class="lbl">Resting HR</div><div class="val">53 <span>bpm</span></div></div>
+            <div class="kv"><div class="lbl">Body Battery</div><div class="val" style="color:var(--teal)">+44</div></div>
+            <div class="kv link"><div class="lbl">Overnight HRV</div><div class="val">42 <span>ms</span><svg class="ic" style="width:12px;height:12px;color:var(--muted);margin-left:3px;vertical-align:-1px"><use href="#i-chev"/></svg></div></div>
+            <div class="kv"><div class="lbl">Awake</div><div class="val">15m</div></div>
+          </div>
+        </div>
+      
+      </div>
+      
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Sleep · night</strong>Verdict first (score, time asleep and the gap to your 9 h need), then stages with a heart-rate overlay and a pinned readout instead of a hidden long-press. Metric chips swap the overlay; the HRV cell jumps to the HRV screen. <em>Day / 7d / 4w / 1y.</em></figcaption>
+  </figure>
+
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Sleep four week screen mockup">
+      <div class="statusbar"><span>20:31</span><div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg><svg class="sic"><use href="#i-wifi"/></svg><svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">50</span></div></div>
+      <div class="screen">
+        <div class="detail-head">
+          <button class="icon-btn" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+          <div class="detail-title"><h2>Sleep</h2><div class="subtitle">4 weeks · 25 set – 22 ott</div></div>
+          <button class="icon-btn" aria-label="About this metric"><svg class="ic"><use href="#i-info"/></svg></button></div>
+        <div class="segmented"><div class="segment">Day</div><div class="segment">7d</div><div class="segment active">4w</div><div class="segment">1y</div></div>
+        <div class="date-nav"><span class="arrow"><svg class="ic"><use href="#i-back"/></svg></span>
+          <span class="label">25 set – 22 ott</span>
+          <span class="arrow off"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+
+        <div class="card">
+          <div class="card-title"><h3>Score &amp; night heart rate</h3></div>
+          <div class="legend" style="margin:6px 0 8px"><span><i style="background:#B39DFF"></i>Score</span><span><i style="background:#5ED6C1;border-radius:2px"></i>Avg night HR</span></div>
+          <svg viewBox="0 0 314 170" width="100%" style="display:block;height:auto"  aria-hidden="true"><line x1="0" x2="314" y1="142" y2="142" stroke="#2A3530"/><line x1="0" x2="314" y1="108" y2="108" stroke="#2A3530"/><line x1="0" x2="314" y1="74" y2="74" stroke="#2A3530"/><line x1="0" x2="314" y1="40" y2="40" stroke="#2A3530"/><line x1="0" x2="314" y1="6" y2="6" stroke="#2A3530"/><polyline fill="none" stroke="#5ED6C1" stroke-width="1.6" stroke-linejoin="round" points="6,23 17.2,61.2 28.4,40 39.6,82.5 50.7,103.8 61.9,82.5 73.1,95.2 84.3,86.8 95.5,82.5 106.7,78.2 117.9,78.2 129,103.8 140.2,116.5 151.4,95.2 162.6,95.2 173.8,78.2 185,103.8 196.1,91 207.3,103.8 218.5,112.2"/><rect x="3.5" y="20.5" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="14.7" y="58.8" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="25.9" y="37.5" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="37.1" y="80" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="48.2" y="101.2" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="59.4" y="80" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="70.6" y="92.8" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="81.8" y="84.2" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="93" y="80" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="104.2" y="75.8" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="115.4" y="75.8" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="126.5" y="101.2" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="137.7" y="114" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="148.9" y="92.8" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="160.1" y="92.8" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="171.3" y="75.8" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="182.5" y="101.2" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="193.6" y="88.5" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="204.8" y="101.2" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="216" y="109.8" width="5" height="5" rx="1" fill="#5ED6C1"/><polyline fill="none" stroke="#5ED6C1" stroke-width="1.6" stroke-linejoin="round" points="240.9,74 252.1,95.2 263.3,120.8 274.4,108 285.6,120.8 296.8,125 308,116.5"/><rect x="238.4" y="71.5" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="249.6" y="92.8" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="260.8" y="118.2" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="271.9" y="105.5" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="283.1" y="118.2" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="294.3" y="122.5" width="5" height="5" rx="1" fill="#5ED6C1"/><rect x="305.5" y="114" width="5" height="5" rx="1" fill="#5ED6C1"/><polyline fill="none" stroke="#B39DFF" stroke-width="1.8" stroke-linejoin="round" points="6,109.4 17.2,63.1 28.4,83.5 39.6,40 50.7,52.2 61.9,38.6 73.1,38.6 84.3,38.6 95.5,37.3 106.7,67.2 117.9,35.9 129,34.6 140.2,18.2 151.4,71.3 162.6,35.9 173.8,46.8 185,31.8 196.1,34.6 207.3,80.8 218.5,21"/><circle cx="6" cy="109.4" r="2.6" fill="#B39DFF"/><circle cx="17.2" cy="63.1" r="2.6" fill="#B39DFF"/><circle cx="28.4" cy="83.5" r="2.6" fill="#B39DFF"/><circle cx="39.6" cy="40" r="2.6" fill="#B39DFF"/><circle cx="50.7" cy="52.2" r="2.6" fill="#B39DFF"/><circle cx="61.9" cy="38.6" r="2.6" fill="#B39DFF"/><circle cx="73.1" cy="38.6" r="2.6" fill="#B39DFF"/><circle cx="84.3" cy="38.6" r="2.6" fill="#B39DFF"/><circle cx="95.5" cy="37.3" r="2.6" fill="#B39DFF"/><circle cx="106.7" cy="67.2" r="2.6" fill="#B39DFF"/><circle cx="117.9" cy="35.9" r="2.6" fill="#B39DFF"/><circle cx="129" cy="34.6" r="2.6" fill="#B39DFF"/><circle cx="140.2" cy="18.2" r="2.6" fill="#B39DFF"/><circle cx="151.4" cy="71.3" r="2.6" fill="#B39DFF"/><circle cx="162.6" cy="35.9" r="2.6" fill="#B39DFF"/><circle cx="173.8" cy="46.8" r="2.6" fill="#B39DFF"/><circle cx="185" cy="31.8" r="2.6" fill="#B39DFF"/><circle cx="196.1" cy="34.6" r="2.6" fill="#B39DFF"/><circle cx="207.3" cy="80.8" r="2.6" fill="#B39DFF"/><circle cx="218.5" cy="21" r="2.6" fill="#B39DFF"/><polyline fill="none" stroke="#B39DFF" stroke-width="1.8" stroke-linejoin="round" points="240.9,48.2 252.1,53.6 263.3,40 274.4,35.9 285.6,46.8 296.8,26.4 308,56.3"/><circle cx="240.9" cy="48.2" r="2.6" fill="#B39DFF"/><circle cx="252.1" cy="53.6" r="2.6" fill="#B39DFF"/><circle cx="263.3" cy="40" r="2.6" fill="#B39DFF"/><circle cx="274.4" cy="35.9" r="2.6" fill="#B39DFF"/><circle cx="285.6" cy="46.8" r="2.6" fill="#B39DFF"/><circle cx="296.8" cy="26.4" r="2.6" fill="#B39DFF"/><circle cx="308" cy="56.3" r="2.6" fill="#B39DFF"/><line x1="308" x2="308" y1="30" y2="150" stroke="#EAF1EC" stroke-opacity=".5" stroke-dasharray="3 3"/><circle cx="308" cy="56.3" r="5" fill="#0E1311" stroke="#EAF1EC" stroke-width="2"/><g><rect x="186" y="0" width="128" height="20" rx="10" fill="#2A3530" stroke="#3B4A43"/><text x="250" y="13.5" text-anchor="middle" font-size="10.5" font-weight="700" fill="#EAF1EC" font-family="DM Sans,sans-serif">22 ott · 63 · 57 bpm</text></g><text x="0" y="166" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">25 set</text><text x="314" y="166" text-anchor="end" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">22 ott</text></svg>
+        </div>
+
+        <div class="card">
+          <div class="kv3">
+            <div class="kv"><div class="lbl">Avg score</div><div class="val">69</div></div>
+            <div class="kv"><div class="lbl">Avg night HR</div><div class="val">63 <span>bpm</span></div></div>
+            <div class="kv"><div class="lbl">Avg resting HR</div><div class="val">57 <span>bpm</span></div></div>
+            <div class="kv"><div class="lbl">Body Battery</div><div class="val" style="color:var(--teal)">+43</div></div>
+            <div class="kv"><div class="lbl">Avg SpO₂</div><div class="val">98 <span>%</span></div></div>
+            <div class="kv"><div class="lbl">Respiration</div><div class="val">16 <span>brpm</span></div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><h3>Bedtime &amp; wake-up</h3><span class="aux">avg <b>01:03</b> → <b>08:12</b></span></div>
+          <div style="margin-top:8px"><svg viewBox="0 0 314 84" width="100%" style="display:block;height:auto"  aria-hidden="true"><line x1="0" x2="314" y1="27.7" y2="27.7" stroke="#EAF1EC" stroke-width="1.4"/><line x1="0" x2="314" y1="69.5" y2="69.5" stroke="#EAF1EC" stroke-width="1.4" stroke-dasharray="4 3"/><rect x="3.4" y="16.9" width="5.2" height="55" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="14.6" y="28" width="5.2" height="46.2" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="25.8" y="15.1" width="5.2" height="57.3" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="37" y="25" width="5.2" height="47.9" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="48.1" y="23.9" width="5.2" height="50.9" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="59.3" y="21" width="5.2" height="50.9" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="70.5" y="29.1" width="5.2" height="44.4" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="81.7" y="18.6" width="5.2" height="56.7" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="92.9" y="34.4" width="5.2" height="33.3" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="104.1" y="26.2" width="5.2" height="47.9" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="115.3" y="30.3" width="5.2" height="42.7" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="126.4" y="21" width="5.2" height="53.8" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="137.6" y="27.4" width="5.2" height="43.8" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="148.8" y="25.6" width="5.2" height="47.9" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="160" y="33.2" width="5.2" height="42.7" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="171.2" y="21.5" width="5.2" height="50.9" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="182.4" y="26.8" width="5.2" height="45" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="193.5" y="28.6" width="5.2" height="46.8" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="204.7" y="15.1" width="5.2" height="57.9" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="215.9" y="30.9" width="5.2" height="42.7" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="238.3" y="25" width="5.2" height="45.6" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="249.5" y="35" width="5.2" height="33.3" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="260.7" y="22.7" width="5.2" height="49.1" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="271.8" y="28" width="5.2" height="46.8" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="283" y="21.5" width="5.2" height="52" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="294.2" y="23.9" width="5.2" height="49.1" rx="2.6" fill="#8FA8FF" fill-opacity="0.75"/><rect x="305.4" y="36.7" width="5.2" height="35.1" rx="2.6" fill="#8FA8FF" fill-opacity="1"/></svg></div>
+          <div class="insight-line"><svg class="ic" style="width:13px;height:13px;color:var(--accent)"><use href="#i-spark"/></svg><span>Wake-up is steady (avg <b>08:12</b>); <b>bedtime is what moves</b> from night to night.</span></div>
+        </div>
+      
+      </div>
+      
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Sleep · 4 weeks</strong>Same layout, longer range: score and night HR on one chart, averages as a compact grid, and a bedtime/wake-up range chart with a plain-language takeaway. The last night stays pinned so you can compare it with the month. <em>Day / 7d / 4w / 1y.</em></figcaption>
+  </figure>
+
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="HRV night screen mockup">
+      <div class="statusbar"><span>20:26</span><div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg><svg class="sic"><use href="#i-wifi"/></svg><svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">51</span></div></div>
+      <div class="screen">
+        <div class="detail-head">
+          <button class="icon-btn" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+          <div class="detail-title"><h2>HRV status</h2><div class="subtitle">gio 22 ott · overnight</div></div>
+          <button class="icon-btn" aria-label="About this metric"><svg class="ic"><use href="#i-info"/></svg></button></div>
+        <div class="segmented"><div class="segment active">Day</div><div class="segment">7d</div><div class="segment">4w</div></div>
+        <div class="date-nav"><span class="arrow"><svg class="ic"><use href="#i-back"/></svg></span>
+          <span class="label">Today</span>
+          <span class="arrow off"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+
+        <div class="card" style="padding-top:12px;padding-bottom:14px">
+          <div style="position:relative"><svg viewBox="0 0 200 175" width="190" style="display:block;margin:0 auto" aria-hidden="true"><path d="M44.15 148.55 A74 74 0 0 1 26.28 106.45" fill="none" stroke="#FF7A66" stroke-width="11" stroke-linecap="round"/><path d="M26.05 102.58 A74 74 0 0 1 37.24 60.79" fill="none" stroke="#FFB45E" stroke-width="11" stroke-linecap="round"/><path d="M39.38 57.56 A74 74 0 0 1 163.43 61.89" fill="none" stroke="#59D98E" stroke-width="11" stroke-linecap="round"/><path d="M165.34 65.26 A74 74 0 0 1 154.99 149.52" fill="none" stroke="#FFB45E" stroke-width="11" stroke-linecap="round"/><circle cx="54.44" cy="41.69" r="9.0" fill="#0E1311"/><circle cx="54.44" cy="41.69" r="6.5" fill="#EAF1EC"/></svg>
+            <div style="position:absolute;left:0;right:0;top:62px;text-align:center"><div class="display" style="font-size:38px;line-height:1">36 <span class="unit" style="font-size:15px">ms</span></div><div class="muted" style="font-size:11.5px;margin-top:5px">7-day average</div></div>
+          </div>
+          <div style="text-align:center;margin-top:-12px"><span class="badge badge-green">● Balanced</span></div>
+          <div class="muted" style="font-size:12.5px;line-height:1.45;text-align:center;margin:9px 6px 0">Training load and recovery are keeping pace. Baseline range is <b style="color:var(--text)">31–44 ms</b>.</div>
+          <div class="kv2"><div class="kv"><div class="lbl">Last night</div><div class="val">42 <span>ms</span> <em style="color:var(--green)">+6 vs avg</em></div></div>
+            <div class="kv"><div class="lbl">5-min peak</div><div class="val">61 <span>ms</span></div></div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><h3>Overnight history</h3><span class="aux">HRV in ms</span></div>
+          <div style="margin-top:6px"><svg viewBox="0 0 314 144" width="100%" style="display:block;height:auto"  aria-hidden="true"><line x1="0" x2="314" y1="110" y2="110" stroke="#2A3530"/><text x="0" y="107" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">15</text><line x1="0" x2="314" y1="76" y2="76" stroke="#2A3530"/><text x="0" y="73" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">35</text><line x1="0" x2="314" y1="42" y2="42" stroke="#2A3530"/><text x="0" y="39" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">55</text><line x1="0" x2="314" y1="8" y2="8" stroke="#2A3530"/><text x="0" y="5" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">75</text><line x1="0" x2="314" y1="64.1" y2="64.1" stroke="#59D98E" stroke-opacity=".7" stroke-dasharray="5 4"/><polyline fill="none" stroke="#EAF1EC" stroke-width="1.7" stroke-linejoin="round" points="0,89.8 2.9,89.3 5.7,87.4 8.6,89.8 11.4,89.6 14.3,89.2 17.1,91.2 20,89.5 22.8,88.9 25.7,85.4 28.5,84.9 31.4,79.7 34.3,79.3 37.1,79.2 40,83.3 42.8,90.2 45.7,73.2 48.5,61 51.4,50.4 54.2,41.1 57.1,35.2 59.9,49.7 62.8,60.9 65.7,77.1 68.5,80.5 71.4,79.6 74.2,80 77.1,77.1 79.9,76.5 82.8,75.6 85.6,79.3 88.5,80.7 91.3,81.6 94.2,77 97.1,74.3 99.9,71.5 102.8,64.1 105.6,61 108.5,60.1 111.3,59.1 114.2,59.4 117,58.1 119.9,57.2 122.7,60.1 125.6,58.2 128.5,61.8 131.3,61.2 134.2,62.1 137,51.6 139.9,44.5 142.7,41.1 145.6,38 148.4,32.4 151.3,32.6 154.1,33.1 157,41.7 159.9,48.9 162.7,50.6 165.6,52.3 168.4,57.2 171.3,60.5 174.1,61.7 177,58.8 179.8,56.1 182.7,55.6 185.5,51.2 188.4,48.2 191.3,47.2 194.1,47.2 197,54.1 199.8,55.9 202.7,60.2 205.5,61.3 208.4,50.3 211.2,45.2 214.1,34.5 216.9,44.8 219.8,50.9 222.7,59.6 225.5,63.4 228.4,62.1 231.2,65.3 234.1,70.1 236.9,69.4 239.8,75.2 242.6,76.5 245.5,73.2 248.3,73.2 251.2,75 254.1,69.4 256.9,72.4 259.8,69.8 262.6,64.7 265.5,64.6 268.3,62.4 271.2,61.2 274,61.8 276.9,59.9 279.7,62.4 282.6,61.2 285.5,63.1 288.3,64.6 291.2,64 294,68.4 296.9,70 299.7,70.4 302.6,75.9 305.4,74.4 308.3,68.8 311.1,67.6 314,68.8"/><circle cx="152.2" cy="31.8" r="4" fill="#0E1311" stroke="#59D98E" stroke-width="2"/><g><rect x="89.2" y="0" width="126" height="20" rx="10" fill="#2A3530" stroke="#3B4A43"/><text x="152.2" y="13.5" text-anchor="middle" font-size="10.5" font-weight="700" fill="#EAF1EC" font-family="DM Sans,sans-serif">Peak 61 ms · 05:18</text></g><text x="314" y="60.1" text-anchor="end" font-size="9.5" fill="#59D98E" font-family="DM Sans,sans-serif">night avg 42</text><text x="0" y="140" text-anchor="start" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">02:38</text><text x="157" y="140" text-anchor="middle" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">05:23</text><text x="314" y="140" text-anchor="end" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">08:08</text></svg></div>
+        </div>
+
+        <div class="section-label">Recent nights</div>
+        <div class="day-row"><div style="flex:1"><div class="name">Thursday</div><div class="sub">22 ott</div></div>
+            <div class="cell"><span class="dot" style="background:var(--green);width:7px;height:7px"></span><b>36 ms</b><i>7-day avg</i></div>
+            <div class="cell"><b>42 ms</b><i>last night</i></div></div>
+        <div class="day-row"><div style="flex:1"><div class="name">Wednesday</div><div class="sub">21 ott</div></div>
+            <div class="cell"><span class="dot" style="background:var(--green);width:7px;height:7px"></span><b>35 ms</b><i>7-day avg</i></div>
+            <div class="cell"><b>43 ms</b><i>last night</i></div></div>
+      
+      </div>
+      
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>HRV · night</strong>The status gauge leads, with the baseline range in words. Last night is shown as a delta against your 7-day average (the number that actually matters), and the overnight curve marks its peak and night average. <em>Day / 7d / 4w.</em></figcaption>
+  </figure>
+
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="HRV four week screen mockup">
+      <div class="statusbar"><span>20:26</span><div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg><svg class="sic"><use href="#i-wifi"/></svg><svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">51</span></div></div>
+      <div class="screen">
+        <div class="detail-head">
+          <button class="icon-btn" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+          <div class="detail-title"><h2>HRV status</h2><div class="subtitle">4 weeks · 25 set – 22 ott</div></div>
+          <button class="icon-btn" aria-label="About this metric"><svg class="ic"><use href="#i-info"/></svg></button></div>
+        <div class="segmented"><div class="segment">Day</div><div class="segment">7d</div><div class="segment active">4w</div></div>
+        <div class="date-nav"><span class="arrow"><svg class="ic"><use href="#i-back"/></svg></span>
+          <span class="label">25 set – 22 ott</span>
+          <span class="arrow off"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+
+        <div class="card" style="display:flex;align-items:center;gap:14px">
+          <div style="flex:1"><div class="muted" style="font-size:12px">In range for</div>
+            <div class="display" style="font-size:34px;line-height:1.1;margin-top:3px">16 <span class="unit">of 28 days</span></div></div>
+          <span class="badge badge-green">● Balanced now</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><h3>7-day averages</h3></div>
+          <div class="legend" style="margin:7px 0 9px">
+            <span><i style="background:#59D98E"></i>Balanced</span>
+            <span><i style="background:#FFB45E;border-radius:2px"></i>Unbalanced</span>
+            <span><i style="background:#FF7A66;clip-path:polygon(50% 0,100% 100%,0 100%)"></i>Low</span>
+            <span><i style="background:#555F5A;border-radius:2px"></i>Baseline</span>
+          </div>
+          <svg viewBox="0 0 314 168" width="100%" style="display:block;height:auto"  aria-hidden="true"><rect x="0" y="19.8" width="314" height="76.8" rx="6" fill="#fff" fill-opacity=".09"/><text x="0" y="141" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif" opacity=".0">24</text><text x="0" y="99.6" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif" opacity=".0">31</text><text x="0" y="58.3" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif" opacity=".0">38</text><text x="0" y="22.8" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif" opacity=".0">44</text><text x="310" y="30.8" text-anchor="end" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">your baseline 31–44</text><rect x="4.6" y="96.2" width="6.8" height="6.8" rx="1.2" fill="#FFB45E"/><rect x="15.6" y="99.1" width="6.8" height="6.8" rx="1.2" fill="#FFB45E"/><rect x="26.7" y="102.1" width="6.8" height="6.8" rx="1.2" fill="#FFB45E"/><path d="M41.1 110.2 L45.3 117.8 L36.9 117.8Z" fill="#FF7A66"/><path d="M52.1 113.1 L56.3 120.7 L47.9 120.7Z" fill="#FF7A66"/><path d="M63.2 116.1 L67.4 123.7 L59 123.7Z" fill="#FF7A66"/><path d="M74.2 116.1 L78.4 123.7 L70 123.7Z" fill="#FF7A66"/><path d="M85.3 113.1 L89.5 120.7 L81.1 120.7Z" fill="#FF7A66"/><path d="M96.3 116.1 L100.5 123.7 L92.1 123.7Z" fill="#FF7A66"/><path d="M107.3 119 L111.5 126.6 L103.1 126.6Z" fill="#FF7A66"/><rect x="115" y="102.1" width="6.8" height="6.8" rx="1.2" fill="#FFB45E"/><rect x="126" y="96.2" width="6.8" height="6.8" rx="1.2" fill="#FFB45E"/><circle cx="140.4" cy="93.7" r="3.4" fill="#59D98E"/><circle cx="151.5" cy="90.7" r="3.4" fill="#59D98E"/><circle cx="162.5" cy="87.8" r="3.4" fill="#59D98E"/><circle cx="173.6" cy="84.8" r="3.4" fill="#59D98E"/><circle cx="184.6" cy="81.9" r="3.4" fill="#59D98E"/><circle cx="195.6" cy="78.9" r="3.4" fill="#59D98E"/><circle cx="206.7" cy="78.9" r="3.4" fill="#59D98E"/><circle cx="217.7" cy="78.9" r="3.4" fill="#59D98E"/><circle cx="228.7" cy="78.9" r="3.4" fill="#59D98E"/><circle cx="239.8" cy="78.9" r="3.4" fill="#59D98E"/><circle cx="250.8" cy="76" r="3.4" fill="#59D98E"/><circle cx="261.9" cy="76" r="3.4" fill="#59D98E"/><circle cx="272.9" cy="73" r="3.4" fill="#59D98E"/><circle cx="283.9" cy="73" r="3.4" fill="#59D98E"/><circle cx="295" cy="73" r="3.4" fill="#59D98E"/><circle cx="306" cy="67.1" r="3.4" fill="#59D98E"/><line x1="306" x2="306" y1="30" y2="150" stroke="#EAF1EC" stroke-opacity=".5" stroke-dasharray="3 3"/><circle cx="306" cy="67.1" r="6" fill="none" stroke="#EAF1EC" stroke-width="2"/><g><rect x="164" y="0" width="150" height="20" rx="10" fill="#2A3530" stroke="#3B4A43"/><text x="239" y="13.5" text-anchor="middle" font-size="10.5" font-weight="700" fill="#EAF1EC" font-family="DM Sans,sans-serif">22 ott · 36 ms · Balanced</text></g><text x="0" y="164" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">25 set</text><text x="314" y="164" text-anchor="end" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">22 ott</text></svg>
+          <div class="insight-line"><svg class="ic" style="width:13px;height:13px;color:var(--accent)"><use href="#i-spark"/></svg><span>You dipped below your baseline at the start of the month and have been <b>back in range for 16 days</b>.</span></div>
+        </div>
+
+        <div class="card">
+          <div class="kv3" style="grid-template-columns:1fr 1fr">
+            <div class="kv"><div class="lbl">Sleep average</div><div class="val">36 <span>ms</span></div></div>
+            <div class="kv"><div class="lbl">Awake average</div><div class="val">34 <span>ms</span></div></div>
+          </div>
+        </div>
+      
+      </div>
+      
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>HRV · 4 weeks</strong>Garmin’s status shapes are kept (circle, square, triangle) so colour is never the only signal, with the baseline band behind them. A headline counts days in range and one sentence explains the trend. <em>Day / 7d / 4w.</em></figcaption>
+  </figure>
+
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Stress day screen mockup">
+      <div class="statusbar"><span>20:27</span><div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg><svg class="sic"><use href="#i-wifi"/></svg><svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">51</span></div></div>
+      <div class="screen">
+        <div class="detail-head">
+          <button class="icon-btn" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+          <div class="detail-title"><h2>Stress</h2><div class="subtitle">gio 22 ott</div></div>
+          <button class="icon-btn" aria-label="About this metric"><svg class="ic"><use href="#i-info"/></svg></button></div>
+        <div class="segmented"><div class="segment active">Day</div><div class="segment">7d</div><div class="segment">4w</div><div class="segment">1y</div></div>
+        <div class="date-nav"><span class="arrow"><svg class="ic"><use href="#i-back"/></svg></span>
+          <span class="label">Today</span>
+          <span class="arrow off"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+
+        <div class="card" style="padding-top:14px;padding-bottom:14px">
+          <div style="display:flex;align-items:center;gap:18px">
+            <div class="ring" style="width:124px;height:124px"><svg width="124" height="124" viewBox="0 0 124 124"><circle cx="62" cy="62" r="46" fill="none" stroke="#26322D" stroke-width="12"/><circle cx="62" cy="62" r="46" fill="none" stroke="#8FA8FF" stroke-width="12" stroke-linecap="round" stroke-dasharray="207.7 81.3" stroke-dashoffset="0" transform="rotate(-90 62 62)"/><circle cx="62" cy="62" r="46" fill="none" stroke="#5ED6C1" stroke-width="12" stroke-linecap="round" stroke-dasharray="52.4 236.7" stroke-dashoffset="-210.7" transform="rotate(-90 62 62)"/><circle cx="62" cy="62" r="46" fill="none" stroke="#FFD166" stroke-width="12" stroke-linecap="round" stroke-dasharray="16.1 273" stroke-dashoffset="-266.1" transform="rotate(-90 62 62)"/><circle cx="62" cy="62" r="46" fill="none" stroke="#FF7A66" stroke-width="12" stroke-linecap="round" stroke-dasharray="2 287" stroke-dashoffset="-285.2" transform="rotate(-90 62 62)"/></svg><div class="ring-label"><span class="display" style="font-size:34px">25</span><span class="muted" style="font-size:10.5px;margin-top:4px">avg today</span></div></div>
+            <div class="levels"><div class="lv"><i style="background:#8FA8FF"></i><span class="n">Rest</span><b>11h 48m</b><span class="p">73%</span></div><div class="lv"><i style="background:#5ED6C1"></i><span class="n">Low</span><b>3h 06m</b><span class="p">19%</span></div><div class="lv"><i style="background:#FFD166"></i><span class="n">Medium</span><b>1h 04m</b><span class="p">7%</span></div><div class="lv"><i style="background:#FF7A66"></i><span class="n">High</span><b>13m</b><span class="p">1%</span></div></div>
+          </div>
+          <div class="insight-line" style="margin-top:12px"><svg class="ic" style="width:13px;height:13px;color:var(--accent)"><use href="#i-spark"/></svg><span>Plenty of rest moments balanced today’s stress. The highest reading came during your <b>interval run</b>.</span></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><h3>Daily timeline</h3><span class="aux">Tap or drag to inspect</span></div>
+          <div style="margin-top:8px"><svg viewBox="0 0 314 200" width="100%" style="display:block;height:auto"  aria-hidden="true"><line x1="0" x2="314" y1="150.0" y2="150.0" stroke="#2A3530"/><line x1="0" x2="314" y1="77.0" y2="77.0" stroke="#2A3530"/><line x1="0" x2="314" y1="4.0" y2="4.0" stroke="#2A3530"/><rect x="0.2" y="120.7" width="2.4" height="29.3" rx="1" fill="#8FA8FF"/><rect x="3.5" y="117.4" width="2.4" height="32.6" rx="1" fill="#8FA8FF"/><rect x="6.7" y="118.4" width="2.4" height="31.6" rx="1" fill="#8FA8FF"/><rect x="10" y="34.2" width="2.4" height="115.8" rx="1" fill="#FF7A66"/><rect x="13.3" y="120.2" width="2.4" height="29.8" rx="1" fill="#8FA8FF"/><rect x="16.6" y="82" width="2.4" height="68" rx="1" fill="#5ED6C1"/><rect x="19.8" y="122.2" width="2.4" height="27.8" rx="1" fill="#8FA8FF"/><rect x="23.1" y="79.7" width="2.4" height="70.3" rx="1" fill="#5ED6C1"/><rect x="26.4" y="115.1" width="2.4" height="34.9" rx="1" fill="#8FA8FF"/><rect x="29.6" y="129.5" width="2.4" height="20.5" rx="1" fill="#8FA8FF"/><rect x="32.9" y="135.1" width="2.4" height="14.9" rx="1" fill="#8FA8FF"/><rect x="36.2" y="135.4" width="2.4" height="14.6" rx="1" fill="#8FA8FF"/><rect x="39.5" y="118" width="2.4" height="32" rx="1" fill="#8FA8FF"/><rect x="42.7" y="133.3" width="2.4" height="16.7" rx="1" fill="#8FA8FF"/><rect x="46" y="117.9" width="2.4" height="32.1" rx="1" fill="#8FA8FF"/><rect x="49.3" y="115.9" width="2.4" height="34.1" rx="1" fill="#8FA8FF"/><rect x="52.5" y="122.5" width="2.4" height="27.5" rx="1" fill="#8FA8FF"/><rect x="55.8" y="116.3" width="2.4" height="33.7" rx="1" fill="#8FA8FF"/><rect x="59.1" y="115.7" width="2.4" height="34.3" rx="1" fill="#8FA8FF"/><rect x="62.3" y="131.3" width="2.4" height="18.7" rx="1" fill="#8FA8FF"/><rect x="65.6" y="134.4" width="2.4" height="15.6" rx="1" fill="#8FA8FF"/><rect x="68.9" y="136.8" width="2.4" height="13.2" rx="1" fill="#8FA8FF"/><rect x="72.2" y="124.2" width="2.4" height="25.8" rx="1" fill="#8FA8FF"/><rect x="75.4" y="122.5" width="2.4" height="27.5" rx="1" fill="#8FA8FF"/><rect x="78.7" y="131.1" width="2.4" height="18.9" rx="1" fill="#8FA8FF"/><rect x="82" y="127.1" width="2.4" height="22.9" rx="1" fill="#8FA8FF"/><rect x="85.2" y="127.1" width="2.4" height="22.9" rx="1" fill="#8FA8FF"/><rect x="88.5" y="137" width="2.4" height="13" rx="1" fill="#8FA8FF"/><rect x="91.8" y="137.8" width="2.4" height="12.2" rx="1" fill="#8FA8FF"/><rect x="95.1" y="118.6" width="2.4" height="31.4" rx="1" fill="#8FA8FF"/><rect x="98.3" y="119.9" width="2.4" height="30.1" rx="1" fill="#8FA8FF"/><rect x="101.6" y="124.8" width="2.4" height="25.2" rx="1" fill="#8FA8FF"/><rect x="104.9" y="137.2" width="2.4" height="12.8" rx="1" fill="#8FA8FF"/><rect x="108.1" y="129" width="2.4" height="21" rx="1" fill="#8FA8FF"/><rect x="111.4" y="128.8" width="2.4" height="21.2" rx="1" fill="#8FA8FF"/><rect x="114.7" y="114.8" width="2.4" height="35.2" rx="1" fill="#8FA8FF"/><rect x="118" y="71" width="2.4" height="79" rx="1" fill="#FFD166"/><rect x="121.2" y="55.9" width="2.4" height="94.1" rx="1" fill="#FFD166"/><rect x="124.5" y="117.3" width="2.4" height="32.7" rx="1" fill="#8FA8FF"/><rect x="127.8" y="131.8" width="2.4" height="18.2" rx="1" fill="#8FA8FF"/><rect x="131" y="65.2" width="2.4" height="84.8" rx="1" fill="#FFD166"/><rect x="134.3" y="115.1" width="2.4" height="34.9" rx="1" fill="#8FA8FF"/><rect x="137.6" y="126" width="2.4" height="24" rx="1" fill="#8FA8FF"/><rect x="140.8" y="114.9" width="2.4" height="35.1" rx="1" fill="#8FA8FF"/><rect x="144.1" y="122.1" width="2.4" height="27.9" rx="1" fill="#8FA8FF"/><rect x="147.4" y="126.5" width="2.4" height="23.5" rx="1" fill="#8FA8FF"/><rect x="150.7" y="126.5" width="2.4" height="23.5" rx="1" fill="#8FA8FF"/><rect x="153.9" y="129.1" width="2.4" height="20.9" rx="1" fill="#8FA8FF"/><rect x="157.2" y="131" width="2.4" height="19" rx="1" fill="#8FA8FF"/><rect x="160.5" y="129.7" width="2.4" height="20.3" rx="1" fill="#8FA8FF"/><rect x="163.7" y="105.4" width="2.4" height="44.6" rx="1" fill="#5ED6C1"/><rect x="167" y="78.3" width="2.4" height="71.7" rx="1" fill="#5ED6C1"/><rect x="170.3" y="128" width="2.4" height="22" rx="1" fill="#8FA8FF"/><rect x="173.6" y="77.1" width="2.4" height="72.9" rx="1" fill="#5ED6C1"/><rect x="176.8" y="131.4" width="2.4" height="18.6" rx="1" fill="#8FA8FF"/><rect x="180.1" y="45.5" width="2.4" height="104.5" rx="1" fill="#FFD166"/><rect x="183.4" y="130" width="2.4" height="20" rx="1" fill="#8FA8FF"/><rect x="186.6" y="114.5" width="2.4" height="35.5" rx="1" fill="#8FA8FF"/><rect x="189.9" y="120.5" width="2.4" height="29.5" rx="1" fill="#8FA8FF"/><rect x="193.2" y="117.5" width="2.4" height="32.5" rx="1" fill="#8FA8FF"/><rect x="196.4" y="130.5" width="2.4" height="19.5" rx="1" fill="#8FA8FF"/><rect x="199.7" y="124.2" width="2.4" height="25.8" rx="1" fill="#8FA8FF"/><rect x="203" y="129.6" width="2.4" height="20.4" rx="1" fill="#8FA8FF"/><rect x="206.3" y="95.9" width="2.4" height="54.1" rx="1" fill="#5ED6C1"/><rect x="209.5" y="113.5" width="2.4" height="36.5" rx="1" fill="#8FA8FF"/><rect x="212.8" y="94.9" width="2.4" height="55.1" rx="1" fill="#5ED6C1"/><rect x="216.1" y="100.6" width="2.4" height="49.4" rx="1" fill="#5ED6C1"/><rect x="219.3" y="98.1" width="2.4" height="51.9" rx="1" fill="#5ED6C1"/><rect x="222.6" y="113.7" width="2.4" height="36.3" rx="1" fill="#8FA8FF"/><rect x="225.9" y="99.2" width="2.4" height="50.8" rx="1" fill="#5ED6C1"/><rect x="229.2" y="130.8" width="2.4" height="19.2" rx="1" fill="#8FA8FF"/><rect x="232.4" y="127.3" width="2.4" height="22.7" rx="1" fill="#8FA8FF"/><rect x="235.7" y="117.6" width="2.4" height="32.4" rx="1" fill="#8FA8FF"/><rect x="239" y="125.6" width="2.4" height="24.4" rx="1" fill="#8FA8FF"/><rect x="242.2" y="20.1" width="2.4" height="129.9" rx="1" fill="#FF7A66"/><rect x="245.5" y="119.9" width="2.4" height="30.1" rx="1" fill="#8FA8FF"/><rect x="248.8" y="125.6" width="2.4" height="24.4" rx="1" fill="#8FA8FF"/><rect x="252.1" y="127.1" width="2.4" height="22.9" rx="1" fill="#8FA8FF"/><rect x="255.3" y="123.3" width="2.4" height="26.7" rx="1" fill="#8FA8FF"/><rect x="258.6" y="117.9" width="2.4" height="32.1" rx="1" fill="#8FA8FF"/><rect x="261.9" y="119.4" width="2.4" height="30.6" rx="1" fill="#8FA8FF"/><rect x="265.1" y="126.9" width="2.4" height="23.1" rx="1" fill="#8FA8FF"/><rect x="268.4" y="114.5" width="2.4" height="35.5" rx="1" fill="#8FA8FF"/><line x1="243.7" x2="243.7" y1="22" y2="150" stroke="#EAF1EC" stroke-opacity=".55" stroke-dasharray="3 3"/><g><rect x="174.7" y="0" width="138" height="20" rx="10" fill="#2A3530" stroke="#3B4A43"/><text x="243.7" y="13.5" text-anchor="middle" font-size="10.5" font-weight="700" fill="#EAF1EC" font-family="DM Sans,sans-serif">18:30 · High 89 · Run</text></g><circle cx="38.4" cy="167" r="11" fill="#8FA8FF"/><svg x="31.4" y="160" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E1311" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-moon"/></svg><circle cx="106.4" cy="167" r="11" fill="#8FA096"/><svg x="99.4" y="160" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E1311" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-clock"/></svg><circle cx="239.4" cy="167" r="11" fill="#59D98E"/><svg x="232.4" y="160" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E1311" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-run"/></svg><text x="0" y="194" text-anchor="start" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">00:00</text><text x="78.5" y="194" text-anchor="middle" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">06:00</text><text x="157" y="194" text-anchor="middle" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">12:00</text><text x="235.5" y="194" text-anchor="middle" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">18:00</text><text x="314" y="194" text-anchor="end" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">24:00</text></svg></div>
+        </div>
+
+        <div class="card" style="display:flex;align-items:center;gap:16px">
+          <div style="flex:1"><div class="lbl muted" style="font-size:11px">7-day average</div>
+            <div class="display" style="font-size:26px;line-height:1.1;margin-top:3px">22 <span class="unit" style="font-size:12px">vs 29 over 4 weeks</span></div></div>
+          <svg viewBox="0 0 154 36" width="120" aria-hidden="true"><rect x="2" y="6.5" width="14" height="27.5" rx="3" fill="#FFD166" fill-opacity="0.35"/><rect x="24" y="6.5" width="14" height="27.5" rx="3" fill="#FFD166" fill-opacity="0.35"/><rect x="46" y="5.4" width="14" height="28.6" rx="3" fill="#FFD166" fill-opacity="0.35"/><rect x="68" y="12.0" width="14" height="22.0" rx="3" fill="#FFD166" fill-opacity="0.35"/><rect x="90" y="14.2" width="14" height="19.8" rx="3" fill="#FFD166" fill-opacity="0.35"/><rect x="112" y="10.9" width="14" height="23.1" rx="3" fill="#FFD166" fill-opacity="0.35"/><rect x="134" y="6.5" width="14" height="27.5" rx="3" fill="#FFD166" fill-opacity="1"/></svg>
+        </div>
+      
+      </div>
+      
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Stress · day</strong>The ring and a legend with real durations replace guesswork, a one-line reading explains the day, and the timeline carries sleep / wake / activity markers with a pinned readout. The 7-day average sits below for context. <em>Day / 7d / 4w / 1y.</em></figcaption>
+  </figure>
+
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="VO2 max screen mockup">
+      <div class="statusbar"><span>20:29</span><div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg><svg class="sic"><use href="#i-wifi"/></svg><svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">51</span></div></div>
+      <div class="screen">
+        <div class="detail-head">
+          <button class="icon-btn" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+          <div class="detail-title"><h2>VO₂ max</h2><div class="subtitle">Fitness level</div></div>
+          <button class="icon-btn" aria-label="About this metric"><svg class="ic"><use href="#i-info"/></svg></button></div>
+        <div class="segmented"><div class="segment">Now</div><div class="segment">4w</div><div class="segment">12w</div><div class="segment active">6m</div></div>
+        <div class="date-nav"><span class="arrow"><svg class="ic"><use href="#i-back"/></svg></span>
+          <span class="label">24 apr – 22 ott</span>
+          <span class="arrow off"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+
+        <div class="card" style="padding-top:10px;padding-bottom:14px">
+          <div style="position:relative"><svg viewBox="0 0 200 172" width="170" style="display:block;margin:0 auto" aria-hidden="true"><path d="M44.15 148.55 A74 74 0 0 1 35.28 64.12" fill="none" stroke="#FF7A66" stroke-width="11" stroke-linecap="round"/><path d="M37.24 60.79 A74 74 0 0 1 77.13 29.62" fill="none" stroke="#FFB45E" stroke-width="11" stroke-linecap="round"/><path d="M80.85 28.52 A74 74 0 0 1 142.44 39.38" fill="none" stroke="#59D98E" stroke-width="11" stroke-linecap="round"/><path d="M145.56 41.69 A74 74 0 0 1 172.38 84.61" fill="none" stroke="#8FA8FF" stroke-width="11" stroke-linecap="round"/><path d="M173.09 88.42 A74 74 0 0 1 155.85 148.55" fill="none" stroke="#B39DFF" stroke-width="11" stroke-linecap="round"/><circle cx="167.6" cy="69.9" r="9.0" fill="#0E1311"/><circle cx="167.6" cy="69.9" r="6.5" fill="#EAF1EC"/></svg>
+            <div style="position:absolute;left:0;right:0;top:56px;text-align:center"><div class="display" style="font-size:42px;line-height:1">53</div><div class="muted" style="font-size:11px;margin-top:4px">ml/kg/min</div></div>
+          </div>
+          <div style="text-align:center;margin-top:-8px"><span class="badge badge-blue">Excellent</span></div>
+          <div class="muted" style="font-size:12.5px;line-height:1.45;text-align:center;margin:9px 8px 0">You’re in the <b style="color:var(--text)">top 10%</b> for your age and sex.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><h3>Trend</h3><span class="aux">6 months</span></div>
+          <div style="margin-top:6px"><svg viewBox="0 0 314 154" width="100%" style="display:block;height:auto"  aria-hidden="true"><line x1="0" x2="314" y1="124" y2="124" stroke="#2A3530"/><text x="0" y="121" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">50</text><line x1="0" x2="314" y1="66" y2="66" stroke="#2A3530"/><text x="0" y="63" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">52</text><line x1="0" x2="314" y1="8" y2="8" stroke="#2A3530"/><text x="0" y="5" font-size="9.5" fill="#8FA096" font-family="DM Sans,sans-serif">54</text><polygon fill="#C7F26B" fill-opacity=".08" points="6,54.4 21,57.3 36,48.6 51,45.7 66,60.2 81,57.3 96,71.8 111,68.9 126,63.1 141,48.6 156,37 171,19.6 186,31.2 201,42.8 216,37 231,34.1 246,45.7 261,45.7 276,54.4 291,51.5 306,34.1 306,132 6,132"/><polyline fill="none" stroke="#EAF1EC" stroke-width="1.8" stroke-linejoin="round" points="6,54.4 21,57.3 36,48.6 51,45.7 66,60.2 81,57.3 96,71.8 111,68.9 126,63.1 141,48.6 156,37 171,19.6 186,31.2 201,42.8 216,37 231,34.1 246,45.7 261,45.7 276,54.4 291,51.5 306,34.1"/><circle cx="6" cy="54.4" r="2.6" fill="#EAF1EC"/><circle cx="21" cy="57.3" r="2.6" fill="#EAF1EC"/><circle cx="36" cy="48.6" r="2.6" fill="#EAF1EC"/><circle cx="51" cy="45.7" r="2.6" fill="#EAF1EC"/><circle cx="66" cy="60.2" r="2.6" fill="#EAF1EC"/><circle cx="81" cy="57.3" r="2.6" fill="#EAF1EC"/><circle cx="96" cy="71.8" r="2.6" fill="#EAF1EC"/><circle cx="111" cy="68.9" r="2.6" fill="#EAF1EC"/><circle cx="126" cy="63.1" r="2.6" fill="#EAF1EC"/><circle cx="141" cy="48.6" r="2.6" fill="#EAF1EC"/><circle cx="156" cy="37" r="2.6" fill="#EAF1EC"/><circle cx="171" cy="19.6" r="2.6" fill="#EAF1EC"/><circle cx="186" cy="31.2" r="2.6" fill="#EAF1EC"/><circle cx="201" cy="42.8" r="2.6" fill="#EAF1EC"/><circle cx="216" cy="37" r="2.6" fill="#EAF1EC"/><circle cx="231" cy="34.1" r="2.6" fill="#EAF1EC"/><circle cx="246" cy="45.7" r="2.6" fill="#EAF1EC"/><circle cx="261" cy="45.7" r="2.6" fill="#EAF1EC"/><circle cx="276" cy="54.4" r="2.6" fill="#EAF1EC"/><circle cx="291" cy="51.5" r="2.6" fill="#EAF1EC"/><circle cx="306" cy="34.1" r="2.6" fill="#EAF1EC"/><circle cx="171" cy="19.6" r="5" fill="#0E1311" stroke="#C7F26B" stroke-width="2"/><circle cx="306" cy="34.1" r="5" fill="#C7F26B"/><g><rect x="117" y="0" width="108" height="20" rx="10" fill="#2A3530" stroke="#3B4A43"/><text x="171" y="13.5" text-anchor="middle" font-size="10.5" font-weight="700" fill="#EAF1EC" font-family="DM Sans,sans-serif">Peak 53.6 · Aug</text></g><g><rect x="244" y="50.09999999999996" width="70" height="20" rx="10" fill="#2A3530" stroke="#3B4A43"/><text x="279" y="63.59999999999996" text-anchor="middle" font-size="10.5" font-weight="700" fill="#C7F26B" font-family="DM Sans,sans-serif">Now 53.1</text></g><text x="0" y="148" text-anchor="start" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">24 apr</text><text x="111" y="148" text-anchor="middle" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">lug</text><text x="216" y="148" text-anchor="middle" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">set</text><text x="314" y="148" text-anchor="end" font-size="10" fill="#8FA096" font-family="DM Sans,sans-serif">22 ott</text></svg></div>
+          <div class="kv3" style="margin-top:12px">
+            <div class="kv"><div class="lbl">Change, 4 weeks</div><div class="val" style="color:var(--accent)">+0.4</div></div>
+            <div class="kv"><div class="lbl">6-month low</div><div class="val">51.8</div></div>
+            <div class="kv"><div class="lbl">6-month high</div><div class="val">53.6</div></div>
+          </div>
+        </div>
+
+        <div class="card link-row"><div><div style="font-size:14px;font-weight:700">Fitness age</div><div class="muted" style="font-size:12px;margin-top:2px">See how your VO₂ max compares by age</div></div><svg class="ic" style="width:18px;height:18px;color:var(--muted)"><use href="#i-chev"/></svg></div>
+      
+      </div>
+      
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>VO₂ max</strong>Gauge with the five fitness bands and your percentile in words, then a 6-month trend that labels the peak and today so there is no hunting for the line’s meaning. Range control is Now / 4w / 12w / 6m. <em>Opens from the Health hub and the Training screen.</em></figcaption>
   </figure>
 
   <!-- ============================================================ TRAINING -->
@@ -1050,12 +1401,23 @@
           </div>
         </div>
 
+        <div class="card ai-card">
+          <div class="ai-head">
+            <div class="eyebrow"><svg class="ic" style="width:14px;height:14px"><use href="#i-spark"/></svg>AI analysis</div>
+            <span class="ai-badge">Not generated</span>
+          </div>
+          <div class="ai-empty">
+            <p>Get a short coach read of this run: effort, pacing and recovery.</p>
+            <button class="btn-lime"><svg class="ic" style="width:15px;height:15px"><use href="#i-spark"/></svg>Generate</button>
+          </div>
+        </div>
+
         <div class="card tight">
           <div class="track-head">
             <h3>Track</h3>
             <button class="icon-btn" style="width:38px;height:38px" aria-label="Expand map"><svg class="ic" style="width:17px;height:17px"><use href="#i-expand"/></svg></button>
           </div>
-          <div class="map">
+          <div class="map compact-map">
             <svg viewBox="0 0 340 240" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
               <rect width="340" height="240" fill="#E7E3D8"/>
               <!-- parks -->
@@ -1117,7 +1479,139 @@
 
       <div class="homebar"></div>
     </div>
-    <figcaption><strong>Activity detail</strong>Overview, Stats, Charts and Laps tabs, GPS track coloured by speed, training effect and local export. <em>Focused screen.</em></figcaption>
+    <figcaption><strong>Activity detail</strong>Overview, Stats, Charts and Laps tabs, <b>AI analysis card in its empty state with a Generate button</b>, GPS track coloured by speed, training effect and local export. <em>Focused screen.</em></figcaption>
+  </figure>
+
+  <!-- ============================================================ ACTIVITY DETAIL -->
+  <figure class="device-wrap">
+    <div class="device" role="img" aria-label="Activity detail with AI analysis mockup">
+      <div class="statusbar">
+        <span>14:55</span>
+        <div class="status-icons">
+          <svg class="sic"><use href="#i-signal"/></svg>
+          <svg class="sic"><use href="#i-wifi"/></svg>
+          <svg class="sic"><use href="#i-battery"/></svg>
+          <span class="battery-pct">49</span>
+        </div>
+      </div>
+
+      <div class="screen">
+        <div class="detail-head">
+          <button class="icon-btn" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+          <div class="detail-title">
+            <h2>Run</h2>
+            <div class="subtitle">dom 18 ott, 18:36 · Run</div>
+          </div>
+          <button class="btn-lime" style="padding:10px 16px;font-size:13px">All data</button>
+        </div>
+
+        <div class="segmented">
+          <div class="segment active">Overview</div>
+          <div class="segment">Stats</div>
+          <div class="segment">Charts</div>
+          <div class="segment">Laps</div>
+        </div>
+
+        <div class="card">
+          <div class="stats-grid">
+            <div class="stat-cell"><div class="lbl">Distance</div><div class="val">6,55 <span>km</span></div></div>
+            <div class="stat-cell"><div class="lbl">Duration</div><div class="val">46:59</div></div>
+            <div class="stat-cell"><div class="lbl">Avg pace</div><div class="val">7:10 <span>/km</span></div></div>
+            <div class="stat-cell"><div class="lbl">Calories</div><div class="val">497 <span>kcal</span></div></div>
+            <div class="stat-cell"><div class="lbl">Avg HR</div><div class="val">144 <span>bpm</span></div></div>
+            <div class="stat-cell"><div class="lbl">Max HR</div><div class="val">170 <span>bpm</span></div></div>
+            <div class="stat-cell"><div class="lbl">Ascent</div><div class="val">8 <span>m</span></div></div>
+            <div class="stat-cell"><div class="lbl">Descent</div><div class="val">12 <span>m</span></div></div>
+            <div class="stat-cell"><div class="lbl">Moving time</div><div class="val">44:22</div></div>
+            <div class="stat-cell"><div class="lbl">Elapsed</div><div class="val">46:59</div></div>
+            <div class="stat-cell"><div class="lbl">Max km/h</div><div class="val">22,0</div></div>
+            <div class="stat-cell"><div class="lbl">Avg cadence</div><div class="val">140 <span>spm</span></div></div>
+          </div>
+        </div>
+
+        <div class="card ai-card">
+          <div class="ai-head">
+            <div class="eyebrow"><svg class="ic" style="width:14px;height:14px"><use href="#i-spark"/></svg>AI analysis</div>
+            <span class="ai-badge">Saved on this device</span>
+          </div>
+          <div class="ai-summary">A steady, comfortable aerobic run. You held an even effort over 6,55 km and stayed mostly in Zone 2–3.</div>
+          <div class="ai-points">
+            <div class="ai-point"><span class="dot" style="background:var(--teal)"></span><span><b>Pacing</b> <span class="t">· 7:10 /km average, small fade in the last km.</span></span></div>
+            <div class="ai-point"><span class="dot" style="background:var(--coral)"></span><span><b>Heart rate</b> <span class="t">· 144 avg, 170 max early on; settled quickly.</span></span></div>
+            <div class="ai-point"><span class="dot" style="background:var(--accent)"></span><span><b>Load</b> <span class="t">· Aerobic TE 2,4 fits a base-building day.</span></span></div>
+          </div>
+          <div class="ai-next"><b>Next:</b> keep tomorrow easy; recovery time is still about 21h.</div>
+          <div class="ai-foot"><span>Generated today, 14:52 · not medical advice</span><span class="regen"><svg class="ic"><use href="#i-refresh"/></svg>Regenerate</span></div>
+        </div>
+
+        <div class="card tight">
+          <div class="track-head">
+            <h3>Track</h3>
+            <button class="icon-btn" style="width:38px;height:38px" aria-label="Expand map"><svg class="ic" style="width:17px;height:17px"><use href="#i-expand"/></svg></button>
+          </div>
+          <div class="map compact-map">
+            <svg viewBox="0 0 340 240" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+              <rect width="340" height="240" fill="#E7E3D8"/>
+              <!-- parks -->
+              <path d="M28 16 L118 10 L126 66 L40 82 Z" fill="#D8E2CE"/>
+              <path d="M228 22 L316 16 L322 60 L236 70 Z" fill="#D8E2CE"/>
+              <path d="M244 158 L330 148 L334 206 L250 214 Z" fill="#D8E2CE"/>
+              <!-- minor streets -->
+              <g stroke="#D8D2C3" stroke-width="1.4">
+                <path d="M-10 28 L350 44"/><path d="M-10 62 L350 72"/><path d="M-10 98 L350 96"/>
+                <path d="M-10 132 L350 124"/><path d="M-10 166 L350 158"/><path d="M-10 200 L350 190"/>
+                <path d="M32 -10 L48 250"/><path d="M76 -10 L88 250"/><path d="M122 -10 L126 250"/>
+                <path d="M168 -10 L160 250"/><path d="M214 -10 L198 250"/><path d="M258 -10 L240 250"/>
+                <path d="M300 -10 L286 250"/>
+              </g>
+              <g stroke="#D8D2C3" stroke-width="1.1" opacity=".85">
+                <path d="M0 12 L140 240"/><path d="M40 -10 L210 250"/><path d="M320 0 L150 240"/>
+                <path d="M360 110 L180 250"/><path d="M0 230 L200 0"/>
+              </g>
+              <!-- major roads -->
+              <g stroke="#C9C1AF" stroke-width="3.2" fill="none">
+                <path d="M-10 80 C70 92 130 70 210 88 S300 108 350 92"/>
+                <path d="M104 -10 C110 60 96 120 110 250"/>
+                <path d="M-10 182 C80 168 160 180 240 162 S320 150 350 156"/>
+              </g>
+              <!-- river -->
+              <path d="M-20 222 C50 196 100 212 160 188 S268 136 360 150" stroke="#BFD8E0" stroke-width="34" fill="none" stroke-linecap="round"/>
+              <path d="M-20 222 C50 196 100 212 160 188 S268 136 360 150" stroke="#D3E6EC" stroke-width="20" fill="none" stroke-linecap="round"/>
+              <!-- route -->
+              <path d="M64 50 L74 56 L82 50 L94 66 L102 74 L112 82 L118 100 L130 114 L142 120 L156 132 L170 142 L190 154 L210 168 L232 178 L252 192 L270 200 L292 212"
+                    fill="none" stroke="#4A90E2" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M64 50 L74 56 L82 50 L94 66 L102 74 L112 82 L118 100"
+                    fill="none" stroke="#E53935" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+              <!-- markers -->
+              <circle cx="64" cy="50" r="7" fill="#C7F26B" stroke="#0E1311" stroke-width="3"/>
+              <circle cx="292" cy="212" r="7" fill="#4A90E2" stroke="#0E1311" stroke-width="3"/>
+              <!-- labels -->
+              <text x="70" y="226" font-family="DM Sans, sans-serif" font-size="7" fill="#8A8578">River Thames</text>
+              <text x="246" y="90" font-family="DM Sans, sans-serif" font-size="7" fill="#8A8578">Battersea Park</text>
+            </svg>
+          </div>
+          <div class="attribution">© OpenStreetMap contributors · colours muted in-app</div>
+          <div class="speed-legend"><span>Slow</span><span class="grad"></span><span>Fast</span></div>
+        </div>
+
+        <div class="card te-card">
+          <h3>Training effect</h3>
+          <div class="te-value">Base (aerobic low)</div>
+          <div class="te-scale"><span>Aerobic</span><b>2,4</b></div>
+          <div class="te-bar" aria-hidden="true">
+            <span style="background:#4A5A54"></span>
+            <span style="background:var(--blue)"></span>
+            <span style="background:var(--accent)"></span>
+            <span style="background:var(--orange)"></span>
+            <span style="background:var(--coral)"></span>
+            <span class="te-knob"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="homebar"></div>
+    </div>
+    <figcaption><strong>Activity detail · AI analysis</strong>Same Overview after tapping Generate: summary, pacing / heart rate / load notes, a next-step suggestion and Regenerate. Cached locally; the rest of the screen scrolls below. <em>Focused screen.</em></figcaption>
   </figure>
 
   <!-- ============================================================ PLAN -->

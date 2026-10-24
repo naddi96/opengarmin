@@ -41,8 +41,13 @@ activity analysis, trends, planning, pacing, data inspection, and settings.
 
 | Today | Health | Training |
 |:---:|:---:|:---:|
-| [![Today dashboard with steps, heart rate, sleep and HRV](docs/screenshots/today.png)](docs/screenshots/today.png) | [![Health screen with Body Battery, stress and sleep](docs/screenshots/health.png)](docs/screenshots/health.png) | [![Training readiness, load and performance](docs/screenshots/training.png)](docs/screenshots/training.png) |
-| **Today** — steps ring, heart rate, sleep, HRV, active time, calories and a daily coach insight. | **Health** — Body Battery, stress distribution, sleep stages, SpO₂, respiration and recovery signals. | **Training** — readiness factors, acute load, load focus, VO₂ max, lactate threshold and race predictions. |
+| [![Today dashboard with steps, heart rate, sleep and HRV](docs/screenshots/today.png)](docs/screenshots/today.png) | [![Health hub with tonight's sleep target, Body Battery and metric tiles](docs/screenshots/health.png)](docs/screenshots/health.png) | [![Training readiness, load and performance](docs/screenshots/training.png)](docs/screenshots/training.png) |
+| **Today** — steps ring, heart rate, sleep, HRV, active time, calories and a daily coach insight. | **Health** — tonight's sleep target, Body Battery and tappable Sleep, HRV, Stress and VO₂ max tiles with 7-day sparklines. | **Training** — readiness factors, acute load, load focus, VO₂ max, lactate threshold and race predictions. |
+
+| Body Battery | Sleep | HRV status |
+|:---:|:---:|:---:|
+| [![Body Battery detail with gauge, day timeline and what moved it](docs/screenshots/health-body-battery.png)](docs/screenshots/health-body-battery.png) | [![Sleep detail with score, need, stage chart and overnight vitals](docs/screenshots/health-sleep.png)](docs/screenshots/health-sleep.png) | [![HRV status with nightly trend and baseline context](docs/screenshots/health-hrv.png)](docs/screenshots/health-hrv.png) |
+| **Body Battery** — day gauge, charged/drained totals, stress/rest timeline, activity markers and what moved it; 7d/4w high-low history. | **Sleep** — score and time asleep against an age-based need, stages with a switchable vitals overlay, and 7d/4w/1y history. | **HRV status** — overnight rMSSD, baseline status, nightly curve and a 4-week trend; status shapes stay honest when no baseline exists. |
 
 | Activities | Activity detail | Activity charts |
 |:---:|:---:|:---:|

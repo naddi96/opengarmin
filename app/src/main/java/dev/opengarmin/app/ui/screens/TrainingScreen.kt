@@ -1,6 +1,7 @@
 package dev.opengarmin.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,6 +67,7 @@ fun TrainingScreen(
     onOpenPace: () -> Unit = {},
     pacePlanSummary: String = "",
     racePredictions: Map<PaceRace, Int> = emptyMap(),
+    onOpenVo2Max: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -166,7 +168,7 @@ fun TrainingScreen(
                 unit = "ml/kg/min",
                 icon = Icons.Outlined.Speed,
                 iconColor = PulseColors.Accent,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).clickable(onClick = onOpenVo2Max),
                 footnote = summary.vo2Change?.let { change ->
                     "${if (change >= 0) "+" else ""}${"%.1f".format(change)} in 6 weeks"
                 } ?: "Running estimate",
@@ -194,7 +196,7 @@ fun TrainingScreen(
         }
 
         // VO2 max trend ------------------------------------------------------
-        PulseCard(modifier = Modifier.fillMaxWidth()) {
+        PulseCard(modifier = Modifier.fillMaxWidth(), onClick = onOpenVo2Max) {
             Column(
                 modifier = Modifier.padding(start = PulseSpacing.xlPlus, end = PulseSpacing.xlPlus, top = PulseSpacing.xl, bottom = PulseSpacing.lg),
                 verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),

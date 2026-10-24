@@ -42,7 +42,8 @@ were read directly.
 | Token | Value | Usage |
 |---|---|---|
 | `color/accent` (lime) | `#C7F26B` | Primary action, active tab/segment/chip, steps, selected bars, user bubble |
-| `color/teal` | `#5ED6C1` | HRV, Zone 1, "data connected" dot, Ride |
+| `color/teal` | `#5ED6C1` | Body Battery, Zone 1, "data connected" dot, Ride |
+| `color/green` | `#59D98E` | HRV balanced status, excellent sleep, healthy ranges |
 | `color/coral` | `#FF7A66` | Heart rate, avg-HR values, Run, Zone 5 |
 | `color/blue` | `#8FA8FF` | Sleep, Strength |
 | `color/orange` | `#FFB45E` | Calories, Walk? (see note) |
