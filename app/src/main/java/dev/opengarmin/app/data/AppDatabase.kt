@@ -362,6 +362,9 @@ interface ActivityDao {
     @Query("SELECT * FROM sleep_stages WHERE date = :date ORDER BY startTime")
     suspend fun sleepStages(date: String): List<SleepStageEntity>
 
+    @Query("SELECT * FROM sleep_stages ORDER BY date, startTime")
+    suspend fun allSleepStages(): List<SleepStageEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertImportedWellnessFile(file: ImportedWellnessFileEntity)
 
@@ -868,6 +871,14 @@ class ActivityRepository(private val database: () -> AppDatabase) {
 
     suspend fun sleepStages(date: String): List<SleepStageEntity> = dao.sleepStages(date)
 
+    suspend fun allSleepStages(): List<SleepStageEntity> = dao.allSleepStages()
+
+    /** Samples for one local date, without loading the whole wellness history. */
+    suspend fun wellnessSamplesForDate(date: String): List<WellnessSampleEntity> {
+        val day = dao.wellnessDay(date) ?: return emptyList()
+        return dao.wellnessSamples(day.id)
+    }
+
     suspend fun importedWellnessFileIds(): Set<String> = dao.importedWellnessFileIds().toHashSet()
 
     suspend fun activityItemUids(): Set<String> =
@@ -1334,7 +1345,7 @@ class ActivityRepository(private val database: () -> AppDatabase) {
             if (key in known) continue
             val bytes = runCatching { file.readBytes() }.getOrNull() ?: continue
             val parsed = runCatching { Fit.parse(bytes) }.getOrNull() ?: continue
-            if (parsed.fileId?.type !in setOf(29, 32, 44, 49)) {
+            if (parsed.fileId?.type !in setOf(29, 32, 44, 49, 72)) {
                 markWellnessFileImported(key, "not-wellness")
                 continue
             }

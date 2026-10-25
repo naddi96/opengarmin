@@ -84,6 +84,13 @@ class SyncCoordinator(
     private val listItems = ArrayList<Gdi.ItemReference>()
     private var activityListProbeRequested = false
     private var activityListProbePending = false
+    private val healthProbeQueue = ArrayDeque<String>()
+    private var healthProbePending = false
+    private var healthProbeType = ""
+    private var healthProbeRequested = false
+    private var upToDateReported = false
+    private var thresholdRetries = 0
+    private var thresholdCutScheduled = false
     private var requestedPull = false
     private var started = false
     private var pulledItemUid = ""
@@ -175,6 +182,13 @@ class SyncCoordinator(
         listItems.clear()
         activityListProbeRequested = false
         activityListProbePending = false
+        healthProbeQueue.clear()
+        healthProbePending = false
+        healthProbeType = ""
+        healthProbeRequested = false
+        upToDateReported = false
+        thresholdRetries = 0
+        thresholdCutScheduled = false
         requestedPull = false
         started = false
         pulledItemUid = ""
@@ -314,10 +328,13 @@ class SyncCoordinator(
 
         if (Gdi.coreFeatureCapabilitiesResponse(smart) != null) onCapabilities()
         if (Gdi.isWellnessThresholdMet(smart)) {
-            log("GDI: wellness threshold met")
-            listRequested = false
-            listReceived = false
-            handler.postDelayed({ requestList() }, 500)
+            // The watch uses this notification to say that a new wellness
+            // file (often SLEEP_DATA after wake-up) is ready. Garmin Connect's
+            // ConnectTransferService answers it with a fresh cut. Only asking
+            // for the directory here is not enough: the sleep file may not
+            // have been cut yet, so it never appears in that snapshot.
+            log("GDI: wellness threshold met → CutWellnessFilesRequest")
+            onWellnessThreshold()
         }
         if (Gdi.isConnectionReady(smart) && !capabilitiesReceived && !done) {
             // The watch opens a GDI session and waits for the capability
@@ -349,10 +366,14 @@ class SyncCoordinator(
                 "${gdxmlLookup.typeOf(it) ?: "unknown"}(${it.dataSize})"
             },
         )
-        val queuedUids = wellnessQueue.mapNotNull { it.uid?.hex() }.toHashSet()
+        val queuedKeys = wellnessQueue.mapNotNull { item ->
+            val uid = item.uid?.hex() ?: return@mapNotNull null
+            WellnessFileTypes.cacheKey(gdxmlLookup.typeOf(item), uid, item.transactionId)
+        }.toHashSet()
         val newItems = notification.items.filter { item ->
             val uid = item.uid?.hex().orEmpty()
             val type = gdxmlLookup.typeOf(item)
+            val key = WellnessFileTypes.cacheKey(type, uid, item.transactionId)
             val immutable = WellnessFileTypes.isImmutable(type)
             // SETTINGS_CHANGE carries no health samples and costs the watch a
             // full transfer slot; skipping it makes the subsequent directory
@@ -365,8 +386,8 @@ class SyncCoordinator(
                 type != "FIT_TYPE_41" &&
                 type != "FIT_TYPE_5" &&
                 type != "FIT_TYPE_56" &&
-                uid.isNotEmpty() && uid !in queuedUids &&
-                !(immutable && isWellnessItemKnown(uid))
+                uid.isNotEmpty() && key !in queuedKeys &&
+                !(immutable && isWellnessItemKnown(key))
         }
         wellnessQueue.addAll(newItems)
         if (pipe == null && !wellnessTransfer) pullNextWellness()
@@ -423,8 +444,19 @@ class SyncCoordinator(
 
     private fun markActivitiesUpToDate() {
         if (done) return
+        reportUpToDate("SYNC up to date: activities and wellness synced")
+    }
+
+    /**
+     * Reports completion once per sync attempt. A late wellness-threshold
+     * notification can re-open the sync to pull a sleep file; that must not
+     * record a second successful sync or fire the UI callback twice.
+     */
+    private fun reportUpToDate(message: String) {
         done = true
-        log("SYNC up to date: activities and wellness synced")
+        log(message)
+        if (upToDateReported) return
+        upToDateReported = true
         onUpToDate()
     }
 
@@ -452,10 +484,45 @@ class SyncCoordinator(
         }
     }
 
-    private fun sendCutWellnessThenList() {
+    private fun onWellnessThreshold() {
+        if (wellnessTransfer || pipe != null || requestedPull || listPagePending || healthProbePending) {
+            // A cut/list during a transfer or directory read is ignored by the
+            // watch. Retry once the single transfer slot is free.
+            if (thresholdRetries < 5) {
+                thresholdRetries++
+                postIfCurrent(2_000) { onWellnessThreshold() }
+            }
+            return
+        }
+        thresholdRetries = 0
+        if (thresholdCutScheduled) return
+        // A threshold can arrive after the directory snapshot has already
+        // completed. Re-open the sync so the cut that follows can add the
+        // newly created file to the wellness queue.
+        if (done) {
+            done = false
+            activitiesUpToDate = true
+        }
+        listRequested = false
+        listReceived = false
+        healthProbeRequested = false
+        healthProbeQueue.clear()
+        healthProbePending = false
+        thresholdCutScheduled = true
+        handler.postDelayed({
+            thresholdCutScheduled = false
+            if (done) {
+                done = false
+                activitiesUpToDate = true
+            }
+            sendCutWellnessThenList(priority = 0)
+        }, 500)
+    }
+
+    private fun sendCutWellnessThenList(priority: Int = 1) {
         cutResponseReceived = false
-        log("GDI → CutWellnessFilesRequest")
-        gdi.sendSmart(Gdi.cutWellnessFilesRequest()) { response ->
+        log("GDI → CutWellnessFilesRequest priority=$priority")
+        gdi.sendSmart(Gdi.cutWellnessFilesRequest(priority)) { response ->
             cutResponseReceived = true
             val status = Gdi.cutWellnessFilesStatus(response)
             handler.post {
@@ -500,6 +567,10 @@ class SyncCoordinator(
         listItems.clear()
         listCursor = 0
         listPageCount = 0
+        healthProbeQueue.clear()
+        healthProbePending = false
+        healthProbeType = ""
+        healthProbeRequested = false
         requestListPage(0)
     }
 
@@ -513,7 +584,7 @@ class SyncCoordinator(
         if (listPageCount >= 20) {
             log("FILE LIST stopped after $listPageCount pages")
             listReceived = true
-            processListItems(listItems.toList())
+            finishMainListAndProbe()
             return
         }
         listPageCount++
@@ -614,9 +685,7 @@ class SyncCoordinator(
             pullNextWellness()
             return
         }
-        done = true
-        log("SYNC up to date: activities and wellness synced")
-        onUpToDate()
+        reportUpToDate("SYNC up to date: activities and wellness synced")
     }
 
     private fun handleItemList(list: Gdi.ItemListResponse) {
@@ -640,6 +709,11 @@ class SyncCoordinator(
 
         if (listPagePending) {
             handleListPage(list)
+            return
+        }
+
+        if (healthProbePending) {
+            handleHealthProbe(list.items)
             return
         }
 
@@ -674,23 +748,142 @@ class SyncCoordinator(
             return
         }
         listReceived = true
-        processListItems(listItems.toList())
+        finishMainListAndProbe()
     }
 
+    /**
+     * A full directory response is capped at 100 entries, so a sleep/HRV file
+     * can be hidden behind activities and settings. Ask the watch for a
+     * type-filtered list as a fallback, exactly the way the activity probe
+     * already does for FIT_TYPE_4. This also gives the first item of each
+     * health type its gdxml string, which resolves follow-up key-only items.
+     */
+    private fun finishMainListAndProbe() {
+        if (healthProbeRequested) {
+            processListItems(listItems.toList())
+            return
+        }
+        val healthTypes = listOf("FIT_TYPE_49", "FIT_TYPE_44", "FIT_TYPE_72")
+        val present = healthTypes.associateWith { type ->
+            listItems.any { gdxmlLookup.typeOf(it) == type }
+        }
+        // A full response may be truncated before an older health item, so
+        // re-query every type even when one of them is present.
+        val probeTypes = if (listItems.size >= 100) {
+            healthTypes
+        } else {
+            healthTypes.filter { present[it] != true }
+        }
+        if (probeTypes.isEmpty()) {
+            processListItems(listItems.toList())
+            return
+        }
+        healthProbeRequested = true
+        healthProbeQueue.addAll(probeTypes)
+        log(
+            "HEALTH LIST probe queued (main list ${listItems.size} item(s), " +
+                present.entries.joinToString { "${it.key}=${it.value}" } + ")",
+        )
+        startNextHealthProbe()
+    }
+
+    private fun startNextHealthProbe() {
+        if (done) {
+            processListItems(listItems.toList())
+            return
+        }
+        val type = healthProbeQueue.removeFirstOrNull()
+        if (type == null) {
+            processListItems(listItems.toList())
+            return
+        }
+        healthProbePending = true
+        healthProbeType = type
+        log("GDI → ItemListRequest ($type only)")
+        gdi.sendSmart(
+            Gdi.wrapSmart(
+                Gdi.SMART_FILE_ACCESS,
+                Gdi.itemListRequest(maxItemCount = 1000, includedDataTypes = listOf(dataType(type))),
+            ),
+        ) { response ->
+            handler.post { handleSmart(response) }
+        }
+        postIfCurrent(5_000) {
+            if (healthProbePending && healthProbeType == type) {
+                healthProbePending = false
+                log("HEALTH LIST probe $type timeout")
+                startNextHealthProbe()
+            }
+        }
+    }
+
+    private fun handleHealthProbe(items: List<Gdi.ItemReference>) {
+        val type = healthProbeType
+        healthProbePending = false
+        gdxmlLookup.learn(items)
+        // A watch that ignores included_data_types can return the whole
+        // directory. Only apply the probe type to key-only items when the
+        // response is small and contains no other known type, so a sleep
+        // probe can never relabel activities as SLEEP_DATA.
+        val resolvedTypes = items.mapNotNull { gdxmlLookup.typeOf(it) }.toHashSet()
+        val trustFilter = items.size <= 20 && resolvedTypes.all { it == type }
+        val seen = listItems.mapNotNull { it.uid?.hex() }.toHashSet()
+        var added = 0
+        for (item in items) {
+            val uid = item.uid?.hex() ?: continue
+            if (uid in seen) continue
+            // Some watches omit the gdxml string on a key-only item even in a
+            // filtered response. The filter tells us the type, so use it as a
+            // fallback instead of dropping a real sleep file.
+            val resolved = if (gdxmlLookup.typeOf(item) == null && trustFilter) {
+                item.copy(
+                    dataType = (item.dataType ?: dataType(type)).copy(gdxmlString = type),
+                )
+            } else {
+                item
+            }
+            listItems.add(resolved)
+            seen.add(uid)
+            added++
+        }
+        log(
+            "HEALTH LIST probe $type: items=${items.size} new=$added " +
+                "filterTrusted=$trustFilter",
+        )
+        startNextHealthProbe()
+    }
+
+    private fun dataType(type: String): Gdi.DataTypeInfo = Gdi.DataTypeInfo(
+        format = 0,
+        gdxmlString = type,
+        gdxmlStringKey = 0,
+        gdxmlFileIdentifier = null,
+        softwareUpdatePath = null,
+        specialCase = 0,
+        updatePartNumber = null,
+    )
+
     private fun processListItems(items: List<Gdi.ItemReference>) {
-        if (items.size <= 1) return
+        if (items.isEmpty()) {
+            reportUpToDate("SYNC up to date: the watch directory is empty")
+            return
+        }
 
         // Pull sleep/HRV/biometric/monitoring files that are present in the
         // directory but were not pushed by CutWellnessFilesRequest. Skip files
         // this app already imported so a normal sync stays incremental.
-        val queuedUids = wellnessQueue.mapNotNull { it.uid?.hex() }.toHashSet()
+        val queuedKeys = wellnessQueue.mapNotNull { item ->
+            val uid = item.uid?.hex() ?: return@mapNotNull null
+            WellnessFileTypes.cacheKey(gdxmlLookup.typeOf(item), uid, item.transactionId)
+        }.toHashSet()
         val healthItems = items.filter { item ->
             val type = gdxmlLookup.typeOf(item) ?: return@filter false
             val uid = item.uid?.hex() ?: return@filter false
+            val key = WellnessFileTypes.cacheKey(type, uid, item.transactionId)
             val immutable = WellnessFileTypes.isImmutable(type)
-            type in WellnessFileTypes.immutable &&
-                uid !in queuedUids &&
-                !(immutable && isWellnessItemKnown(uid)) &&
+            type in WellnessFileTypes.pullable &&
+                key !in queuedKeys &&
+                !(immutable && isWellnessItemKnown(key)) &&
                 item.uid?.hex() != pendingActivityItem?.uid?.hex()
         }
         if (healthItems.isNotEmpty()) {
@@ -720,15 +913,13 @@ class SyncCoordinator(
                 return
             }
             if (activityListProbePending) return
-            done = true
-            log(
+            reportUpToDate(
                 if (activityItems.isEmpty()) {
                     "SYNC up to date: no activity files on the watch"
                 } else {
                     "SYNC up to date: ${activityItems.size} activity item(s) already imported"
                 },
             )
-            onUpToDate()
             return
         }
 
@@ -872,13 +1063,15 @@ class SyncCoordinator(
     @Suppress("UNUSED_PARAMETER")
     private fun completeWellnessTransfer(raw: File, decoded: ByteArray, decFile: File) {
         val type = pulledWellnessType
-        val wellnessUid = inFlightWellness?.uid?.hex().orEmpty()
+        val item = inFlightWellness
+        val uid = item?.uid?.hex().orEmpty()
+        val wellnessKey = WellnessFileTypes.cacheKey(type, uid, item?.transactionId ?: 0)
         activePull = null
         pulledWellnessType = ""
         wellnessTransfer = false
         inFlightWellness = null
         log("WELLNESS complete type=$type decoded=${decoded.size}")
-        onWellnessFile(decFile, type, wellnessUid)
+        onWellnessFile(decFile, type, wellnessKey)
         if (pendingActivityItem != null && !done) {
             activityPullNotBefore = SystemClock.uptimeMillis() + ACTIVITY_GRACE_MS
         }
