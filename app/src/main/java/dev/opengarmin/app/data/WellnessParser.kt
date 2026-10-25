@@ -337,7 +337,8 @@ object WellnessParser {
                 deepSleepSeconds = sleep?.deepSeconds,
                 lightSleepSeconds = sleep?.lightSeconds,
                 remSleepSeconds = sleep?.remSeconds,
-                awakeSleepSeconds = sleep?.awakeSeconds,
+                awakeSleepSeconds = sleep?.awakeSeconds
+                    ?: lha?.let { int(it, "awake_duration") },
                 sleepAvgSpo2 = sleep?.avgSpo2,
                 sleepLowestSpo2 = sleep?.lowestSpo2,
                 sleepAvgRespiration = sleep?.avgRespiration,

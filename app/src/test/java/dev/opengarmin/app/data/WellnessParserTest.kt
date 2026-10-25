@@ -231,7 +231,10 @@ class WellnessParserTest {
                     "fbt_lha_daily_data",
                     epoch(2026, 10, 18, 6, 3),
                     field(2, "sleep_score", 75),
+                    field(3, "awake_duration", 888),
                     field(7, "rmssd_average_sleep", 40.5),
+                    field(9, "sleep_begin_time_utc", epoch(2026, 10, 17, 23, 20)),
+                    field(11, "sleep_end_time_utc", epoch(2026, 10, 18, 6, 54)),
                 ),
             ),
             zone,
@@ -240,6 +243,9 @@ class WellnessParserTest {
         assertEquals("2026-10-18", day.date)
         assertEquals(75, day.sleepScore)
         assertEquals(40.5, day.hrvLastNight!!, 0.01)
+        assertEquals(888, day.awakeSleepSeconds)
+        assertEquals(epoch(2026, 10, 17, 23, 20), day.sleepStart)
+        assertEquals(epoch(2026, 10, 18, 6, 54), day.sleepEnd)
     }
 
     private fun monitoring(

@@ -55,6 +55,17 @@ class WellnessMetricsTest {
     }
 
     @Test
+    fun `sleep duration falls back to the firstbeat window minus awake time`() {
+        val day = day("2026-10-18").copy(
+            sleepStart = 1_000_000,
+            sleepEnd = 1_025_400,
+            awakeSleepSeconds = 888,
+        )
+
+        assertEquals(24_512, WellnessMetrics.sleepSeconds(day))
+    }
+
+    @Test
     fun `hrv falls back to recorded samples when the summary is missing`() {
         val day = day("2026-10-18")
         val samples = listOf(

@@ -1,6 +1,7 @@
 package dev.opengarmin.app.coach
 
 import dev.opengarmin.app.data.ActivityRepository
+import dev.opengarmin.app.data.WellnessMetrics
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -129,11 +130,7 @@ class RepositoryHealthDataSource(
                 stressAvg = day.stressAvg?.takeIf { it in 0..100 },
                 spo2Avg = day.spo2Avg?.takeIf { it in 1..100 },
                 respirationAvg = day.respirationAvg?.takeIf { it > 0.0 },
-                sleepSeconds = listOfNotNull(
-                    day.deepSleepSeconds,
-                    day.lightSleepSeconds,
-                    day.remSleepSeconds,
-                ).takeIf { it.isNotEmpty() }?.sum(),
+                sleepSeconds = WellnessMetrics.sleepSeconds(day),
                 sleepScore = day.sleepScore,
                 deepSleepSeconds = day.deepSleepSeconds,
                 lightSleepSeconds = day.lightSleepSeconds,

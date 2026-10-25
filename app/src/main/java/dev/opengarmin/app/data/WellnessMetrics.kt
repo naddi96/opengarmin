@@ -36,7 +36,15 @@ object WellnessMetrics {
     fun sleepSeconds(day: WellnessDayEntity?): Int? {
         if (day == null) return null
         val stages = listOfNotNull(day.deepSleepSeconds, day.lightSleepSeconds, day.remSleepSeconds)
-        return stages.takeIf { it.isNotEmpty() }?.sum()
+        if (stages.isNotEmpty()) return stages.sum()
+        // The FR255's daily Firstbeat file carries the in-bed window and the
+        // awake duration, but not the individual stages. Use that to show a
+        // real duration on days without a SLEEP_DATA file instead of "—".
+        val start = day.sleepStart ?: return null
+        val end = day.sleepEnd ?: return null
+        if (end <= start) return null
+        val awake = day.awakeSleepSeconds ?: 0
+        return (end - start).toInt().minus(awake).takeIf { it > 0 }
     }
 
     /**
