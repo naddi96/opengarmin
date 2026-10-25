@@ -289,14 +289,26 @@ a live HR source.
 files (FR255: `FIT_TYPE_29/32`, `FIT_TYPE_41`). The app pulls them and parses
 `monitoring`, `monitoring_hr_data`, `stress_level` (including Body Battery field
 3), `spo2_data`, `respiration_rate`, and `hrv_value`. Any non-activity file of
-type `FIT_TYPE_49` (SLEEP_DATA) or `FIT_TYPE_44` (BIOMETRIC) found in the item
-list is pulled too, and `sleep_level`, `sleep_assessment`, `event` (sleep
-start/stop), `hrv_status_summary`, and Firstbeat `fbt_lha_daily_data` are
-parsed into the daily row and `sleep_stages`. A `sleep_level` timestamp marks
-the *end* of the stage it names; the sleep event pair supplies the in-bed
-window, so stage totals match the watch instead of shifting every label by one
-interval. Already-imported wellness UIDs are recorded in
-`imported_wellness_files` so normal syncs stay incremental.
+type `FIT_TYPE_49` (SLEEP_DATA), `FIT_TYPE_44` (BIOMETRIC) or `FIT_TYPE_72`
+(daily Firstbeat analytics) found in the item list is pulled too.
+`sleep_level`, `sleep_assessment`, `event` (sleep start/stop),
+`hrv_status_summary`, and Firstbeat `fbt_lha_daily_data` are parsed into the
+daily row and `sleep_stages`. A `sleep_level` timestamp marks the *end* of the
+stage it names; the sleep event pair supplies the in-bed window, so stage totals
+match the watch instead of shifting every label by one interval.
+Already-imported wellness UIDs are recorded in `imported_wellness_files` so
+normal syncs stay incremental.
+
+The FR255 does not expose `FIT_TYPE_49` every day. `FIT_TYPE_72` is the reliable
+source: its `fbt_lha_daily_data` messages carry the sleep score, sleep start/end,
+awake duration and overnight rMSSD for roughly the last 100 days, including
+today. The app imports those so the sleep score, duration and HRV are always
+present; detailed stages still require the transient `FIT_TYPE_49` file, which
+is usually gone if the first sync of the day happens late. `FIT_TYPE_72` keeps
+its UID but is rewritten as days are added, so its cache key includes the item
+transaction id and it is re-pulled only when the watch has updated it. When only
+the Firstbeat window is available, sleep duration is `sleepEnd - sleepStart -
+awakeDuration` rather than an invented stage split.
 
 Monitoring days use the watch's `local_timestamp` wall clock when present (the
 UTC `timestamp` is the fallback), all-zero midnight rollover rows are skipped,
@@ -304,15 +316,36 @@ and FIT `0xFFFFFFFF` time sentinels decode as missing. If a watch exposes
 `hrv_value` samples without an `hrv_status_summary`, their average becomes the
 nightly HRV value; existing rows are backfilled from stored samples at startup.
 
+Garmin Connect uses two behaviours that matter when sleep appears only on some
+days. Both are mirrored here:
+
+- Its `ConnectTransferService` answers `WellnessThresholdMetNotification` with a
+  new `CutWellnessFilesRequest(STANDARD)`, not just an item-list request. The
+  watch sends that notification when a new wellness file (typically SLEEP_DATA
+  after wake-up) becomes ready; if we only snapshot the directory at that point,
+  the file may not have been cut yet. We now re-cut and re-open the sync on the
+  notification, even if the directory pass had already finished.
+- `ItemListResponse` is capped at 100 entries on the FR255. The watch's
+  directory can be filled by activities/settings, hiding a SLEEP_DATA,
+  BIOMETRIC or Firstbeat file. We now issue `ItemListRequest` probes filtered to
+  `FIT_TYPE_49`, `FIT_TYPE_44` and `FIT_TYPE_72` when the main list is full or
+  lacks one of them, then merge the results before queueing pulls.
+
+The remaining Garmin upload loop (upload a wellness file to Garmin Connect, wait
+for server processing, cut again) is not needed locally: we parse the FIT files
+ourselves and retain every imported UID.
+
 Important limitations:
 
 - A cut contains the **current day's delta**. Multi-day history is only built by
   syncing repeatedly; the app cannot yet request older wellness days. Trends
   aggregates every day that has actually been synced and labels partial history
   instead of zero-filling it.
-- Sleep/HRV depend on the watch emitting a SLEEP_DATA/biometric file. The FR255
-  used for development did not expose one after daytime syncs; the UI says so
-  explicitly instead of estimating sleep from heart rate.
+- Sleep stages depend on the watch still exposing the transient SLEEP_DATA
+  (`FIT_TYPE_49`) file. The FR255 drops it later in the day, so a sync after
+  waking is the reliable way to get stages; score, duration, window and HRV are
+  still available later from the Firstbeat daily file. The sync log shows the
+  threshold cut and the health-list probes so a missing file is identifiable.
 - Floors are not stored.
 - Watch battery level is not read. Last-sync time, status, error, and watch name
   are persisted in `PulseSettings`.
@@ -327,8 +360,9 @@ Important limitations:
 | Intraday HR chart | ✅ | `wellness_samples(kind = hr)` |
 | Stress, SpO2, respiration | ✅ | `wellness_samples` |
 | **Body Battery** | ✅ | `stress_level` field 3 → `wellness_samples(kind = body_battery)` |
-| **Sleep duration / stages / score** | ⚠️ | parsed from SLEEP_DATA when the watch exposes it; empty state otherwise |
-| **HRV (nightly/status)** | ⚠️ | parsed from `hrv_status_summary`/`hrv_value`/Firstbeat data when present; empty state otherwise |
+| **Sleep duration / score** | ✅ | Firstbeat `fbt_lha_daily_data` in `FIT_TYPE_72` (score, window, awake time); duration derived from the window |
+| **Sleep stages** | ⚠️ | only when the transient `FIT_TYPE_49` file is still on the watch; sync soon after waking |
+| **HRV (nightly/status)** | ✅ | `fbt_lha_daily_data` rMSSD, plus `hrv_status_summary`/`hrv_value` when present |
 | **VO₂ max / recovery / training load / LT** | ✅ | `activity_metrics` (140) and `user_metrics` (79) in each activity FIT |
 | **Training effect / performance condition** | ✅ | `activity_metrics` fields |
 | **Floors** | ❌ | not stored |
