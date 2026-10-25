@@ -19,6 +19,7 @@ fun HealthMetricScreen(
     days: List<WellnessDayEntity>,
     samples: List<WellnessSampleEntity>,
     sleepStages: List<SleepStageEntity>,
+    loadWellnessSamples: suspend (String) -> List<WellnessSampleEntity>,
     activities: List<ActivityEntity>,
     training: TrainingSummary,
     birthYear: Int?,
@@ -38,6 +39,7 @@ fun HealthMetricScreen(
         HealthMetric.SLEEP -> SleepDetailScreen(
             days = days,
             samples = samples,
+            loadWellnessSamples = loadWellnessSamples,
             sleepStages = sleepStages,
             latestDate = latestDate,
             birthYear = birthYear,

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -21,12 +22,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,12 +43,15 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import dev.opengarmin.app.data.HealthMetrics
 import dev.opengarmin.app.data.HealthWindow
 import dev.opengarmin.app.data.SleepNight
 import dev.opengarmin.app.data.SleepStageEntity
 import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessSampleEntity
+import dev.opengarmin.app.ui.components.LineChart
 import dev.opengarmin.app.ui.components.PillChip
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
@@ -66,6 +73,7 @@ private val SleepOverlays = listOf(
 internal fun SleepDetailScreen(
     days: List<WellnessDayEntity>,
     samples: List<WellnessSampleEntity>,
+    loadWellnessSamples: suspend (String) -> List<WellnessSampleEntity>,
     sleepStages: List<SleepStageEntity>,
     latestDate: LocalDate,
     birthYear: Int?,
@@ -79,6 +87,13 @@ internal fun SleepDetailScreen(
     val earliest = days.minOfOrNull { it.date }?.let { HealthMetrics.parseDate(it) } ?: latestDate
     val day = days.firstOrNull { it.date == anchor.toString() }
     val needHours = HealthMetrics.sleepNeedHours(birthYear)
+    val daySamples by produceState(
+        initialValue = if (day?.date == latestDate.toString()) samples else emptyList(),
+        key1 = day?.date,
+    ) {
+        val date = day?.date
+        if (date != null) value = loadWellnessSamples(date)
+    }
 
     Column(
         modifier = Modifier
@@ -111,7 +126,14 @@ internal fun SleepDetailScreen(
         if (day == null || (day.sleepScore == null && day.sleepStart == null)) {
             EmptyMetricCard("Sleep has not synced for this date. Sync after waking with the watch nearby.")
         } else if (window == HealthWindow.DAY) {
-            DaySleep(day = day, days = days, samples = samples, sleepStages = sleepStages, needHours = needHours, onOpenMetric = onOpenMetric)
+            DaySleep(
+                day = day,
+                days = days,
+                samples = daySamples,
+                sleepStages = sleepStages.filter { it.date == day.date },
+                needHours = needHours,
+                onOpenMetric = onOpenMetric,
+            )
         } else {
             SleepHistory(
                 nights = HealthMetrics.sleepNights(days, anchor, window.days),
@@ -135,6 +157,7 @@ private fun DaySleep(
     val asleep = dev.opengarmin.app.data.WellnessMetrics.sleepSeconds(day)
     val sleepStart = day.sleepStart
     val sleepEnd = day.sleepEnd
+    var fullscreen by rememberSaveable { mutableStateOf(false) }
     val inBed = if (sleepStart != null && sleepEnd != null) {
         (sleepEnd - sleepStart).toInt().coerceAtLeast(0)
     } else {
@@ -212,16 +235,61 @@ private fun DaySleep(
     var overlayName by rememberSaveable { mutableStateOf(SleepOverlays.first().first) }
     val overlayKind = overlayName
     val overlayLabel = SleepOverlays.firstOrNull { it.first == overlayKind }?.second ?: "Heart rate"
+    val overlayColor = when (overlayKind) {
+        "hr" -> PulseColors.Coral
+        "body_battery" -> PulseColors.Teal
+        "spo2" -> PulseColors.Blue
+        "respiration" -> PulseColors.Green
+        else -> PulseColors.Accent
+    }
     val overlayPoints = samples.filter { it.kind == overlayKind && it.value > 0.0 }
         .filter { if (sleepStart != null && sleepEnd != null) it.timestamp in sleepStart..sleepEnd else true }
+    val overlayHint = when {
+        overlayPoints.size >= 2 -> null
+        overlayKind == "hrv" && day.hrvLastNight != null ->
+            "No intraday HRV samples · overnight HRV ${day.hrvLastNight.roundToInt()} ms"
+        else -> "No ${overlayLabel.lowercase()} samples in this sleep window."
+    }
     MetricCard {
         Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
-            CardTitle("Sleep stages")
-            SleepStagesOverlayChart(
-                stages = sleepStages,
-                overlay = overlayPoints,
-                overlayLabel = overlayLabel,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Sleep stages",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = PulseColors.Text,
+                    modifier = Modifier.weight(1f),
+                )
+                if (sleepStages.isNotEmpty()) {
+                    Icon(
+                        imageVector = Icons.Outlined.Fullscreen,
+                        contentDescription = "Open sleep stages full screen",
+                        tint = PulseColors.TextMuted,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable { fullscreen = true },
+                    )
+                }
+            }
+            if (sleepStages.isEmpty()) {
+                SleepWindowFallback(
+                    day = day,
+                    overlay = overlayPoints,
+                    overlayLabel = overlayLabel,
+                    overlayColor = overlayColor,
+                    overlayHint = overlayHint,
+                )
+            } else {
+                SleepStagesOverlayChart(
+                    stages = sleepStages,
+                    overlay = overlayPoints,
+                    overlayLabel = overlayLabel,
+                    emptyHint = overlayHint,
+                    overlayColor = overlayColor,
+                )
+            }
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
                 verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
@@ -269,6 +337,209 @@ private fun DaySleep(
                     modifier = Modifier.size(16.dp),
                 )
             }
+        }
+    }
+
+    if (fullscreen) {
+        SleepStagesFullscreenDialog(
+            day = day,
+            stages = sleepStages,
+            samples = samples,
+            overlayKind = overlayKind,
+            overlayLabel = overlayLabel,
+            overlayColor = overlayColor,
+            onSelectOverlay = { overlayName = it },
+            onDismiss = { fullscreen = false },
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SleepStagesFullscreenDialog(
+    day: WellnessDayEntity,
+    stages: List<SleepStageEntity>,
+    samples: List<WellnessSampleEntity>,
+    overlayKind: String,
+    overlayLabel: String,
+    overlayColor: Color,
+    onSelectOverlay: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val start = day.sleepStart
+    val end = day.sleepEnd
+    val overlay = samples.filter { it.kind == overlayKind && it.value > 0.0 }
+        .filter { if (start != null && end != null) it.timestamp in start..end else true }
+    val hint = when {
+        overlay.size >= 2 -> null
+        overlayKind == "hrv" && day.hrvLastNight != null ->
+            "No intraday HRV samples · overnight HRV ${day.hrvLastNight.roundToInt()} ms"
+        else -> "No ${overlayLabel.lowercase()} samples in this sleep window."
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(PulseColors.Background)
+                .verticalScroll(rememberScrollState())
+                .padding(start = PulseSpacing.xl, end = PulseSpacing.xl, top = PulseSpacing.screenTop, bottom = PulseSpacing.xl),
+            verticalArrangement = Arrangement.spacedBy(PulseSpacing.lg),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Sleep stages", style = MaterialTheme.typography.headlineMedium, color = PulseColors.Text)
+                    Text(
+                        formatWellnessDate(day.date),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = "Close full screen",
+                    tint = PulseColors.TextMuted,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clickable(onClick = onDismiss),
+                )
+            }
+            MetricCard {
+                Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+                    SleepStagesOverlayChart(
+                        stages = stages,
+                        overlay = overlay,
+                        overlayLabel = overlayLabel,
+                        emptyHint = hint,
+                        overlayColor = overlayColor,
+                        chartHeight = 360.dp,
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+                        verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+                    ) {
+                        SleepOverlays.forEach { (kind, label) ->
+                            PillChip(
+                                label = label,
+                                selected = kind == overlayKind,
+                                onClick = { onSelectOverlay(kind) },
+                            )
+                        }
+                    }
+                    StageBreakdown(day)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SleepWindowFallback(
+    day: WellnessDayEntity,
+    overlay: List<WellnessSampleEntity>,
+    overlayLabel: String,
+    overlayColor: Color,
+    overlayHint: String?,
+) {
+    val start = day.sleepStart
+    val end = day.sleepEnd
+    val inBed = if (start != null && end != null) {
+        (end - start).toInt().takeIf { it > 0 }
+    } else {
+        null
+    }
+    val asleep = dev.opengarmin.app.data.WellnessMetrics.sleepSeconds(day)
+    val awake = day.awakeSleepSeconds ?: inBed?.let { asleep?.let { seconds -> it - seconds } }
+
+    Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
+        Text(
+            "The watch did not write a stage timeline for this night, only the sleep window.",
+            style = MaterialTheme.typography.bodySmall,
+            color = PulseColors.TextMuted,
+        )
+        if (inBed != null && asleep != null) {
+            val asleepWeight = asleep.coerceIn(0, inBed).toFloat().coerceAtLeast(0.01f)
+            val awakeWeight = (inBed - asleep).coerceAtLeast(0).toFloat()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(50)),
+            ) {
+                Box(
+                    Modifier
+                        .weight(asleepWeight)
+                        .fillMaxHeight()
+                        .background(PulseColors.Blue),
+                )
+                if (awakeWeight > 0f) {
+                    Box(
+                        Modifier
+                            .weight(awakeWeight)
+                            .fillMaxHeight()
+                            .background(SleepAwake),
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "${formatHoursMinutes(asleep.toLong())} asleep",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                )
+                if (awake != null && awake > 0) {
+                    Text(
+                        "${formatHoursMinutes(awake.toLong())} awake",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+                Text(
+                    "${formatHoursMinutes(inBed.toLong())} in bed",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                )
+            }
+            if (start != null && end != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(sampleTime(start), style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted)
+                    Text(sampleTime(end), style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted)
+                }
+            }
+        }
+        if (overlay.size >= 2) {
+            Text(
+                "$overlayLabel across the sleep window",
+                style = MaterialTheme.typography.labelSmall,
+                color = PulseColors.TextMuted,
+            )
+            LineChart(
+                values = overlay.map { it.value.toFloat() },
+                labels = listOfNotNull(
+                    day.sleepStart?.let { sampleTime(it) },
+                    day.sleepEnd?.let { sampleTime(it) },
+                ),
+                color = overlayColor,
+                contentDescription = "$overlayLabel during sleep",
+                height = 120.dp,
+            )
+        } else if (overlayHint != null) {
+            Text(
+                overlayHint,
+                style = MaterialTheme.typography.labelSmall,
+                color = PulseColors.Orange,
+            )
         }
     }
 }

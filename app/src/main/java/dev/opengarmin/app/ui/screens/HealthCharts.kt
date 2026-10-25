@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -53,6 +54,7 @@ import dev.opengarmin.app.data.SleepStageEntity
 import dev.opengarmin.app.data.StressBreakdown
 import dev.opengarmin.app.data.StressLevel
 import dev.opengarmin.app.data.WellnessSampleEntity
+import dev.opengarmin.app.ui.components.chartTransformGestures
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
 import java.time.Instant
@@ -691,6 +693,9 @@ internal fun SleepStagesOverlayChart(
     overlay: List<WellnessSampleEntity>,
     overlayLabel: String,
     modifier: Modifier = Modifier,
+    emptyHint: String? = null,
+    overlayColor: Color = PulseColors.Text,
+    chartHeight: Dp = 168.dp,
 ) {
     if (stages.isEmpty()) {
         Text("Sleep stages were not written for this night.", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
@@ -699,7 +704,11 @@ internal fun SleepStagesOverlayChart(
     val start = stages.minOf { it.startTime }
     val end = stages.maxOf { it.endTime }
     val span = (end - start).coerceAtLeast(1L)
-    var selected by remember(stages, overlayLabel) { mutableStateOf<Float?>(null) }
+    val viewStart = remember(stages) { mutableFloatStateOf(0f) }
+    val viewEnd = remember(stages) { mutableFloatStateOf(1f) }
+    val viewSpan = (viewEnd.floatValue - viewStart.floatValue).coerceAtLeast(0.01f)
+    val selectedState = remember(stages, overlayLabel) { mutableStateOf<Float?>(null) }
+    val selected by selectedState
     val stageIndex = selected?.let { fraction ->
         val timestamp = start + (span * fraction).toLong()
         stages.indexOfLast { it.startTime <= timestamp }.coerceAtLeast(0)
@@ -736,30 +745,63 @@ internal fun SleepStagesOverlayChart(
                     }
                 }
             } else {
-                Text("Tap or drag to inspect", style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted)
+                Text(
+                    if (overlay.size < 2 && emptyHint != null) emptyHint else "Pinch to zoom · drag to explore · tap to inspect",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (overlay.size < 2 && emptyHint != null) {
+                        PulseColors.Orange
+                    } else {
+                        PulseColors.TextMuted
+                    },
+                )
+            }
+            if (viewSpan < 0.999f) {
+                Text(
+                    "Reset zoom",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.Accent,
+                    modifier = Modifier.clickable {
+                        viewStart.floatValue = 0f
+                        viewEnd.floatValue = 1f
+                    },
+                )
             }
         }
         Row(Modifier.fillMaxWidth()) {
             Box(
                 Modifier
                     .weight(1f)
-                    .height(168.dp)
+                    .height(chartHeight)
                     .semantics { contentDescription = "Sleep stages with $overlayLabel overlay" },
             ) {
                 Canvas(
                     Modifier
                         .fillMaxSize()
+                        .chartTransformGestures(
+                            viewStart = viewStart,
+                            viewEnd = viewEnd,
+                            selectedX = selectedState,
+                            dataMinX = 0f,
+                            dataMaxX = 1f,
+                            onHorizontalScrub = { fraction ->
+                                selectedState.value = fraction.coerceIn(0f, 1f)
+                            },
+                        )
                         .pointerInput(stages, overlayLabel) {
-                            detectTapGestures { selected = (it.x / size.width).coerceIn(0f, 1f) }
-                        }
-                        .pointerInput(stages, overlayLabel) {
-                            detectHorizontalDragGestures { change, _ ->
-                                selected = (change.position.x / size.width).coerceIn(0f, 1f)
+                            detectTapGestures { offset ->
+                                val visibleSpan =
+                                    (viewEnd.floatValue - viewStart.floatValue).coerceAtLeast(0.01f)
+                                selectedState.value =
+                                    ((offset.x / size.width) * visibleSpan + viewStart.floatValue)
+                                        .coerceIn(0f, 1f)
                             }
                         },
                 ) {
                     val rowHeight = size.height / 4f
-                    fun xFor(timestamp: Long) = (timestamp - start) / span.toFloat() * size.width
+                    fun xFor(timestamp: Long): Float {
+                        val fraction = (timestamp - start) / span.toFloat()
+                        return ((fraction - viewStart.floatValue) / viewSpan) * size.width
+                    }
                     rows.forEachIndexed { index, _ ->
                         val y = rowHeight * index + rowHeight / 2f
                         drawLine(
@@ -797,7 +839,16 @@ internal fun SleepStagesOverlayChart(
                         val path = Path().apply {
                             points.forEachIndexed { index, point -> if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y) }
                         }
-                        drawPath(path, color = PulseColors.Text.copy(alpha = 0.28f), style = Stroke(width = 1.4f))
+                        drawPath(
+                            path,
+                            color = PulseColors.Background.copy(alpha = 0.75f),
+                            style = Stroke(width = 4.5f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                        )
+                        drawPath(
+                            path,
+                            color = overlayColor.copy(alpha = 0.9f),
+                            style = Stroke(width = 2.2f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                        )
                     }
                     if (selected != null && selectedStage != null) {
                         val x = xFor(selectedStage.startTime)
@@ -813,7 +864,7 @@ internal fun SleepStagesOverlayChart(
             Column(
                 Modifier
                     .width(46.dp)
-                    .height(168.dp),
+                    .height(chartHeight),
                 verticalArrangement = Arrangement.SpaceAround,
             ) {
                 rows.forEach { (name, color) ->
@@ -831,7 +882,8 @@ internal fun SleepStagesOverlayChart(
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             listOf(0f, 0.5f, 1f).forEach { fraction ->
-                Text(sampleTime(start + (span * fraction).toLong()), style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted)
+                val visible = viewStart.floatValue + viewSpan * fraction
+                Text(sampleTime(start + (span * visible).toLong()), style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted)
             }
         }
     }

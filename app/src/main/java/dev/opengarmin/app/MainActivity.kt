@@ -94,7 +94,7 @@ class MainActivity : ComponentActivity() {
     private var selectedDynamics by mutableStateOf<RunningDynamicsSummary?>(null)
     private var selectedGps by mutableStateOf<GpsSummary?>(null)
     private var latestHrSamples by mutableStateOf<List<WellnessSampleEntity>>(emptyList())
-    private var latestSleepStages by mutableStateOf<List<dev.opengarmin.app.data.SleepStageEntity>>(emptyList())
+    private var sleepStageRows by mutableStateOf<List<dev.opengarmin.app.data.SleepStageEntity>>(emptyList())
     private var trainingSummary by mutableStateOf(dev.opengarmin.app.data.TrainingSummary())
     private var dataActivity by mutableStateOf<ActivityEntity?>(null)
     private var dataMessages by mutableStateOf<List<FitMessageEntity>>(emptyList())
@@ -220,7 +220,8 @@ class MainActivity : ComponentActivity() {
                     activities = activities,
                     wellnessDays = wellnessDays,
                     hrSamples = latestHrSamples,
-                    sleepStages = latestSleepStages,
+                    sleepStages = sleepStageRows,
+                    loadWellnessSamples = { date -> repository.wellnessSamplesForDate(date) },
                     trainingSummary = trainingSummary,
                     plannedWorkouts = plannedWorkouts,
                     workoutSendStatus = syncController.workoutSendStatus,
@@ -376,13 +377,13 @@ class MainActivity : ComponentActivity() {
                 val latest = dev.opengarmin.app.data.WellnessMetrics.latestDay(list)
                 if (latest != null) {
                     val (samples, stages) = withContext(Dispatchers.IO) {
-                        repository.wellnessSamples(latest.id) to repository.sleepStages(latest.date)
+                        repository.wellnessSamples(latest.id) to repository.allSleepStages()
                     }
                     latestHrSamples = samples
-                    latestSleepStages = stages
+                    sleepStageRows = stages
                 } else {
                     latestHrSamples = emptyList()
-                    latestSleepStages = emptyList()
+                    sleepStageRows = emptyList()
                 }
             }
         }
@@ -492,7 +493,7 @@ class MainActivity : ComponentActivity() {
                 selectedGps = null
                 closeDataExplorer()
                 latestHrSamples = emptyList()
-                latestSleepStages = emptyList()
+                sleepStageRows = emptyList()
                 importer.clearImportedLabel()
                 activities.clear()
                 wellnessDays.clear()

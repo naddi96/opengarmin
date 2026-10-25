@@ -814,12 +814,13 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBarSeries(
     }
 }
 
-private fun Modifier.chartTransformGestures(
+internal fun Modifier.chartTransformGestures(
     viewStart: MutableFloatState,
     viewEnd: MutableFloatState,
     selectedX: MutableState<Float?>?,
     dataMinX: Float,
     dataMaxX: Float,
+    onHorizontalScrub: ((Float) -> Unit)? = null,
 ): Modifier = pointerInput(dataMinX, dataMaxX) {
     val minSpan = 0.01f
     awaitEachGesture {
@@ -863,6 +864,10 @@ private fun Modifier.chartTransformGestures(
                         newStart = newStart.coerceIn(0f, 1f - span)
                         viewStart.floatValue = newStart
                         viewEnd.floatValue = newStart + span
+                    } else if (onHorizontalScrub != null) {
+                        val x = event.changes.firstOrNull { it.pressed }?.position?.x
+                            ?: event.changes.first().position.x
+                        onHorizontalScrub((x / width).coerceIn(0f, 1f))
                     }
                     event.changes.forEach { it.consume() }
                 }
