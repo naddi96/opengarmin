@@ -376,19 +376,20 @@ class SyncSessionController(
             disconnectWhenSyncFinishes = false
             return
         }
-        val c = client ?: return
-        if (!c.hasPermissions()) return
         val backgroundRunning = SyncGate.owner() == SyncGate.OWNER_BACKGROUND
         if (!backgroundRunning && SyncPhase.fromStored(settings.lastSyncStatus) == SyncPhase.Syncing) {
             // A process death or force-stop can leave the persisted status at
-            // "syncing" even though no worker survived. Do not show a fake
-            // in-progress state indefinitely.
+            // "syncing" even though no worker survived. Clear it before the
+            // client/permission checks below: on a cold start there is no
+            // client yet, and the chip would otherwise say "Syncing…" forever.
             settings.recordSyncError(
                 "The previous sync was interrupted before it finished.",
                 trigger = settings.lastSyncTrigger.ifBlank { "manual" },
                 kind = "cancelled",
             )
         }
+        val c = client ?: return
+        if (!c.hasPermissions()) return
         if (backgroundRunning) {
             ui.phase = SyncPhase.Background
             ui.log("background sync is already running")

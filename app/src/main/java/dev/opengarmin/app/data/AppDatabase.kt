@@ -281,6 +281,21 @@ data class ImportedActivityFileEntity(
     val importedAt: Long,
 )
 
+/**
+ * Activity files that were downloaded successfully but could not be imported
+ * (for example a watch entry that is not a valid FIT file). Recording the
+ * failures stops every sync from retrying the same broken item forever.
+ * [attempts] counts imports across syncs; at [ActivityRepository.ACTIVITY_FAILURE_LIMIT]
+ * the item is quarantined and skipped until the app data is cleared.
+ */
+@Entity(tableName = "failed_activity_files")
+data class FailedActivityFileEntity(
+    @PrimaryKey val itemUid: String,
+    val reason: String,
+    val attempts: Int,
+    val lastAttemptAt: Long,
+)
+
 @Dao
 interface ActivityDao {
     @Query("SELECT * FROM activities ORDER BY startTime DESC")
@@ -376,6 +391,18 @@ interface ActivityDao {
 
     @Query("SELECT itemUid FROM imported_activity_files")
     suspend fun importedActivityFileIds(): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertFailedActivityFile(file: FailedActivityFileEntity)
+
+    @Query("SELECT * FROM failed_activity_files")
+    suspend fun failedActivityFiles(): List<FailedActivityFileEntity>
+
+    @Query("SELECT itemUid FROM failed_activity_files WHERE attempts >= :attempts")
+    suspend fun quarantinedActivityItemUids(attempts: Int): List<String>
+
+    @Query("DELETE FROM failed_activity_files WHERE itemUid = :itemUid")
+    suspend fun clearFailedActivityFile(itemUid: String)
 
     @Query("SELECT * FROM laps WHERE activityId = :activityId ORDER BY lapIndex")
     suspend fun laps(activityId: Long): List<LapEntity>
@@ -506,6 +533,7 @@ interface WorkoutDao {
         SleepStageEntity::class,
         ImportedWellnessFileEntity::class,
         ImportedActivityFileEntity::class,
+        FailedActivityFileEntity::class,
         PlannedWorkoutEntity::class,
         PacePlanEntity::class,
         ActivityAnalysisEntity::class,
@@ -521,7 +549,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "opengarmin.db"
-        const val SCHEMA_VERSION = 12
+        const val SCHEMA_VERSION = 13
 
         @Volatile
         private var instance: AppDatabase? = null
@@ -762,6 +790,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `failed_activity_files` (" +
+                        "`itemUid` TEXT NOT NULL, " +
+                        "`reason` TEXT NOT NULL, " +
+                        "`attempts` INTEGER NOT NULL, " +
+                        "`lastAttemptAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`itemUid`))",
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -780,6 +821,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_9_10,
                     MIGRATION_10_11,
                     MIGRATION_11_12,
+                    MIGRATION_12_13,
                 ).build().also { instance = it }
             }
 
@@ -883,6 +925,29 @@ class ActivityRepository(private val database: () -> AppDatabase) {
 
     suspend fun activityItemUids(): Set<String> =
         (dao.activityItemUids() + dao.importedActivityFileIds()).toHashSet()
+
+    /** UIDs that failed to import often enough to be skipped on later syncs. */
+    suspend fun quarantinedActivityItemUids(): Set<String> =
+        dao.quarantinedActivityItemUids(ACTIVITY_FAILURE_LIMIT).toHashSet()
+
+    /** Counts one failed import for [itemUid]; the next sync retries until the limit. */
+    suspend fun recordActivityImportFailure(itemUid: String, reason: String) {
+        if (itemUid.isEmpty()) return
+        val previous = dao.failedActivityFiles().firstOrNull { it.itemUid == itemUid }
+        dao.upsertFailedActivityFile(
+            FailedActivityFileEntity(
+                itemUid = itemUid,
+                reason = reason.take(200),
+                attempts = (previous?.attempts ?: 0) + 1,
+                lastAttemptAt = nowSeconds(),
+            ),
+        )
+    }
+
+    companion object {
+        /** After this many failed imports the item is skipped on later syncs. */
+        const val ACTIVITY_FAILURE_LIMIT = 3
+    }
 
     suspend fun wellnessDaysBetween(start: String, end: String): List<WellnessDayEntity> =
         dao.wellnessDaysBetween(start, end)
@@ -1121,6 +1186,7 @@ class ActivityRepository(private val database: () -> AppDatabase) {
         dao.insertImportedActivityFile(
             ImportedActivityFileEntity(itemUid = itemUid, importedAt = nowSeconds()),
         )
+        dao.clearFailedActivityFile(itemUid)
     }
 
     private fun messageEntities(activityId: Long, parsed: Fit.Parsed): List<FitMessageEntity> =

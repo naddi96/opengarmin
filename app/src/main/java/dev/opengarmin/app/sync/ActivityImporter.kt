@@ -35,6 +35,10 @@ class ActivityImporter(
     @Volatile
     private var knownActivityUids: Set<String> = emptySet()
 
+    /** Activity UIDs whose imports failed often enough to stop retrying. */
+    @Volatile
+    private var quarantinedActivityUids: Set<String> = emptySet()
+
     /** Invoked on the main thread after a sync import so the controller can refresh its notification. */
     var onImportProgress: (() -> Unit)? = null
 
@@ -54,10 +58,12 @@ class ActivityImporter(
     }
 
     fun isKnownActivityUid(uid: String): Boolean =
-        uid.isNotEmpty() && uid in knownActivityUids
+        uid.isNotEmpty() && (uid in knownActivityUids || uid in quarantinedActivityUids)
 
     suspend fun reloadKnownActivityUids() {
         knownActivityUids = runCatching { repository.activityItemUids() }
+            .getOrDefault(emptySet())
+        quarantinedActivityUids = runCatching { repository.quarantinedActivityItemUids() }
             .getOrDefault(emptySet())
     }
 
@@ -86,15 +92,19 @@ class ActivityImporter(
                     onActivityImported?.invoke(entity)
                 }
             }.onFailure { e ->
+                val message = e.message ?: "FIT import failed"
                 Diagnostics.record(
                     area = Diagnostics.AREA_IMPORT,
                     code = "FIT_IMPORT_FAILED",
-                    message = e.message ?: "FIT import failed",
+                    message = message,
                     throwable = e,
                     context = mapOf("file" to file.name),
                 )
-                ui.importErrorThisSync = e.message ?: "FIT import failed"
-                ui.log("FIT import failed: ${e.message}")
+                if (itemUid.isNotEmpty()) {
+                    runCatching { repository.recordActivityImportFailure(itemUid, message) }
+                }
+                ui.importErrorThisSync = message
+                ui.log("FIT import failed: $message")
             }
             if (ui.activityProgress != null) {
                 onImportProgress?.invoke()

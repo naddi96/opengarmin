@@ -78,6 +78,11 @@ class TransportPipe(
         val header = Mlr.decodeHeader(frame[0].toInt() and 0xFF, frame[1].toInt() and 0xFF)
         if (handle >= 0 && header.handle != handle) return
         receiver.onFrame(frame)
+        // Ack after the receiver has advanced its next-sequence counter, and
+        // also for dropped/duplicate fragments. Acking from inside the fragment
+        // callback used the previous counter, so the last fragment of a
+        // transfer was never acknowledged and the watch resent it forever.
+        ack()
     }
 
     private fun onFragment(data: ByteArray) {
@@ -98,7 +103,6 @@ class TransportPipe(
                 write(payload)
             } else {
                 log("PIPE: configured, receiving data")
-                ack()
             }
             return
         }
@@ -107,7 +111,6 @@ class TransportPipe(
             received += data.size
             onData(data)
         }
-        ack()
     }
 
     private fun write(payload: ByteArray) {

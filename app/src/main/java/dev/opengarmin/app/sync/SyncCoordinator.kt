@@ -9,11 +9,9 @@ import dev.opengarmin.protocol.Handshake
 import dev.opengarmin.protocol.Hex
 import dev.opengarmin.protocol.TransportPipe
 import dev.opengarmin.app.data.WellnessFileTypes
-import java.io.ByteArrayInputStream
+import dev.opengarmin.app.diagnostics.Diagnostics
 import java.io.File
 import java.io.FileOutputStream
-import java.util.zip.Inflater
-import java.util.zip.InflaterInputStream
 
 /**
  * Drives one sync attempt: capabilities -> item list -> pull one file -> pipe.
@@ -59,6 +57,21 @@ class SyncCoordinator(
     /** Which kind of pull is currently in flight; routes pull responses. */
     private enum class PullKind { Activity, Wellness }
 
+    /**
+     * A completed pipe that has not been imported yet. The watch reports the
+     * authoritative result with TransferStatusRequest shortly after the pipe
+     * closes, so importing immediately can store a transfer the watch rejected.
+     */
+    private data class PendingTransfer(
+        val raw: File,
+        val rawSize: Int,
+        val decoded: ByteArray,
+        val decFile: File,
+        val wasWellness: Boolean,
+        val transferHandle: Int,
+        val pulledUid: String,
+    )
+
     private val wellnessQueue = ArrayDeque<Gdi.ItemReference>()
     private var wellnessTransfer = false
     private var activePull: PullKind? = null
@@ -70,6 +83,9 @@ class SyncCoordinator(
     private var pendingActivityItem: Gdi.ItemReference? = null
     private var activityPullAttempts = 0
     private var wellnessPullAttempts = 0
+    /** Item-level counter for decode/status failures (not reset by a pull response). */
+    private var transferRetryKey = ""
+    private var transferRetryCount = 0
     private var activityPullNotBefore = 0L
     private var activitiesUpToDate = false
     private var activityDone = 0
@@ -99,6 +115,14 @@ class SyncCoordinator(
     private var cutResponseReceived = false
     private var pipe: TransportPipe? = null
     private var output: FileOutputStream? = null
+    private var pendingTransfer: PendingTransfer? = null
+    private var pendingTransferGrace: Runnable? = null
+    private var earlyTransferStatus: Gdi.TransferStatusRequest? = null
+
+    /** Last handle whose pipe closed; used to catch a status that raced the post to the main thread. */
+    @Volatile
+    private var closedTransferHandle: Int = -1
+    @Volatile
     private var generation = 0
     private var done = false
     private var legacy: LegacySync? = null
@@ -176,6 +200,14 @@ class SyncCoordinator(
         generation++
         closeOutput()
         pipe = null
+        cancelPendingTransferGrace()
+        pendingTransfer?.let {
+            it.raw.delete()
+            it.decFile.delete()
+        }
+        pendingTransfer = null
+        earlyTransferStatus = null
+        closedTransferHandle = -1
         workouts.reset()
         capabilitiesRequested = false
         capabilitiesReceived = false
@@ -210,6 +242,8 @@ class SyncCoordinator(
         pendingActivityItem = null
         activityPullAttempts = 0
         wellnessPullAttempts = 0
+        transferRetryKey = ""
+        transferRetryCount = 0
         activityPullNotBefore = 0L
         activitiesUpToDate = false
         activityDone = 0
@@ -235,8 +269,8 @@ class SyncCoordinator(
 
     /** True while a file is being pulled, including the legacy GFDI path. */
     fun isTransferring(): Boolean =
-        pipe != null || wellnessTransfer || workouts.isTransferring() ||
-            legacy?.isTransferring() == true
+        pipe != null || pendingTransfer != null || wellnessTransfer ||
+            workouts.isTransferring() || legacy?.isTransferring() == true
 
     /**
      * Queues a prepared FIT workout for upload. The upload starts as soon as
@@ -301,8 +335,17 @@ class SyncCoordinator(
         val deviceMessages = fields[Gdi.SMART_DEVICE_MESSAGES]
         val audio = fields[Gdi.SMART_AUDIO_PROMPTS]
         val http = fields[Gdi.SMART_CONNECT_IQ_HTTP]
+        val fileAccess = fields[Gdi.SMART_FILE_ACCESS]
+        val transferStatus = fileAccess?.let {
+            runCatching { Gdi.parseTransferStatusRequest(it) }.getOrNull()
+        }
 
         val response = when {
+            transferStatus != null ->
+                // A known handle is the watch's completion/failure signal; do
+                // not answer it. An unknown handle gets an empty response, as
+                // Garmin Connect does.
+                if (handleTransferStatus(transferStatus)) null else Gdi.transferStatusResponse()
             http != null && Gdi.field(http, 1) != null ->
                 Gdi.connectIqHttpResponse()
             core != null && Gdi.field(core, 3) != null ->
@@ -421,9 +464,13 @@ class SyncCoordinator(
     }
 
     private fun startWellnessPull(item: Gdi.ItemReference) {
+        val type = gdxmlLookup.typeOf(item) ?: "unknown"
+        beginTransferAttempt(
+            "wellness:" + WellnessFileTypes.cacheKey(type, item.uid?.hex().orEmpty(), item.transactionId),
+        )
         wellnessTransfer = true
         activePull = PullKind.Wellness
-        pulledWellnessType = gdxmlLookup.typeOf(item) ?: "unknown"
+        pulledWellnessType = type
         inFlightWellness = item
         log("WELLNESS PULL request type=$pulledWellnessType size=${item.dataSize} left=${wellnessQueue.size}")
         gdi.sendSmart(Gdi.wrapSmart(Gdi.SMART_FILE_ACCESS, Gdi.pullItemRequest(item))) { response ->
@@ -742,7 +789,7 @@ class SyncCoordinator(
     private fun maybeFinish() {
         if (done || !activitiesUpToDate) return
         if (pendingActivityItem != null || requestedPull || pipe != null ||
-            wellnessTransfer || activityQueue.isNotEmpty()
+            pendingTransfer != null || wellnessTransfer || activityQueue.isNotEmpty()
         ) {
             return
         }
@@ -1032,6 +1079,7 @@ class SyncCoordinator(
             handler.postDelayed({ tryStartActivityPull() }, activityPullNotBefore - now)
             return
         }
+        beginTransferAttempt("activity:" + item.uid?.hex().orEmpty())
         requestedPull = true
         activePull = PullKind.Activity
         pulledWellnessType = ""
@@ -1088,6 +1136,16 @@ class SyncCoordinator(
         activityPullAttempts = 0
         wellnessPullAttempts = 0
 
+        // The directory reports the decoded file size, so a transfer that ends
+        // early can be detected instead of importing a partial FIT file.
+        val wasWellness = activePull == PullKind.Wellness
+        val expectedDecodedSize = if (wasWellness) {
+            inFlightWellness?.dataSize ?: 0
+        } else {
+            pendingActivityItem?.dataSize ?: 0
+        }
+        val gen = generation
+
         val raw = File(filesDir, "download_${pr.transferHandle}.bin")
         val out = FileOutputStream(raw)
         output = out
@@ -1100,17 +1158,37 @@ class SyncCoordinator(
             onData = { data -> out.write(data) },
             onComplete = {
                 closeOutput()
-                val compressed = raw.readBytes()
-                val decoded = inflateOrRaw(compressed)
-                val decFile = File(filesDir, "download_${pr.transferHandle}.dec")
-                decFile.writeBytes(decoded)
+                val compressed = runCatching { raw.readBytes() }.getOrDefault(ByteArray(0))
+                val decoded = TransferDecoder.decode(compressed, expectedDecodedSize)
                 pipe = null
-                handler.post {
-                    log("DOWNLOAD raw=${compressed.size} decoded=${decoded.size} -> ${decFile.absolutePath}")
-                    if (activePull == PullKind.Wellness) {
-                        completeWellnessTransfer(raw, decoded, decFile)
-                    } else {
-                        completeActivityTransfer(raw, decoded, decFile, pulledItemUid)
+                closedTransferHandle = pr.transferHandle
+                if (decoded == null) {
+                    raw.delete()
+                    handler.post {
+                        if (gen == generation) {
+                            handleTransferDecodeFailure(wasWellness, compressed.size, expectedDecodedSize)
+                        }
+                    }
+                } else {
+                    val decFile = File(filesDir, "download_${pr.transferHandle}.dec")
+                    decFile.writeBytes(decoded)
+                    handler.post {
+                        if (gen != generation) {
+                            raw.delete()
+                            decFile.delete()
+                            return@post
+                        }
+                        holdCompletedTransfer(
+                            PendingTransfer(
+                                raw = raw,
+                                rawSize = compressed.size,
+                                decoded = decoded,
+                                decFile = decFile,
+                                wasWellness = wasWellness,
+                                transferHandle = pr.transferHandle,
+                                pulledUid = pulledItemUid,
+                            ),
+                        )
                     }
                 }
             },
@@ -1119,6 +1197,133 @@ class SyncCoordinator(
         )
         pipe = p
         p.start()
+    }
+
+    /**
+     * Keeps a decoded transfer out of the importer until the watch confirms it.
+     *
+     * The FR255 closes the transport pipe first and sends TransferStatusRequest
+     * a few milliseconds later. Importing on the close alone can store a file
+     * the watch reports as failed (observed: FIT_TYPE_41, handle 37, failure
+     * reason 9). If the watch never sends a status, the grace timer accepts the
+     * transfer so older firmware keeps working.
+     */
+    private fun holdCompletedTransfer(transfer: PendingTransfer) {
+        if (pendingTransfer != null) {
+            log("TRANSFER already pending; finalising the previous file")
+            finalizePendingTransfer()
+        }
+        closedTransferHandle = transfer.transferHandle
+        val early = earlyTransferStatus
+        earlyTransferStatus = null
+        if (early != null && early.transferHandle == transfer.transferHandle) {
+            applyTransferStatus(transfer, early)
+            return
+        }
+        pendingTransfer = transfer
+        log(
+            "TRANSFER pipe closed handle=${transfer.transferHandle} " +
+                "raw=${transfer.rawSize} decoded=${transfer.decoded.size}; waiting for status",
+        )
+        val grace = Runnable {
+            if (pendingTransfer === transfer) {
+                pendingTransfer = null
+                pendingTransferGrace = null
+                log("TRANSFER status timeout handle=${transfer.transferHandle}; accepting the transfer")
+                finalizeTransfer(transfer)
+            }
+        }
+        pendingTransferGrace = grace
+        handler.postDelayed(grace, TRANSFER_STATUS_GRACE_MS)
+    }
+
+    private fun cancelPendingTransferGrace() {
+        pendingTransferGrace?.let { handler.removeCallbacks(it) }
+        pendingTransferGrace = null
+    }
+
+    private fun finalizePendingTransfer() {
+        val transfer = pendingTransfer ?: return
+        pendingTransfer = null
+        cancelPendingTransferGrace()
+        finalizeTransfer(transfer)
+    }
+
+    private fun finalizeTransfer(transfer: PendingTransfer) {
+        closedTransferHandle = -1
+        clearTransferRetries()
+        log(
+            "DOWNLOAD raw=${transfer.rawSize} decoded=${transfer.decoded.size} " +
+                "-> ${transfer.decFile.absolutePath}",
+        )
+        if (transfer.wasWellness) {
+            completeWellnessTransfer(transfer.raw, transfer.decoded, transfer.decFile)
+        } else {
+            completeActivityTransfer(transfer.raw, transfer.decoded, transfer.decFile, transfer.pulledUid)
+        }
+    }
+
+    /**
+     * Applies a device-initiated TransferStatusRequest. Returns true when it
+     * matched a transfer this coordinator owns; false means the caller should
+     * answer it (Garmin does this for an unknown handle).
+     */
+    private fun handleTransferStatus(status: Gdi.TransferStatusRequest): Boolean {
+        val handle = status.transferHandle ?: return false
+        val pending = pendingTransfer
+        if (pending != null && pending.transferHandle == handle) {
+            applyTransferStatus(pending, status)
+            return true
+        }
+        val active = pipe
+        if (active != null && active.transferHandle == handle) {
+            earlyTransferStatus = status
+            log("TRANSFER status arrived before pipe close handle=$handle")
+            return true
+        }
+        if (closedTransferHandle == handle) {
+            // The close callback is queued on the main thread but has not run yet.
+            earlyTransferStatus = status
+            log("TRANSFER status raced the pipe-close callback handle=$handle")
+            return true
+        }
+        log("GDI: transfer status for unknown handle $handle")
+        return false
+    }
+
+    private fun applyTransferStatus(transfer: PendingTransfer, status: Gdi.TransferStatusRequest) {
+        cancelPendingTransferGrace()
+        pendingTransfer = null
+        closedTransferHandle = -1
+        earlyTransferStatus = null
+        if (!status.failed) {
+            log("TRANSFER confirmed by watch handle=${transfer.transferHandle}")
+            finalizeTransfer(transfer)
+            return
+        }
+        transfer.raw.delete()
+        transfer.decFile.delete()
+        val detail = describeTransferStatus(status)
+        log("TRANSFER rejected by watch handle=${transfer.transferHandle}: $detail")
+        Diagnostics.record(
+            area = Diagnostics.AREA_SYNC,
+            code = "TRANSFER_REJECTED_BY_WATCH",
+            message = "The watch rejected the file transfer: $detail",
+            context = mapOf(
+                "handle" to transfer.transferHandle.toString(),
+                "uid" to (status.uid?.hex() ?: transfer.pulledUid),
+            ),
+        )
+        retryOrAbandonTransfer(transfer.wasWellness, "watch rejected the transfer ($detail)")
+    }
+
+    private fun describeTransferStatus(status: Gdi.TransferStatusRequest): String = buildString {
+        append("reason=").append(status.failureReason)
+        status.transportStatus?.let { append(", transport=").append(it) }
+        status.transportProviderId?.let { append(", provider=").append(it) }
+        status.transportErrorCode?.let { append(", code=").append(it) }
+        status.newPriority?.let { append(", newPriority=").append(it) }
+        status.uid?.let { append(", uid=").append(it.hex()) }
     }
 
     /**
@@ -1154,6 +1359,108 @@ class SyncCoordinator(
         if (pulledUid.isNotEmpty()) completedActivityUids += pulledUid
         activityDone++
         onFinished(raw, decFile, pulledUid)
+        advanceActivityQueue()
+    }
+
+    /**
+     * A transfer ended before the complete zlib stream arrived. Retry the same
+     * file a few times; a watch that keeps truncating one item should not keep
+     * the whole sync alive, so give up on it for this session afterwards.
+     */
+    private fun handleTransferDecodeFailure(wasWellness: Boolean, rawSize: Int, expected: Long) {
+        // There is no pending file to confirm; drop any status that raced in.
+        closedTransferHandle = -1
+        earlyTransferStatus = null
+        val detail = "incomplete transfer: ${rawSize} compressed bytes, expected $expected decoded"
+        log("DOWNLOAD failed: $detail")
+        Diagnostics.record(
+            area = Diagnostics.AREA_SYNC,
+            code = "TRANSFER_DECODE_FAILED",
+            message = "The watch sent an incomplete file. Keeping the item for the next sync.",
+            context = mapOf("compressed" to rawSize.toString(), "expected" to expected.toString()),
+        )
+        retryOrAbandonTransfer(wasWellness, detail)
+    }
+
+    /** Resets the per-item transfer failure counter when a new item starts. */
+    private fun beginTransferAttempt(key: String) {
+        if (key != transferRetryKey) {
+            transferRetryKey = key
+            transferRetryCount = 0
+        }
+    }
+
+    /** Counts a failed attempt for the current item; false means give up. */
+    private fun noteTransferFailure(): Boolean {
+        transferRetryCount++
+        return transferRetryCount <= MAX_PULL_RETRIES
+    }
+
+    private fun clearTransferRetries() {
+        transferRetryKey = ""
+        transferRetryCount = 0
+    }
+
+    /**
+     * Retries a rejected transfer a few times, then gives up on the item for
+     * this session so one bad file cannot keep the sync alive.
+     */
+    private fun retryOrAbandonTransfer(wasWellness: Boolean, detail: String) {
+        requestedPull = false
+        val canRetry = noteTransferFailure()
+        if (wasWellness) {
+            activePull = null
+            pulledWellnessType = ""
+            wellnessTransfer = false
+            val retry = inFlightWellness
+            inFlightWellness = null
+            if (retry != null && canRetry) {
+                log("WELLNESS retry after $detail (${transferRetryCount + 1}/$MAX_PULL_RETRIES)")
+                wellnessQueue.addFirst(retry)
+            } else {
+                log("WELLNESS skip after $MAX_PULL_RETRIES attempts: $detail")
+                clearTransferRetries()
+            }
+            handler.postDelayed({ pullNextWellness() }, RETRY_DELAY_MS)
+            return
+        }
+
+        val item = pendingActivityItem
+        if (item == null) {
+            activePull = null
+            clearTransferRetries()
+            return
+        }
+        if (canRetry) {
+            activePull = null
+            activityPullNotBefore = SystemClock.uptimeMillis() + RETRY_DELAY_MS
+            log("PULL retry after $detail (${transferRetryCount + 1}/$MAX_PULL_RETRIES)")
+            handler.postDelayed({ tryStartActivityPull() }, RETRY_DELAY_MS)
+        } else {
+            abandonActivityTransfer(item, detail)
+        }
+    }
+
+    /** Skips an activity that cannot be transferred, then continues the queue. */
+    private fun abandonActivityTransfer(item: Gdi.ItemReference, reason: String) {
+        val uid = item.uid?.hex().orEmpty()
+        log("SKIP activity uid=$uid after $MAX_PULL_RETRIES attempts: $reason")
+        Diagnostics.record(
+            area = Diagnostics.AREA_SYNC,
+            code = "TRANSFER_ABANDONED",
+            message = "Skipped an activity the watch could not transfer: $reason",
+            context = mapOf("uid" to uid),
+        )
+        if (uid.isNotEmpty()) completedActivityUids += uid
+        clearTransferRetries()
+        activePull = null
+        pendingActivityItem = null
+        activityDone++
+        advanceActivityQueue()
+    }
+
+    /** Moves to the next queued activity or finishes the activity phase. */
+    private fun advanceActivityQueue() {
         val next = activityQueue.removeFirstOrNull()
         if (next != null) {
             pendingActivityItem = next
@@ -1184,6 +1491,8 @@ class SyncCoordinator(
         private const val RESULT_NO_RESOURCES = 3
         private const val MAX_PULL_RETRIES = 5
         private const val RETRY_DELAY_MS = 2_000L
+        /** Time to wait for TransferStatusRequest after the pipe closes. */
+        private const val TRANSFER_STATUS_GRACE_MS = 1_000L
         private const val ACTIVITY_GRACE_MS = 2_500L
         private const val READY_GRACE_MS = 800L
         private const val LIST_GRACE_MS = 400L
@@ -1203,19 +1512,6 @@ class SyncCoordinator(
             10 -> "DATA_TYPE_ERROR"
             11 -> "CONFLICTING_PUSH_REQUEST"
             else -> "UNKNOWN"
-        }
-
-        fun inflateOrRaw(data: ByteArray): ByteArray {
-            if (data.isEmpty()) return data
-            try {
-                return InflaterInputStream(ByteArrayInputStream(data)).use { it.readBytes() }
-            } catch (_: Exception) {
-            }
-            try {
-                return InflaterInputStream(ByteArrayInputStream(data), Inflater(true)).use { it.readBytes() }
-            } catch (_: Exception) {
-            }
-            return data
         }
     }
 }

@@ -208,7 +208,25 @@ object Gdi {
         val pullItemResponse: PullItemResponse? = null,
         val pushItemResponse: PushItemResponse? = null,
         val itemAdded: ItemAddedNotification? = null,
+        val transferStatus: TransferStatusRequest? = null,
     )
+
+    /**
+     * Device-initiated TransferStatusRequest (Service field 5). The watch sends
+     * this after the transport pipe closes and it is the authoritative result
+     * of the transfer; the pipe closing alone is not success.
+     */
+    data class TransferStatusRequest(
+        val uid: Uuid?,
+        val transferHandle: Int?,
+        val failureReason: Int?,
+        val transportStatus: Int?,
+        val transportProviderId: Int?,
+        val transportErrorCode: Int?,
+        val newPriority: Int?,
+    ) {
+        val failed: Boolean get() = failureReason != null
+    }
 
     data class ItemAddedNotification(val items: List<ItemReference>)
 
@@ -442,6 +460,7 @@ object Gdi {
         var pull: PullItemResponse? = null
         var push: PushItemResponse? = null
         var added: ItemAddedNotification? = null
+        var status: TransferStatusRequest? = null
         val r = ProtoReader(data)
         while (r.hasMore()) {
             val tag = r.readVarint().toInt()
@@ -454,12 +473,61 @@ object Gdi {
             when (field) {
                 2 -> pull = parsePullItemResponse(r.readBytes())
                 4 -> push = parsePushItemResponse(r.readBytes())
+                5 -> status = parseTransferStatusBody(r.readBytes())
                 10 -> list = parseItemListResponse(r.readBytes())
                 12 -> added = parseItemAddedNotification(r.readBytes())
                 else -> r.skip(2)
             }
         }
-        return FileAccessService(list, pull, push, added)
+        return FileAccessService(list, pull, push, added, status)
+    }
+
+    /** Parses a FileAccess.Service wrapper carrying TransferStatusRequest (field 5). */
+    fun parseTransferStatusRequest(data: ByteArray): TransferStatusRequest? =
+        parseFileAccessService(data).transferStatus
+
+    private fun parseTransferStatusBody(data: ByteArray): TransferStatusRequest? {
+        var uid: Uuid? = null
+        var handle: Int? = null
+        var reason: Int? = null
+        var transportStatus: Int? = null
+        var providerId: Int? = null
+        var errorCode: Int? = null
+        var newPriority: Int? = null
+        val r = ProtoReader(data)
+        while (r.hasMore()) {
+            val tag = r.readVarint().toInt()
+            val field = tag ushr 3
+            val wire = tag and 7
+            when {
+                field == 1 && wire == 2 -> uid = parseUuid(r.readBytes())
+                field == 2 && wire == 0 -> handle = r.readVarint().toInt()
+                field == 3 && wire == 0 -> reason = r.readVarint().toInt()
+                field == 4 && wire == 0 -> transportStatus = r.readVarint().toInt()
+                field == 5 && wire == 0 -> providerId = r.readVarint().toInt()
+                field == 6 && wire == 0 -> errorCode = r.readVarint().toInt()
+                field == 7 && wire == 0 -> newPriority = r.readVarint().toInt()
+                else -> r.skip(wire)
+            }
+        }
+        if (handle == null && reason == null && uid == null) return null
+        return TransferStatusRequest(
+            uid = uid,
+            transferHandle = handle,
+            failureReason = reason,
+            transportStatus = transportStatus,
+            transportProviderId = providerId,
+            transportErrorCode = errorCode,
+            newPriority = newPriority,
+        )
+    }
+
+    /** FileAccess.Service.transfer_status_response (field 21). */
+    fun transferStatusResponse(nextPriority: Int? = null): ByteArray {
+        val body = ProtoWriter()
+        if (nextPriority != null) body.uint32(1, nextPriority)
+        // FileAccess.Service.transfer_status_response = 21
+        return wrapSmart(SMART_FILE_ACCESS, ProtoWriter().bytes(21, body.toByteArray()).toByteArray())
     }
 
     private fun parseItemAddedNotification(data: ByteArray): ItemAddedNotification {

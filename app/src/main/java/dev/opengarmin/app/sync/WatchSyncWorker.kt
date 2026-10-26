@@ -383,6 +383,7 @@ class WatchSyncWorker(
         suspend fun loadKnownItems() {
             withContext(Dispatchers.IO) {
                 knownActivities.addAll(repository.activityItemUids())
+                knownActivities.addAll(repository.quarantinedActivityItemUids())
                 knownWellness.addAll(repository.importedWellnessFileIds())
             }
         }
@@ -498,7 +499,11 @@ class WatchSyncWorker(
                         runCatching { analysisScheduler.enqueue(entity.id) }
                     }
                 }.onFailure { error ->
-                    importError.compareAndSet(null, error.message ?: "FIT import failed")
+                    val message = error.message ?: "FIT import failed"
+                    if (itemUid.isNotEmpty()) {
+                        runCatching { repository.recordActivityImportFailure(itemUid, message) }
+                    }
+                    importError.compareAndSet(null, message)
                 }
             }
         }
