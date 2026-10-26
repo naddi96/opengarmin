@@ -144,9 +144,9 @@ class OpenAiClient(
                 ?: throw LlmException(LlmException.Kind.Malformed, "No choices in response")
             val message = choice.optJSONObject("message")
             LlmCompletion(
-                content = message?.optString("content").orEmpty(),
+                content = message?.optStringOrNull("content").orEmpty(),
                 toolCalls = message?.optJSONArray("tool_calls").toToolCalls(),
-                finishReason = choice.optString("finish_reason").takeIf { it.isNotBlank() },
+                finishReason = choice.optStringOrNull("finish_reason")?.takeIf { it.isNotBlank() },
             )
         }
     }
@@ -212,7 +212,7 @@ class OpenAiClient(
             return@withContext buildList {
                 for (i in 0 until data.length()) {
                     val item = data.optJSONObject(i) ?: continue
-                    item.optString("id").takeIf { it.isNotBlank() }?.let(::add)
+                    item.optStringOrNull("id")?.takeIf { it.isNotBlank() }?.let(::add)
                 }
             }
         } catch (e: IOException) {
@@ -330,7 +330,7 @@ class OpenAiClient(
         val choices = json.optJSONArray("choices") ?: return null
         val choice = choices.optJSONObject(0) ?: return null
         val delta = choice.optJSONObject("delta") ?: choice.optJSONObject("message")
-        val text = delta?.optString("content").orEmpty()
+        val text = delta?.optStringOrNull("content").orEmpty()
         val toolDeltas = mutableListOf<LlmToolCallDelta>()
         val calls = delta?.optJSONArray("tool_calls")
         if (calls != null) {
@@ -339,16 +339,16 @@ class OpenAiClient(
                 val fn = call.optJSONObject("function")
                 toolDeltas += LlmToolCallDelta(
                     index = call.optInt("index", i),
-                    id = call.optString("id").takeIf { it.isNotBlank() },
-                    name = fn?.optString("name")?.takeIf { it.isNotBlank() },
-                    arguments = fn?.optString("arguments")?.takeIf { it.isNotBlank() },
+                    id = call.optStringOrNull("id")?.takeIf { it.isNotBlank() },
+                    name = fn?.optStringOrNull("name")?.takeIf { it.isNotBlank() },
+                    arguments = fn?.optStringOrNull("arguments")?.takeIf { it.isNotBlank() },
                 )
             }
         }
         return LlmStreamDelta(
             text = text,
             toolCalls = toolDeltas,
-            finishReason = choice.optString("finish_reason").takeIf { it.isNotBlank() },
+            finishReason = choice.optStringOrNull("finish_reason")?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -358,17 +358,28 @@ class OpenAiClient(
             for (i in 0 until length()) {
                 val item = optJSONObject(i) ?: continue
                 val fn = item.optJSONObject("function") ?: continue
-                val name = fn.optString("name")
+                val name = fn.optStringOrNull("name").orEmpty()
                 if (name.isBlank()) continue
                 add(
                     LlmToolCall(
-                        id = item.optString("id").ifBlank { "call_$i" },
+                        id = item.optStringOrNull("id").orEmpty().ifBlank { "call_$i" },
                         name = name,
-                        arguments = fn.optString("arguments").ifBlank { "{}" },
+                        arguments = fn.optStringOrNull("arguments").orEmpty().ifBlank { "{}" },
                     ),
                 )
             }
         }
+    }
+
+    /**
+     * Android's [JSONObject.optString] converts a JSON `null` into the literal
+     * string "null" (the JVM JSON library used by tests does not). OpenAI-style
+     * streams send `"content": null` and `"finish_reason": null` on routine
+     * chunks, so those values must stay absent rather than leak into the UI.
+     */
+    private fun JSONObject.optStringOrNull(name: String): String? {
+        if (!has(name) || isNull(name)) return null
+        return optString(name)
     }
 
     private fun httpError(code: Int, body: String?): LlmException {

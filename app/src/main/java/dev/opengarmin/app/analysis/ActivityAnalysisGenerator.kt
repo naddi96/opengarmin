@@ -54,10 +54,19 @@ class ActivityAnalysisGenerator(
                 LlmMessage("user", prompt),
             ),
             temperature = model.temperature ?: 0.3,
-            maxTokens = model.maxTokens ?: 700,
+            // Reasoning models spend part of this budget on hidden reasoning, so
+            // keep enough room for a full analysis after that. A 700-token cap
+            // made deepseek-reasoner finish with empty content on long analyses.
+            maxTokens = model.maxTokens ?: DEFAULT_MAX_TOKENS,
         )
         val content = cleanMarkdown(completion.content)
         if (content.isBlank()) {
+            if (completion.finishReason == "length") {
+                throw ActivityAnalysisException(
+                    "The model ran out of output tokens before writing the analysis. " +
+                        "Try again or switch to a non-reasoning model.",
+                )
+            }
             throw ActivityAnalysisException("The provider returned an empty analysis. Try again.")
         }
         return GeneratedActivityAnalysis(content = content, model = model.name)
@@ -70,6 +79,14 @@ class ActivityAnalysisGenerator(
             value = value.substringAfter('\n', "").removeSuffix("```").trim()
         }
         return value
+    }
+
+    private companion object {
+        /**
+         * Room for hidden reasoning plus the 90-160 word answer. Kept below the
+         * common 8192 output ceiling so providers accept the request.
+         */
+        const val DEFAULT_MAX_TOKENS = 4096
     }
 }
 

@@ -150,6 +150,44 @@ class OpenAiClientTest {
     }
 
     @Test
+    fun `json null stream fields do not leak into the reply`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":null},\"finish_reason\":null}]}\n\n" +
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\n" +
+                        "data: {\"choices\":[{\"delta\":{\"content\":null},\"finish_reason\":\"stop\"}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+        val deltas = client().streamChat(listOf(LlmMessage("user", "hello"))).toList()
+        assertEquals("Hello", deltas.joinToString("") { it.text })
+        assertEquals("stop", deltas.last { it.finishReason != null }.finishReason)
+        assertEquals(null, deltas.first().finishReason)
+    }
+
+    @Test
+    fun `json null tool call fragments are ignored`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0," +
+                        "\"id\":\"call_1\",\"function\":{\"name\":\"get_steps\",\"arguments\":null}}]}}]}\n\n" +
+                        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0," +
+                        "\"function\":{\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+        val deltas = client().streamChat(listOf(LlmMessage("user", "steps?"))).toList()
+        val calls = deltas.flatMap { it.toolCalls }
+        assertEquals("get_steps", calls.firstNotNullOf { it.name })
+        assertEquals("{}", calls.joinToString("") { it.arguments ?: "" })
+        assertEquals("", deltas.joinToString("") { it.text })
+    }
+
+    @Test
     fun `non-streaming completion returns content and tool calls`() = runBlocking {
         server.enqueue(
             MockResponse().setBody(
