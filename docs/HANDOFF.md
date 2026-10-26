@@ -1,7 +1,73 @@
 # Handoff — OpenGarmin offline sync
 
-_Last updated: 2026-10-21. Written so a fresh session can continue without the
+_Last updated: 2026-10-26. Written so a fresh session can continue without the
 original chat context._
+
+## Current state — 2026-10-26
+
+Latest commit: `6aa3954` (`Match Garmin Connect's legacy sync handshake`),
+pushed to `origin/main`. Latest tag: `v0.9.2` (release workflow triggered from
+the tag). Protocol and app JVM tests pass; `:app:assembleDebug` builds.
+
+### What is new in 0.9.x
+
+- **Forerunner 245 legacy sync.** `app/.../sync/LegacySync.kt` implements the
+  pre-GDI GFDI file transfer (`DOWNLOAD_REQUEST 5002`,
+  `FILE_TRANSFER_DATA 5004`, `SYNCHRONIZATION 5037`, `DIRECTORY_FILTER 5007`,
+  `SUPPORTED_FILE_TYPES 5031`, `FILE_AVAILABLE 5009`, `SET_FILE_FLAGS 5008`).
+  Product `3076` starts it directly; other watches with an empty
+  `FeatureCapabilitiesResponse` also fall back to it.
+- **Official sequence reconstructed from Garmin Connect 5.19.1.** GDI
+  `Core.SyncRequest` (empty, `6a020a00`) → watch `5037` →
+  `5007` (filter 3) → `5031` (supported file types) → `5002` (directory).
+  Garmin parses the directory after a 16-byte header. The app now follows that
+  order and logs the directory header.
+- **Legacy file types.** Activities (`FIT_TYPE_4`) plus wellness types
+  `29/32/44/49/72` are imported and archived on the watch.
+- **Sync log export.** Settings → **Device log** → **Export log** writes a
+  `.txt` with device info and the retained protocol lines oldest-first. Watch
+  MAC addresses are redacted; protocol frames and the unit ID remain.
+- **Background-sync reliability.** If Android refuses the foreground service,
+  the worker no longer runs headless; it records `BG_FOREGROUND_UNAVAILABLE`
+  and returns a busy failure telling the user to open the app. The visible
+  sync records `FGS_START_FAILED` if its service cannot start.
+- **Protocol fixes.** Phone→watch replies to device-initiated GDI requests use
+  `PROTOBUF_RESPONSE (5044)`. Empty capability responses now select the legacy
+  path instead of retrying GDI eight times. `SYNC_READY` includes its value
+  byte (`[8,0]`).
+
+### Verified / not verified
+
+- Verified: unit tests, debug/release APK builds, v0.9.0 and v0.9.1 GitHub
+  release workflows.
+- **Not verified on FR245 hardware.** The legacy path has not completed a real
+  transfer yet.
+
+### Remaining FR245 gap
+
+The app asks for **uncompressed** data (`DOWNLOAD_REQUEST` flags `0`, handles
+`5004`). Garmin Connect asks for compression (`flags 1`) and also handles
+`COMPRESSED_FILE_DATA (5054)` via its `CompressedDataProcessor`. If the next
+FR245 log shows `5054`, implement that path; otherwise keep `5004`.
+
+### How to continue
+
+1. Install the v0.9.2 release APK (or `app/build/outputs/apk/debug/app-debug.apk`).
+2. Sync with the app **open**.
+3. Check **Settings → Device log** for:
+   - `GDI → SyncRequest`
+   - `LEGACY → DirectoryFilter only-new`
+   - `LEGACY → SupportedFileTypesRequest`
+   - `LEGACY → DownloadRequest directory`
+   - `LEGACY: directory received … header=…`
+4. Export the log and use the first `LEGACY:` line that does not advance to
+   locate the next protocol gap.
+5. If background sync reports “Android blocked the background sync”, open the
+   app or set OpenGarmin’s battery usage to **Unrestricted**.
+
+Key files: `app/.../sync/LegacySync.kt`, `SyncCoordinator.kt`,
+`GarminBleClient.kt`, `SyncLogExport.kt`, `protocol/.../Gdi.kt`,
+`protocol/.../Handshake.kt`, `docs/PROTOCOL.md` §7.1.
 
 ## Goal
 
