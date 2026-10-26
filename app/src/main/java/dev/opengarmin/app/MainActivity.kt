@@ -44,6 +44,10 @@ import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.diagnostics.AppEvent
 import dev.opengarmin.app.diagnostics.Diagnostics
+import dev.opengarmin.app.diagnostics.SyncLogExport
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivityImporter
@@ -108,6 +112,7 @@ class MainActivity : ComponentActivity() {
     private val diagnosticEvents = mutableStateListOf<AppEvent>()
     private var diagnosticsLoading by mutableStateOf(false)
     private var diagnosticsStatus by mutableStateOf<String?>(null)
+    private var syncLogExportStatus by mutableStateOf<String?>(null)
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -253,6 +258,8 @@ class MainActivity : ComponentActivity() {
                     lastImportedLabel = syncController.lastImportedLabel,
                     logs = syncController.logs,
                     deviceInfo = { syncController.deviceInfo() },
+                    syncLogExportStatus = syncLogExportStatus,
+                    onExportSyncLog = { uri -> exportSyncLog(uri) },
                     onSync = { syncController.syncNow(trigger = "manual") },
                     onScan = { startScan() },
                     onStop = { syncController.stopScan() },
@@ -664,6 +671,39 @@ class MainActivity : ComponentActivity() {
                         area = Diagnostics.AREA_BACKUP,
                         code = "DIAGNOSTICS_EXPORT_FAILED",
                         message = error.message ?: "Diagnostics export failed.",
+                        throwable = error,
+                    )
+                    "Could not export: ${error.message ?: "unknown error"}"
+                },
+            )
+        }
+    }
+
+    private fun exportSyncLog(uri: Uri) {
+        syncLogExportStatus = "Exporting…"
+        val label = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
+        val payload = SyncLogExport.text(
+            deviceInfo = syncController.deviceInfo(),
+            logs = syncController.logs,
+            exportedAtLabel = label,
+        )
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    contentResolver.openOutputStream(uri)?.use { output ->
+                        output.write(payload.toByteArray(Charsets.UTF_8))
+                    } ?: error("Could not open the selected location for writing.")
+                }
+            }
+            syncLogExportStatus = result.fold(
+                onSuccess = { "Sync log exported. MAC addresses were redacted." },
+                onFailure = { error ->
+                    runCatching { DocumentsContract.deleteDocument(contentResolver, uri) }
+                        .recoverCatching { contentResolver.delete(uri, null, null) }
+                    Diagnostics.record(
+                        area = Diagnostics.AREA_EXPORT,
+                        code = "SYNC_LOG_EXPORT_FAILED",
+                        message = error.message ?: "Sync log export failed.",
                         throwable = error,
                     )
                     "Could not export: ${error.message ?: "unknown error"}"

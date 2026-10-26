@@ -2,6 +2,7 @@ package dev.opengarmin.protocol
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -210,5 +211,21 @@ class GdiTest {
         val request = assertNotNull(Gdi.field(core, 8))
         assertNotNull(Gdi.field(request, 11))
         assertNotNull(Gdi.field(request, 16))
+    }
+
+    @Test
+    fun `feature capabilities detect file access support`() {
+        // FR255: version 1 + FileAccess capabilities (extension 16).
+        val modern = assertNotNull(
+            Gdi.featureCapabilities(Hex.decode("6a0b4a09100182010410002801")),
+        )
+        assertEquals(1, modern.version)
+        assertTrue(modern.hasFileAccess)
+        assertFalse(modern.isEmpty)
+
+        // FR245 firmware 13.70: an empty FeatureCapabilitiesResponse.
+        val legacy = assertNotNull(Gdi.featureCapabilities(Hex.decode("6a024a00")))
+        assertTrue(legacy.isEmpty)
+        assertFalse(legacy.hasFileAccess)
     }
 }

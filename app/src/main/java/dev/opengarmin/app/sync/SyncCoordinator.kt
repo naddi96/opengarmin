@@ -34,6 +34,8 @@ class SyncCoordinator(
     private val onFinished: (raw: File, decoded: File, itemUid: String) -> Unit,
     private val onWellnessFile: (decoded: File, type: String, itemUid: String) -> Unit,
     private val onUpToDate: () -> Unit,
+    /** A failure in the legacy (pre-GDI) file-transfer path; user-facing. */
+    private val onSyncError: (String) -> Unit = {},
     private val onActivityProgress: (ActivitySyncProgress) -> Unit = {},
     private val onWorkoutSent: (id: Long, name: String, bytes: Int) -> Unit = { _, _, _ -> },
     private val onWorkoutFailed: (id: Long, name: String, message: String) -> Unit = { _, _, _ -> },
@@ -99,6 +101,7 @@ class SyncCoordinator(
     private var output: FileOutputStream? = null
     private var generation = 0
     private var done = false
+    private var legacy: LegacySync? = null
 
     init {
         gdi.onSmart = { smart -> handler.post { handleSmart(smart) } }
@@ -122,7 +125,10 @@ class SyncCoordinator(
         val previousGfdiHandler = session.onGfdiMessage
         session.onGfdiMessage = { frame ->
             previousGfdiHandler?.invoke(frame)
-            handler.post { workouts.handleLegacyResponse(frame) }
+            handler.post {
+                workouts.handleLegacyResponse(frame)
+                legacy?.onFrame(frame)
+            }
         }
         session.onReady = {
             postIfCurrent(300) {
@@ -209,13 +215,15 @@ class SyncCoordinator(
         activityDone = 0
         activityTotal = 0
         done = false
+        legacy?.reset()
+        legacy = null
         reportActivityProgress()
     }
 
-    fun isDone(): Boolean = done
+    fun isDone(): Boolean = done || legacy?.isDone() == true
 
     /** True once the watch has sent any GDI message (i.e. a sync is underway). */
-    fun hasStarted(): Boolean = started
+    fun hasStarted(): Boolean = started || legacy != null
 
     /**
      * The watch accepted the BLE connection and sent GDI traffic, but never
@@ -223,11 +231,12 @@ class SyncCoordinator(
      * session slot this usually means Garmin Connect is holding it.
      */
     fun stalledBeforeCapabilities(): Boolean =
-        started && !capabilitiesReceived && !listReceived && !done
+        legacy == null && started && !capabilitiesReceived && !listReceived && !done
 
-    /** True while a file is being pulled through the transport pipe. */
+    /** True while a file is being pulled, including the legacy GFDI path. */
     fun isTransferring(): Boolean =
-        pipe != null || wellnessTransfer || workouts.isTransferring()
+        pipe != null || wellnessTransfer || workouts.isTransferring() ||
+            legacy?.isTransferring() == true
 
     /**
      * Queues a prepared FIT workout for upload. The upload starts as soon as
@@ -326,7 +335,11 @@ class SyncCoordinator(
         val fields = Gdi.smartFields(smart)
         log("GDI smart fields=${fields.keys} sizes=${fields.mapValues { it.value.size }}")
 
-        if (Gdi.coreFeatureCapabilitiesResponse(smart) != null) onCapabilities()
+        if (Gdi.coreFeatureCapabilitiesResponse(smart) != null) onCapabilities(smart)
+        // Once the watch has told us it has no FileAccess service, the legacy
+        // path owns the transfer slot. Any late GDI notifications must not
+        // start a competing pull.
+        if (legacy != null) return
         if (Gdi.isWellnessThresholdMet(smart)) {
             // The watch uses this notification to say that a new wellness
             // file (often SLEEP_DATA after wake-up) is ready. Garmin Connect's
@@ -460,21 +473,67 @@ class SyncCoordinator(
         onUpToDate()
     }
 
+    private fun startLegacySync() {
+        if (legacy != null || done) return
+        if (workouts.hasPending) {
+            workouts.failPending("This watch does not support workout upload.")
+        }
+        val sync = LegacySync(
+            session = session,
+            filesDir = filesDir,
+            handler = handler,
+            log = log,
+            isActivityKnown = isItemKnown,
+            isWellnessKnown = isWellnessItemKnown,
+            onActivityFile = onFinished,
+            onWellnessFile = onWellnessFile,
+            onProgress = onActivityProgress,
+            onFinished = {
+                reportUpToDate("SYNC up to date: legacy file transfer complete")
+            },
+            onError = onSyncError,
+        )
+        legacy = sync
+        sync.start()
+    }
+
     private fun sendCapabilities() {
+        if (legacy != null) return
+        // The Forerunner 245 does not implement FeatureCapabilities/FileAccess.
+        // Start its legacy file-transfer path directly, like Garmin Connect.
+        if (session.productNumber == LEGACY_FR245_PRODUCT) {
+            log("GDI: product ${session.productNumber} uses legacy file transfer")
+            startLegacySync()
+            return
+        }
         if (capabilitiesRequested || capabilitiesReceived || listReceived || done) return
         capabilitiesRequested = true
         log("GDI → FeatureCapabilitiesRequest")
         gdi.sendSmart(Gdi.featureCapabilitiesRequest()) { response ->
             if (Gdi.coreFeatureCapabilitiesResponse(response) != null) {
-                handler.post { onCapabilities() }
+                handler.post { onCapabilities(response) }
             }
         }
     }
 
-    private fun onCapabilities() {
+    private fun onCapabilities(smart: ByteArray) {
         if (capabilitiesReceived) return
         capabilitiesReceived = true
-        log("GDI: capabilities received")
+        val capabilities = Gdi.featureCapabilities(smart)
+        if (capabilities != null && capabilities.isEmpty) {
+            // The Forerunner 245 (and other pre-GDI-FileAccess watches) answer
+            // with an empty FeatureCapabilitiesResponse. They have no
+            // ItemList/Pull service, so switch to the legacy GFDI file
+            // transfer instead of retrying the GDI requests.
+            log("GDI: empty FeatureCapabilitiesResponse — starting legacy sync")
+            startLegacySync()
+            return
+        }
+        log(
+            "GDI: capabilities received" + (capabilities?.let {
+                " (version=${it.version}, fileAccess=${it.hasFileAccess})"
+            } ?: ""),
+        )
         if (workouts.hasPending) {
             // A user asked to send a workout. Use the transfer slot for that
             // first; the normal activity/wellness sync resumes afterwards.
@@ -1114,6 +1173,8 @@ class SyncCoordinator(
 
     companion object {
         const val PIPE_SERVICE = 0x2018
+        /** Forerunner 245 (part 006-B3076-00); no GDI FileAccess capability. */
+        private const val LEGACY_FR245_PRODUCT = 3076
         private const val RESULT_NO_RESOURCES = 3
         private const val MAX_PULL_RETRIES = 5
         private const val RETRY_DELAY_MS = 2_000L

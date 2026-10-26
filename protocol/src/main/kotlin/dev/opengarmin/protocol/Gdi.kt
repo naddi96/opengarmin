@@ -271,6 +271,56 @@ object Gdi {
         return null
     }
 
+    /**
+     * Parsed `CoreService.FeatureCapabilitiesResponse`.
+     *
+     * GDI FileAccess (the protobuf item list/pull path this app uses) was added
+     * on newer watches. Older devices such as the Forerunner 245 answer the
+     * capability exchange with a completely empty response, then ignore
+     * `ItemListRequest` because they only implement the legacy GFDI file
+     * transfer. Keeping the raw fields lets the sync loop tell those cases
+     * apart instead of retrying until the watchdog expires.
+     */
+    data class FeatureCapabilities(
+        val version: Int,
+        val guidStatus: Int,
+        val hasFileAccess: Boolean,
+        val hasGarminConnect: Boolean,
+    ) {
+        /** A response with no fields at all: the watch has not implemented GDI capabilities. */
+        val isEmpty: Boolean
+            get() = version == 0 && guidStatus == 0 && !hasFileAccess && !hasGarminConnect
+    }
+
+    /** Returns the parsed capabilities response, or null when the watch did not answer. */
+    fun featureCapabilities(smart: ByteArray): FeatureCapabilities? {
+        val response = coreFeatureCapabilitiesResponse(smart) ?: return null
+        var version = 0
+        var guidStatus = 0
+        var fileAccess = false
+        var garminConnect = false
+        val r = ProtoReader(response)
+        while (r.hasMore()) {
+            val tag = r.readVarint().toInt()
+            val field = tag ushr 3
+            val wire = tag and 7
+            when {
+                field == 1 && wire == 0 -> guidStatus = r.readVarint().toInt()
+                field == 2 && wire == 0 -> version = r.readVarint().toInt()
+                field == 16 && wire == 2 -> {
+                    r.readBytes()
+                    fileAccess = true
+                }
+                field == 11 && wire == 2 -> {
+                    r.readBytes()
+                    garminConnect = true
+                }
+                else -> r.skip(wire)
+            }
+        }
+        return FeatureCapabilities(version, guidStatus, fileAccess, garminConnect)
+    }
+
     /** Core.SyncRequest { use_this_connection = true }. */
     fun syncRequest(): ByteArray {
         val request = ProtoWriter().uint32(1, 1).toByteArray()
@@ -721,7 +771,10 @@ class GdiClient(
         val chunks = GdiFrame.chunks(id, smart)
         log("GDI TX response id=0x%04x %d chunk(s), %d bytes".format(id, chunks.size, smart.size))
         for (chunk in chunks) {
-            session.sendProtobuf(chunk)
+            // Direction matters: phone→watch replies use PROTOBUF_RESPONSE
+            // (5044). Sending 5043 makes the watch treat the reply as a new
+            // request on some firmware.
+            session.sendProtobufResponse(chunk)
         }
     }
 

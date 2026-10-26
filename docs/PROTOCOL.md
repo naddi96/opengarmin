@@ -303,20 +303,40 @@ The phone also sends `DEVICE_SETTINGS (5026)` to enable auto-upload/weather, and
 
 ## 7. File / FIT sync
 
-Activities and health data live on the watch as **FIT files** in its file index.
-Sync is:
+There are two file-access generations. The app picks one per watch:
 
-1. `DIRECTORY_FILTER (5007)` — `00` no filter, `01` default (pending upload), `03` pending only.
-2. Read the directory listing (file index + flags + size + type/subtype).
-3. For each file: request **read** (`READ` flag `0x80`) and stream the bytes.
-4. After successful handling: `SET_FILE_FLAGS (5008)` with `ARCHIVE` (`0x10`)
-   (and optionally `ERASE` `0x20`) to mark it consumed.
+- **GDI FileAccess** (FR255/955/965 and newer): protobuf ItemList/Pull, see §10.
+- **Legacy GFDI file transfer** (FR245 and older): the flow below. The watch
+  answers `FeatureCapabilitiesRequest` with an empty response and ignores
+  `ItemListRequest`, so detecting that response selects this path.
 
-`SET_FILE_FLAGS` payload = `[file_index:2 LE][flags:1]`.
+### 7.1 Legacy GFDI file transfer
 
-File flags: `0x04` CRYPTO, `0x08` APPEND, `0x10` ARCHIVE, `0x20` ERASE, `0x40` WRITE, `0x80` READ.
+Directory and file bytes use `DOWNLOAD_REQUEST (5002)` and
+`FILE_TRANSFER_DATA (5004)`:
 
-Directory listing flags include `WRITE`/`READ`/`ERASE` to indicate state.
+1. Send `DOWNLOAD_REQUEST` with `file_index=0` (the directory), offset `0`,
+   request type `NEW` (`1`), CRC seed `0`, size `0`, flags `0`.
+2. The watch may answer with `SYNCHRONIZATION (5037)`; reply with
+   `DIRECTORY_FILTER (5007)` `03` (pending/new only), then request file `0`
+   again after the filter ACK.
+3. `DOWNLOAD_REQUEST` status is a `RESPONSE (5000)` with original type `5002`:
+   `[garmin_status:1][download_status:1][max_file_size:4]`.
+4. `FILE_TRANSFER_DATA` payload is
+   `[flags:1][running_crc:2][offset:4][data…]`. ACK every chunk with a
+   `RESPONSE (5000)` original type `5004`:
+   `[garmin_status=0][transfer_status=0][next_offset:4]`. The CRC is the
+   running CRC-16 (seed `0`) over all file bytes.
+5. The directory file is a sequence of 16-byte entries:
+   `[file_index:2][data_type:1][sub_type:1][file_number:2][specific_flags:1][file_flags:1][size:4][timestamp:4]`.
+   `data_type=128`, `sub_type=4` is an activity; `32/44/49/72` are the wellness
+   types the app imports.
+6. Download one entry at a time with its `file_index`; archive it with
+   `SET_FILE_FLAGS (5008)` payload `[file_index:2][ARCHIVE=0x10]` so it is not
+   listed again.
+
+File flags: `0x04` CRYPTO, `0x08` APPEND, `0x10` ARCHIVE, `0x20` ERASE,
+`0x40` WRITE, `0x80` READ.
 
 FIT itself is a documented, public binary format (Garmin FIT SDK) — parsing it into
 records is a separate, well-understood step.

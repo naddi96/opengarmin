@@ -263,6 +263,11 @@ class SyncSessionController(
                 ui.log("SYNC up to date: all activity files already imported")
                 finishSync(success = true)
             },
+            onSyncError = { reason ->
+                cancelWatchdog()
+                ui.log("SYNC legacy error: $reason")
+                finishSync(success = false, error = reason)
+            },
             onActivityProgress = { progress ->
                 ui.activityProgress = progress.takeIf { it.total > 0 && it.done < it.total }
                 if (progress.total > 0 && progress.done < progress.total) {
@@ -410,6 +415,7 @@ class SyncSessionController(
     fun destroy() {
         cancelWatchdog()
         syncInProgress = false
+        coordinator?.reset()
         client?.disconnect()
         SyncGate.release(SyncGate.OWNER_UI)
         if (aclReceiverRegistered) {
@@ -458,6 +464,7 @@ class SyncSessionController(
         }
         syncInProgress = false
         ui.activityProgress = null
+        coordinator?.reset()
         client?.disconnect()
         SyncGate.release(SyncGate.OWNER_UI)
         ui.log("BLE lease released (idle)")
@@ -663,6 +670,7 @@ class SyncSessionController(
         ui.activityProgress = null
         if (!success || importError != null || !appVisible || disconnectWhenSyncFinishes) {
             disconnectWhenSyncFinishes = false
+            coordinator?.reset()
             client?.disconnect()
             SyncGate.release(SyncGate.OWNER_UI)
         }

@@ -55,7 +55,11 @@ not log HTTP request/response bodies, `Authorization` headers, provider keys,
 or chat content. The provider layer does not install a body-logging interceptor.
 Tool execution logs only names/timing at most.
 
-The device log screen is read-only and shows the same redacted protocol log.
+The device log screen shows the in-memory protocol log and can export it as a
+plain-text file through the system document picker. Watch MAC addresses are
+redacted during export; the file still contains protocol frames and the watch
+unit ID, so review it before sharing. The export is written only to the location
+you choose and is not uploaded. It is not encrypted.
 
 ## Local diagnostics
 

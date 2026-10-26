@@ -755,3 +755,31 @@ a readable map.
 - Verified on the Pixel 10a (2026-10-21): streets render muted but visible
   under the trace, which pops with its white casing, and the default osmdroid
   `+ / -` buttons no longer appear on touch.
+
+## 2026-10-26 — Forerunner 245 legacy GFDI sync
+
+A field log from a Forerunner 245 (product `3076`, firmware `13.70`) showed the
+GDI handshake completing but `FeatureCapabilitiesResponse` arriving empty
+(`6a024a00`). The watch GFDI-ACKed `CutWellnessFilesRequest` and
+`ItemListRequest` but never answered them, so the sync loop reconnected eight
+times. The FR245 does not implement GDI FileAccess; it uses the older GFDI file
+transfer.
+
+Implemented `LegacySync` (`app/.../sync/LegacySync.kt`):
+
+- `DOWNLOAD_REQUEST (5002)` for the directory, `SYNCHRONIZATION (5037)` /
+  `DIRECTORY_FILTER (5007)`, `FILE_TRANSFER_DATA (5004)` with per-chunk CRC
+  validation and ACKs, and `FILE_AVAILABLE (5009)`.
+- Parses the 16-byte directory entries, pulls `FIT_TYPE_4` activities plus the
+  health types `FIT_TYPE_29/32/44/49/72`, imports them through the existing
+  `ActivityImporter`, and archives each file with `SET_FILE_FLAGS (5008)`.
+- Product `3076` starts the legacy path directly (Garmin Connect also skips the
+  capability exchange on this watch). Other watches with an empty capability
+  response fall back to it too.
+- Workout/pace-plan uploads are failed with a clear message on legacy watches,
+  because they rely on GDI push.
+- Fixed phone→watch GDI device replies to use `PROTOBUF_RESPONSE (5044)`.
+
+Tests cover the legacy directory parser, `DOWNLOAD_REQUEST` wire bytes,
+`FILE_TRANSFER_DATA` header parsing and data-status offsets. Not yet verified on
+physical FR245 hardware.

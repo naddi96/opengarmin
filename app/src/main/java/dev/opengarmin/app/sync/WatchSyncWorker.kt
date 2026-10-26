@@ -448,6 +448,15 @@ class WatchSyncWorker(
                     noteProgress()
                     finishWhenImportsDone(BackgroundSyncOutcome.success())
                 },
+                onSyncError = { reason ->
+                    noteProgress()
+                    finishWhenImportsDone(
+                        BackgroundSyncOutcome.failure(
+                            SyncPolicy.classifyFailure(reason),
+                            reason,
+                        ),
+                    )
+                },
                 onActivityProgress = { progress ->
                     noteProgress()
                     val status = if (progress.total > 0 && progress.done < progress.total) {

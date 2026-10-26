@@ -1,6 +1,8 @@
 package dev.opengarmin.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,6 +57,7 @@ import dev.opengarmin.app.sync.ActivitySyncProgress
 import dev.opengarmin.app.sync.SyncPhase
 import dev.opengarmin.app.ui.components.EmptyState
 import dev.opengarmin.app.ui.components.IconButtonRound
+import dev.opengarmin.app.ui.components.PrimaryButton
 import dev.opengarmin.app.ui.components.PulseTab
 import dev.opengarmin.app.ui.components.PulseTabBar
 import dev.opengarmin.app.ui.screens.ActivitiesScreen
@@ -75,6 +78,9 @@ import dev.opengarmin.app.ui.screens.TrainingScreen
 import dev.opengarmin.app.ui.screens.TrendsScreen
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 
@@ -116,6 +122,8 @@ fun PulseApp(
     lastImportedLabel: String?,
     logs: List<String>,
     deviceInfo: () -> List<Pair<String, String>>,
+    syncLogExportStatus: String?,
+    onExportSyncLog: (android.net.Uri) -> Unit,
     onSync: () -> Unit,
     onScan: () -> Unit,
     onStop: () -> Unit,
@@ -500,6 +508,8 @@ fun PulseApp(
             AppRoute.Log -> LogScreen(
                 logs = logs,
                 deviceInfo = deviceInfo,
+                exportStatus = syncLogExportStatus,
+                onExport = onExportSyncLog,
                 onBack = { routeName = AppRoute.Settings.name },
                 onStop = onStop,
             )
@@ -523,9 +533,15 @@ fun PulseApp(
 private fun LogScreen(
     logs: List<String>,
     deviceInfo: () -> List<Pair<String, String>>,
+    exportStatus: String?,
+    onExport: (android.net.Uri) -> Unit,
     onBack: () -> Unit,
     onStop: () -> Unit,
 ) {
+    val stamp = remember { SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()) }
+    val exporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain"),
+    ) { uri -> if (uri != null) onExport(uri) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -547,7 +563,8 @@ private fun LogScreen(
             color = PulseColors.TextMuted,
         )
         Text(
-            "Sensitive values and provider keys are not logged. Protocol output only.",
+            "Sensitive values and provider keys are not logged. Protocol output only. " +
+                "Export is manual and redacts watch MAC addresses.",
             style = MaterialTheme.typography.labelSmall,
             color = PulseColors.TextMuted,
         )
@@ -563,6 +580,20 @@ private fun LogScreen(
                 )
             }
         }
-        dev.opengarmin.app.ui.components.PrimaryButton("Stop scan", onStop)
+        Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+            PrimaryButton(
+                "Export log",
+                onClick = { exporter.launch("opengarmin-sync-log-$stamp.txt") },
+                enabled = logs.isNotEmpty(),
+            )
+            PrimaryButton("Stop scan", onStop)
+        }
+        exportStatus?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (it.startsWith("Could not")) PulseColors.Coral else PulseColors.Teal,
+            )
+        }
     }
 }

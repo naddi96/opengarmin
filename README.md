@@ -217,7 +217,8 @@ You can also run the workflow manually from the Actions tab and supply a version
 
 | Device family | Protocol | Notes |
 |---|---|---|
-| **Forerunner 245 / 255 / 955 / 965** | GFDI v2 / Multi-Link | Primary development target. Watch uploads were verified on a Forerunner 255. |
+| **Forerunner 255 / 955 / 965** | GFDI v2 / Multi-Link + GDI FileAccess | Primary development target. Watch uploads were verified on a Forerunner 255. |
+| **Forerunner 245** | GFDI v2 / Multi-Link, legacy file transfer | Does not advertise GDI FileAccess (its capability response is empty). Uses the legacy directory sync (`DOWNLOAD_REQUEST 5002` → `FILE_TRANSFER_DATA 5004`). Activity and wellness sync are implemented and awaiting hardware verification; workout upload is not supported. |
 | **Fenix 5+ / 6 / 7, Venu / Venu 2 / 3, Instinct 2, and similar** | Same stack | Expected to work, with small per-device protocol and file differences. |
 
 Requires an Android 9+ phone with Bluetooth LE and the watch bonded in Android's

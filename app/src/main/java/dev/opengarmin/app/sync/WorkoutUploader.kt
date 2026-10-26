@@ -114,6 +114,26 @@ internal class WorkoutUploader(
         legacyGeneration++
     }
 
+    /**
+     * Fails every queued upload with a user-facing reason. Used when the watch
+     * only supports the legacy file-transfer sync and therefore cannot accept
+     * GDI workout pushes.
+     */
+    fun failPending(message: String) {
+        val pending = ArrayList<PendingWorkout>()
+        pendingWorkout?.let { pending.add(it) }
+        pending.addAll(workoutQueue)
+        workoutQueue.clear()
+        pendingWorkout = null
+        workoutRequested = false
+        legacyUpload = null
+        legacyGeneration++
+        for (item in pending) {
+            log("${item.kind} failed id=${item.id}: $message")
+            onUploadFailed(item.id, item.name, message)
+        }
+    }
+
     /** Clears in-flight upload state on a coordinator reset; the queue is kept. */
     fun reset() {
         workoutPipe = null

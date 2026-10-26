@@ -1,0 +1,664 @@
+package dev.opengarmin.app.sync
+
+import android.os.Handler
+import dev.opengarmin.protocol.Crc16
+import dev.opengarmin.protocol.GarminSession
+import dev.opengarmin.protocol.Gfdi
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+
+/**
+ * Garmin's pre-GDI ("legacy" / V1) GFDI file-transfer sync.
+ *
+ * Watches such as the Forerunner 245 do not implement the protobuf FileAccess
+ * service. Their activity list comes from a directory file requested with
+ * `DOWNLOAD_REQUEST (5002)`, and file bytes stream back as
+ * `FILE_TRANSFER_DATA (5004)` chunks. The watch asks the phone to select new
+ * files with `SYNCHRONIZATION (5037)` / `DIRECTORY_FILTER (5007)`.
+ *
+ * The flow is single-threaded: request the directory, receive and parse the
+ * 16-byte entries, then download one activity/wellness file at a time. Each
+ * successful file is archived on the watch with `SET_FILE_FLAGS (5008)` so it
+ * is not listed again on the next sync.
+ */
+internal class LegacySync(
+    private val session: GarminSession,
+    private val filesDir: File,
+    private val handler: Handler,
+    private val log: (String) -> Unit,
+    private val isActivityKnown: (String) -> Boolean,
+    private val isWellnessKnown: (String) -> Boolean,
+    private val onActivityFile: (raw: File, decoded: File, itemUid: String) -> Unit,
+    private val onWellnessFile: (decoded: File, type: String, itemUid: String) -> Unit,
+    private val onProgress: (ActivitySyncProgress) -> Unit,
+    private val onFinished: () -> Unit,
+    private val onError: (String) -> Unit,
+) {
+    private enum class Phase {
+        IDLE,
+        DIRECTORY_REQUESTED,
+        FILTER_PENDING,
+        DIRECTORY_RECEIVING,
+        FILE_REQUESTED,
+        FILE_RECEIVING,
+        DONE,
+    }
+
+    internal data class Entry(
+        val fileIndex: Int,
+        val dataType: Int,
+        val subType: Int,
+        val fileNumber: Int,
+        val specificFlags: Int,
+        val fileFlags: Int,
+        val size: Long,
+        val timestamp: Long,
+    ) {
+        val typeName: String get() = "FIT_TYPE_$subType"
+        val isActivity: Boolean get() = dataType == FIT_DATA_TYPE && subType == FIT_ACTIVITY_SUBTYPE
+        val isWellness: Boolean get() = typeName in WELLNESS_TYPES
+
+        /**
+         * Stable synthetic UID for the imported-file caches. Legacy entries do
+         * not carry a UUID; the file number, size and wire timestamp identify
+         * the same file even if the watch re-indexes the directory.
+         */
+        val uid: String
+            get() = "legacy:$dataType:$subType:$fileNumber:$size:$timestamp"
+    }
+
+    private var phase = Phase.IDLE
+    private var generation = 0
+    private var timeout: Runnable? = null
+    private var done = false
+
+    private val entries = ArrayDeque<Entry>()
+    private var current: Entry? = null
+    private var buffer: ByteArray? = null
+    private var received = 0
+    private var runningCrc = 0
+    private var doneCount = 0
+    private var total = 0
+    private var filterSent = false
+
+    fun reset() {
+        generation++
+        cancelTimeout()
+        phase = Phase.IDLE
+        entries.clear()
+        current = null
+        buffer = null
+        received = 0
+        runningCrc = 0
+        doneCount = 0
+        total = 0
+        filterSent = false
+        done = false
+    }
+
+    fun start() {
+        reset()
+        log("LEGACY: starting V1 file transfer")
+        requestDirectory()
+    }
+
+    fun isDone(): Boolean = done
+
+    fun isTransferring(): Boolean = !done
+
+    /** Feeds a decoded GFDI frame; called on the coordinator's main handler. */
+    fun onFrame(frame: Gfdi.Frame) {
+        if (done) return
+        when (frame.type) {
+            Gfdi.MessageType.RESPONSE.id -> handleResponse(frame.payload)
+            MT_FILE_TRANSFER_DATA -> handleTransferData(frame.payload)
+            MT_FILE_AVAILABLE -> handleFileAvailable(frame.payload)
+            MT_SYNCHRONIZATION -> handleSynchronization(frame.payload)
+        }
+    }
+
+    // ---- Directory ---------------------------------------------------------
+
+    private fun requestDirectory() {
+        phase = Phase.DIRECTORY_REQUESTED
+        log("LEGACY → DownloadRequest directory")
+        sendDownloadRequest(fileIndex = 0)
+        armTimeout(15_000, "directory status")
+        armFilterFallback()
+    }
+
+    /**
+     * Some firmware sends SYNCHRONIZATION before the legacy handler exists (it
+     * can arrive during the GDI capability exchange). If the directory request
+     * gets no answer, send the only-new filter once so the watch can resume.
+     */
+    private fun armFilterFallback() {
+        val expected = generation
+        handler.postDelayed({
+            if (expected != generation || done || filterSent) return@postDelayed
+            if (phase != Phase.DIRECTORY_REQUESTED) return@postDelayed
+            filterSent = true
+            phase = Phase.FILTER_PENDING
+            log("LEGACY → DirectoryFilter only-new (fallback)")
+            session.sendGfdi(
+                Gfdi.build(MT_DIRECTORY_FILTER, byteArrayOf(FILTER_ONLY_NEW.toByte())),
+            )
+            armTimeout(10_000, "directory filter")
+        }, 3_000)
+    }
+
+    private fun startNext() {
+        if (done) return
+        val next = entries.removeFirstOrNull()
+        if (next == null) {
+            finish()
+            return
+        }
+        current = next
+        phase = Phase.FILE_REQUESTED
+        log(
+            "LEGACY → DownloadRequest file=${next.fileIndex} type=${next.typeName} " +
+                "size=${next.size} remaining=${entries.size}",
+        )
+        sendDownloadRequest(next.fileIndex)
+        reportProgress()
+        armTimeout(20_000, "file ${next.fileIndex}")
+    }
+
+    private fun parseDirectory(bytes: ByteArray) {
+        val found = parseEntries(bytes).filter { entry ->
+            if (entry.isActivity && isActivityKnown(entry.uid)) {
+                log("LEGACY: activity ${entry.fileIndex} already imported")
+                false
+            } else if (entry.isWellness && isWellnessKnown(entry.uid)) {
+                log("LEGACY: wellness ${entry.typeName} ${entry.fileIndex} already imported")
+                false
+            } else {
+                true
+            }
+        }
+        if (bytes.size % DIRECTORY_ENTRY_SIZE != 0) {
+            log("LEGACY: directory length ${bytes.size} is not a multiple of $DIRECTORY_ENTRY_SIZE")
+        }
+
+        val seen = entries.map { it.uid }.toHashSet()
+        found.forEach { entry ->
+            if (seen.add(entry.uid)) entries.addLast(entry)
+        }
+        total = doneCount + entries.size + (if (current != null) 1 else 0)
+        log(
+            "LEGACY: directory files=${found.size} queued=${entries.size} " +
+                "activities=${found.count { it.isActivity }} wellness=${found.count { it.isWellness }}",
+        )
+        reportProgress()
+    }
+
+    // ---- Transfers ---------------------------------------------------------
+
+    private fun beginReceive(next: Phase, size: Long) {
+        if (size <= 0 || size > MAX_FILE_SIZE) {
+            fail("Invalid legacy file size: $size")
+            return
+        }
+        buffer = ByteArray(size.toInt())
+        received = 0
+        runningCrc = 0
+        phase = next
+        armTimeout(60_000, "file data")
+    }
+
+    private fun handleTransferData(payload: ByteArray) {
+        val chunk = fileData(payload) ?: return
+        val crc = chunk.crc
+        val offset = chunk.offset
+        val data = chunk.data
+        val target = buffer ?: run {
+            log("LEGACY: ignoring ${data.size}-byte data with no active download")
+            return
+        }
+        if (offset != received.toLong()) {
+            log("LEGACY: offset mismatch expected=$received got=$offset")
+            sendDataStatus(offset.toInt(), TRANSFER_OFFSET_MISMATCH)
+            fail("The watch lost sync while sending a file.")
+            return
+        }
+        if (offset + data.size > target.size.toLong()) {
+            log("LEGACY: chunk overflow offset=$offset len=${data.size} size=${target.size}")
+            sendDataStatus(offset.toInt(), TRANSFER_ABORT)
+            fail("The watch sent more data than expected.")
+            return
+        }
+        val computed = Crc16.continueFrom(runningCrc, data)
+        if (computed != crc) {
+            log(
+                "LEGACY: CRC mismatch offset=$offset expected=%04x got=%04x"
+                    .format(crc, computed),
+            )
+            sendDataStatus(offset.toInt(), TRANSFER_CRC_MISMATCH)
+            fail("The watch's file data was corrupted in transit.")
+            return
+        }
+        System.arraycopy(data, 0, target, offset.toInt(), data.size)
+        received += data.size
+        runningCrc = computed
+        sendDataStatus(received, TRANSFER_OK)
+        if (received >= target.size) {
+            completeTransfer()
+        } else {
+            // Inactivity timeout, not a total-transfer limit: reset it for
+            // every chunk so large FIT files can take as long as they need.
+            armTimeout(60_000, "file data")
+        }
+    }
+
+    private fun completeTransfer() {
+        val bytes = buffer ?: return
+        buffer = null
+        when (phase) {
+            Phase.DIRECTORY_RECEIVING -> {
+                phase = Phase.IDLE
+                cancelTimeout()
+                parseDirectory(bytes)
+                if (entries.isEmpty()) {
+                    finish()
+                } else {
+                    total = doneCount + entries.size + (if (current != null) 1 else 0)
+                    reportProgress()
+                    startNext()
+                }
+            }
+            Phase.FILE_RECEIVING -> {
+                val entry = current ?: run {
+                    fail("The watch finished a file it never announced.")
+                    return
+                }
+                current = null
+                phase = Phase.IDLE
+                cancelTimeout()
+                if (handleCompletedFile(entry, bytes)) {
+                    doneCount++
+                    reportProgress()
+                    sendArchive(entry.fileIndex)
+                }
+                // Give the watch a moment to apply SET_FILE_FLAGS before the
+                // next DOWNLOAD_REQUEST. The BLE write queue preserves order.
+                val expected = generation
+                handler.postDelayed({
+                    if (!done && expected == generation) startNext()
+                }, 200)
+            }
+            else -> Unit
+        }
+    }
+
+    private fun handleCompletedFile(entry: Entry, bytes: ByteArray): Boolean {
+        val file = File(filesDir, "legacy_${entry.fileIndex}_${entry.fileNumber}_${entry.timestamp}.fit")
+        try {
+            file.writeBytes(bytes)
+        } catch (e: Exception) {
+            log("LEGACY: could not write ${file.name}: ${e.message}")
+            return false
+        }
+        if (entry.isActivity) {
+            log("LEGACY: activity ${entry.typeName} index=${entry.fileIndex} bytes=${bytes.size}")
+            onActivityFile(file, file, entry.uid)
+        } else {
+            log("LEGACY: wellness ${entry.typeName} index=${entry.fileIndex} bytes=${bytes.size}")
+            onWellnessFile(file, entry.typeName, entry.uid)
+        }
+        return true
+    }
+
+    // ---- Incoming messages -------------------------------------------------
+
+    private fun handleResponse(payload: ByteArray) {
+        if (payload.size < 3) return
+        val originalType = u16(payload, 0)
+        val status = payload[2].toInt() and 0xFF
+        val data = payload.copyOfRange(3, payload.size)
+        when (originalType) {
+            MT_DOWNLOAD_REQUEST -> handleDownloadStatus(status, data)
+            MT_DIRECTORY_FILTER -> {
+                if (status != 0) {
+                    // The FR245 docs note that 5007 "does not seem to do
+                    // anything"; keep going and ask for the directory anyway.
+                    log("LEGACY: directory filter status=$status; continuing")
+                }
+                if (phase == Phase.FILTER_PENDING) {
+                    log("LEGACY: directory filter answered")
+                    requestDirectory()
+                }
+            }
+            MT_FILE_TRANSFER_DATA -> {
+                // ACK for our data ACK; nothing to do.
+            }
+            MT_SET_FILE_FLAGS -> {
+                if (status != 0) log("LEGACY: archive request status=$status")
+            }
+        }
+    }
+
+    private fun handleDownloadStatus(status: Int, data: ByteArray) {
+        if (status != 0) {
+            fail("The watch refused the download request (status $status).")
+            return
+        }
+        val parsedStatus = parseDownloadStatus(data)
+        if (parsedStatus == null) {
+            fail("The watch sent a short download status.")
+            return
+        }
+        val downloadStatus = parsedStatus.first
+        val maxSize = parsedStatus.second
+        val entry = current
+        if (downloadStatus != 0) {
+            val reason = downloadStatusName(downloadStatus)
+            if (entry == null) {
+                fail("The watch could not open its file directory ($reason).")
+            } else {
+                log("LEGACY: file ${entry.fileIndex} could not be opened ($reason); skipping")
+                current = null
+                phase = Phase.IDLE
+                cancelTimeout()
+                val expected = generation
+                handler.postDelayed({
+                    if (!done && expected == generation) startNext()
+                }, 200)
+            }
+            return
+        }
+        if (entry == null) {
+            // Directory response.
+            if (maxSize <= 0) {
+                log("LEGACY: watch announced no directory; waiting for file notifications")
+                phase = Phase.IDLE
+                cancelTimeout()
+                if (entries.isNotEmpty()) {
+                    startNext()
+                } else {
+                    armTimeout(2_000, "file list")
+                }
+                return
+            }
+            log("LEGACY: directory size=$maxSize")
+            beginReceive(Phase.DIRECTORY_RECEIVING, maxSize)
+            return
+        }
+        val size = if (maxSize > 0) maxSize else entry.size
+        log("LEGACY: file ${entry.fileIndex} size=$size")
+        beginReceive(Phase.FILE_RECEIVING, size)
+    }
+
+    private fun handleFileAvailable(payload: ByteArray) {
+        sendAck(MT_FILE_AVAILABLE)
+        if (payload.size < DIRECTORY_ENTRY_SIZE) return
+        val fileIndex = u16(payload, 0)
+        val dataType = payload[2].toInt() and 0xFF
+        val subType = payload[3].toInt() and 0xFF
+        val fileNumber = u16(payload, 4)
+        val specificFlags = payload[6].toInt() and 0xFF
+        val fileFlags = payload[7].toInt() and 0xFF
+        val size = u32(payload, 8)
+        val timestamp = u32(payload, 12)
+        if (fileIndex == 0 || dataType != FIT_DATA_TYPE || size <= 0) return
+        val entry = Entry(
+            fileIndex = fileIndex,
+            dataType = dataType,
+            subType = subType,
+            fileNumber = fileNumber,
+            specificFlags = specificFlags,
+            fileFlags = fileFlags,
+            size = size,
+            timestamp = timestamp,
+        )
+        if (!entry.isActivity && !entry.isWellness) return
+        if (entry.isActivity && isActivityKnown(entry.uid)) return
+        if (entry.isWellness && isWellnessKnown(entry.uid)) return
+        if (current?.fileIndex == entry.fileIndex ||
+            entries.any { it.fileIndex == entry.fileIndex }
+        ) {
+            return
+        }
+
+        entries.addLast(entry)
+        total = doneCount + entries.size + (if (current != null) 1 else 0)
+        reportProgress()
+        log("LEGACY: file available ${entry.typeName} index=${entry.fileIndex} size=${entry.size}")
+        if (phase == Phase.IDLE && current == null) {
+            startNext()
+        } else if (phase == Phase.DIRECTORY_REQUESTED) {
+            // Some firmware answers the directory request only with
+            // FILE_AVAILABLE notifications. If no directory status follows,
+            // start the queued files after a short grace period.
+            val expected = generation
+            handler.postDelayed({
+                if (!done && expected == generation && current == null &&
+                    phase == Phase.DIRECTORY_REQUESTED && entries.isNotEmpty()
+                ) {
+                    cancelTimeout()
+                    phase = Phase.IDLE
+                    startNext()
+                }
+            }, 2_000)
+        }
+    }
+
+    private fun handleSynchronization(payload: ByteArray) {
+        sendAck(MT_SYNCHRONIZATION)
+        val type = if (payload.isNotEmpty()) payload[0].toInt() and 0xFF else 0
+        val size = if (payload.size > 1) payload[1].toInt() and 0xFF else 0
+        val mask = if (size > 0 && payload.size >= 2 + size) {
+            payload.copyOfRange(2, 2 + size).joinToString("") { "%02x".format(it) }
+        } else {
+            ""
+        }
+        log("LEGACY: synchronization type=$type mask=$mask")
+        // Legacy syncing is driven by the user: always select new files.
+        if (!filterSent && (phase == Phase.IDLE || phase == Phase.DIRECTORY_REQUESTED)) {
+            filterSent = true
+            phase = Phase.FILTER_PENDING
+            log("LEGACY → DirectoryFilter only-new")
+            session.sendGfdi(Gfdi.build(MT_DIRECTORY_FILTER, byteArrayOf(FILTER_ONLY_NEW.toByte())))
+            armTimeout(10_000, "directory filter")
+        }
+    }
+
+    // ---- Messaging ---------------------------------------------------------
+
+    private fun sendDownloadRequest(fileIndex: Int) {
+        session.sendGfdi(Gfdi.build(MT_DOWNLOAD_REQUEST, downloadRequestPayload(fileIndex)))
+    }
+
+    private fun sendDataStatus(offset: Int, transferStatus: Int) {
+        session.sendGfdi(
+            Gfdi.buildResponse(
+                MT_FILE_TRANSFER_DATA,
+                Gfdi.Status.ACK.code,
+                dataStatusPayload(offset, transferStatus),
+            ),
+        )
+    }
+
+    private fun sendArchive(fileIndex: Int) {
+        val payload = ByteBuffer.allocate(3).order(ByteOrder.LITTLE_ENDIAN)
+            .putShort(fileIndex.toShort())
+            .put(FILE_FLAG_ARCHIVE.toByte())
+            .array()
+        log("LEGACY → SetFileFlags archive index=$fileIndex")
+        session.sendGfdi(Gfdi.build(MT_SET_FILE_FLAGS, payload))
+    }
+
+    private fun sendAck(type: Int) {
+        session.sendGfdi(Gfdi.buildResponse(type, Gfdi.Status.ACK.code))
+    }
+
+    // ---- Completion / errors ----------------------------------------------
+
+    private fun finish() {
+        if (done) return
+        done = true
+        phase = Phase.DONE
+        cancelTimeout()
+        onProgress(ActivitySyncProgress(done = doneCount, total = total, currentSize = null))
+        log("LEGACY: complete files=$doneCount")
+        onFinished()
+    }
+
+    private fun fail(message: String) {
+        if (done) return
+        done = true
+        phase = Phase.DONE
+        cancelTimeout()
+        log("LEGACY: $message")
+        onError(message)
+    }
+
+    private fun reportProgress() {
+        onProgress(
+            ActivitySyncProgress(
+                done = doneCount,
+                total = total.coerceAtLeast(doneCount),
+                currentSize = current?.size,
+            ),
+        )
+    }
+
+    private fun armTimeout(ms: Long, what: String) {
+        cancelTimeout()
+        val expected = generation
+        val runnable = Runnable {
+            if (expected == generation && !done) {
+                fail("The watch stopped responding while waiting for $what.")
+            }
+        }
+        timeout = runnable
+        handler.postDelayed(runnable, ms)
+    }
+
+    private fun cancelTimeout() {
+        timeout?.let { handler.removeCallbacks(it) }
+        timeout = null
+    }
+
+    private fun downloadStatusName(code: Int): String = when (code) {
+        1 -> "INDEX_NOT_FOUND"
+        2 -> "NOT_READABLE"
+        3 -> "NOT_READY"
+        4 -> "INVALID_REQUEST"
+        5 -> "CRC_MISMATCH"
+        6 -> "RANGE_EXCEEDS_FILE"
+        else -> "UNKNOWN"
+    }
+
+    internal data class FileChunk(val crc: Int, val offset: Long, val data: ByteArray)
+
+    internal companion object {
+        const val MT_DOWNLOAD_REQUEST = 5002
+        const val MT_FILE_TRANSFER_DATA = 5004
+        const val MT_DIRECTORY_FILTER = 5007
+        const val MT_SET_FILE_FLAGS = 5008
+        const val MT_FILE_AVAILABLE = 5009
+        const val MT_SYNCHRONIZATION = 5037
+
+        const val REQUEST_TYPE_NEW = 1
+        const val FILTER_ONLY_NEW = 3
+        const val FILE_FLAG_ARCHIVE = 0x10
+
+        const val TRANSFER_OK = 0
+        const val TRANSFER_ABORT = 2
+        const val TRANSFER_CRC_MISMATCH = 3
+        const val TRANSFER_OFFSET_MISMATCH = 4
+
+        const val FIT_DATA_TYPE = 128
+        const val FIT_ACTIVITY_SUBTYPE = 4
+
+        const val DOWNLOAD_REQUEST_SIZE = 14
+        const val DIRECTORY_ENTRY_SIZE = 16
+        const val FILE_DATA_HEADER = 7
+
+        const val MAX_FILE_SIZE = 64L * 1024 * 1024
+
+        val WELLNESS_TYPES = setOf(
+            "FIT_TYPE_29", // monitoring day
+            "FIT_TYPE_32", // monitoring delta
+            "FIT_TYPE_44", // biometric / metrics
+            "FIT_TYPE_49", // sleep
+            "FIT_TYPE_72", // Firstbeat daily analytics
+        )
+
+        /** Payload for `DOWNLOAD_REQUEST (5002)`; the status reply supplies the size. */
+        internal fun downloadRequestPayload(fileIndex: Int): ByteArray =
+            ByteBuffer.allocate(DOWNLOAD_REQUEST_SIZE).order(ByteOrder.LITTLE_ENDIAN)
+                .putShort(fileIndex.toShort())
+                .putInt(0) // data offset
+                .put(REQUEST_TYPE_NEW.toByte())
+                .putShort(0) // CRC seed
+                .putInt(0) // data size
+                .put(0) // request flags
+                .array()
+
+        /** Payload for the ACK sent after every `FILE_TRANSFER_DATA (5004)` chunk. */
+        internal fun dataStatusPayload(offset: Int, transferStatus: Int): ByteArray =
+            ByteBuffer.allocate(5).order(ByteOrder.LITTLE_ENDIAN)
+                .put(transferStatus.toByte())
+                .putInt(offset)
+                .array()
+
+        /** Parses `[download_status:u8][max_file_size:u32]`; null when truncated. */
+        internal fun parseDownloadStatus(data: ByteArray): Pair<Int, Long>? {
+            if (data.size < 5) return null
+            return (data[0].toInt() and 0xFF) to u32(data, 1)
+        }
+
+        /** Parses `[flags:u8][crc:u16][offset:u32][data…]`; null when truncated. */
+        internal fun fileData(payload: ByteArray): FileChunk? {
+            if (payload.size < FILE_DATA_HEADER) return null
+            return FileChunk(
+                crc = u16(payload, 1),
+                offset = u32(payload, 3),
+                data = payload.copyOfRange(FILE_DATA_HEADER, payload.size),
+            )
+        }
+
+        /** Parses the 16-byte legacy directory entries, ignoring non-FIT traffic. */
+        internal fun parseEntries(bytes: ByteArray): List<Entry> {
+            val out = ArrayList<Entry>()
+            var offset = 0
+            while (offset + DIRECTORY_ENTRY_SIZE <= bytes.size) {
+                val fileIndex = u16(bytes, offset)
+                val dataType = bytes[offset + 2].toInt() and 0xFF
+                val subType = bytes[offset + 3].toInt() and 0xFF
+                val fileNumber = u16(bytes, offset + 4)
+                val specificFlags = bytes[offset + 6].toInt() and 0xFF
+                val fileFlags = bytes[offset + 7].toInt() and 0xFF
+                val size = u32(bytes, offset + 8)
+                val timestamp = u32(bytes, offset + 12)
+                offset += DIRECTORY_ENTRY_SIZE
+
+                if (fileIndex == 0 || dataType != FIT_DATA_TYPE || size <= 0) continue
+                val entry = Entry(
+                    fileIndex = fileIndex,
+                    dataType = dataType,
+                    subType = subType,
+                    fileNumber = fileNumber,
+                    specificFlags = specificFlags,
+                    fileFlags = fileFlags,
+                    size = size,
+                    timestamp = timestamp,
+                )
+                if (entry.isActivity || entry.isWellness) out.add(entry)
+            }
+            return out
+        }
+
+        internal fun u16(data: ByteArray, offset: Int): Int =
+            (data[offset].toInt() and 0xFF) or ((data[offset + 1].toInt() and 0xFF) shl 8)
+
+        internal fun u32(data: ByteArray, offset: Int): Long =
+            (data[offset].toLong() and 0xFF) or
+                ((data[offset + 1].toLong() and 0xFF) shl 8) or
+                ((data[offset + 2].toLong() and 0xFF) shl 16) or
+                ((data[offset + 3].toLong() and 0xFF) shl 24)
+    }
+}
