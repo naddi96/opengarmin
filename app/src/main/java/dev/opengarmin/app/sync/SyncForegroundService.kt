@@ -6,6 +6,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
+import dev.opengarmin.app.diagnostics.Diagnostics
 
 /**
  * Keeps the process alive while the watch sync runs and hosts
@@ -36,7 +37,13 @@ class SyncForegroundService : Service() {
                     0
                 },
             )
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            Diagnostics.record(
+                area = Diagnostics.AREA_SYNC,
+                code = "FGS_START_FAILED",
+                message = "The sync foreground service could not start.",
+                throwable = error,
+            )
             stopSelf()
         }
         return START_NOT_STICKY

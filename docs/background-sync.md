@@ -104,10 +104,13 @@ instead of posting the same notification on every interval.
 
 On Android 12+, the OS may deny a foreground-service start when a periodic
 worker begins while the app is in the background
-(`startForegroundService() not allowed`). That must not fail the sync: the
-worker logs the denial, continues headless within the JobScheduler execution
-window, and posts the final notification normally. The foreground notification
-is used whenever the OS permits it.
+(`startForegroundService() not allowed`). Do not continue headless: without the
+foreground service the process is cached and Android/Samsung can kill it
+mid-transfer, leaving the persisted status at "syncing". The worker now records
+`BG_FOREGROUND_UNAVAILABLE`, returns a **busy** outcome with
+“Android blocked the background sync. Open OpenGarmin to sync.”, and lets the
+next interval or the foreground app try again. Users on aggressive battery
+managers should also set OpenGarmin to **Unrestricted** battery usage.
 
 The channel is low-importance, silent, and private-visibility; notification
 content is hidden on the lock screen unless the user changes the system setting.

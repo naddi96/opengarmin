@@ -16,6 +16,7 @@ import dev.opengarmin.app.ble.GarminBleClient
 import dev.opengarmin.app.data.ActivityRepository
 import dev.opengarmin.app.data.AppDatabase
 import dev.opengarmin.app.data.WellnessFileTypes
+import dev.opengarmin.app.diagnostics.Diagnostics
 import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
 import kotlinx.coroutines.CancellationException
@@ -132,10 +133,25 @@ class WatchSyncWorker(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                // Running a long BLE sync headless makes the process cached;
+                // Samsung/Android can then kill it mid-transfer and leave the
+                // persisted status at "syncing". Fail fast with an actionable
+                // message instead, and let the next interval (or the user
+                // opening the app) try again.
                 Log.d(
                     TAG,
-                    "foreground service unavailable; running headless: " +
+                    "foreground service unavailable; aborting background sync: " +
                         "${error.javaClass.simpleName}: ${error.message}",
+                )
+                Diagnostics.record(
+                    area = Diagnostics.AREA_SYNC,
+                    code = "BG_FOREGROUND_UNAVAILABLE",
+                    message = "Background sync could not start a foreground service.",
+                    throwable = error,
+                )
+                return BackgroundSyncOutcome.failure(
+                    SyncPolicy.FailureKind.BUSY,
+                    "Android blocked the background sync. Open OpenGarmin to sync.",
                 )
             }
             outcome = block { state -> updates.trySend(state) }
