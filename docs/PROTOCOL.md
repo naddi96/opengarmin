@@ -312,28 +312,39 @@ There are two file-access generations. The app picks one per watch:
 
 ### 7.1 Legacy GFDI file transfer
 
-Directory and file bytes use `DOWNLOAD_REQUEST (5002)` and
-`FILE_TRANSFER_DATA (5004)`:
+Garmin Connect's `LegacySyncManager` and `FileManager` use this sequence
+(reconstructed from the 5.19.1 APK):
 
-1. Send `DOWNLOAD_REQUEST` with `file_index=0` (the directory), offset `0`,
-   request type `NEW` (`1`), CRC seed `0`, size `0`, flags `0`.
-2. The watch may answer with `SYNCHRONIZATION (5037)`; reply with
-   `DIRECTORY_FILTER (5007)` `03` (pending/new only), then request file `0`
-   again after the filter ACK.
-3. `DOWNLOAD_REQUEST` status is a `RESPONSE (5000)` with original type `5002`:
+1. Send the GDI `Core.SyncRequest` (empty `SyncRequest`, i.e. Smart
+   `6a020a00`). The watch answers with a `SyncResponse` and then emits
+   `SYNCHRONIZATION (5037)`.
+2. On `5037`, reply with a `RESPONSE` ACK and start the file manager:
+   `DIRECTORY_FILTER (5007)` with `03` (pending/new only).
+3. After the filter response, send `SUPPORTED_FILE_TYPES_REQUEST (5031)` with
+   an empty payload. Garmin parses `[count][type:1][subtype:1][nameLen:1][name]…`
+   and proceeds even when the watch answers `UNSUPPORTED`.
+4. Send `DOWNLOAD_REQUEST` with `file_index=0` (the directory), offset `0`,
+   request type `NEW` (`1`), CRC seed `0`, size `0`, flags `1` in Garmin
+   Connect (compression allowed; the app uses `0` and expects raw 5004).
+5. `DOWNLOAD_REQUEST` status is a `RESPONSE (5000)` with original type `5002`:
    `[garmin_status:1][download_status:1][max_file_size:4]`.
-4. `FILE_TRANSFER_DATA` payload is
+6. `FILE_TRANSFER_DATA` payload is
    `[flags:1][running_crc:2][offset:4][data…]`. ACK every chunk with a
    `RESPONSE (5000)` original type `5004`:
    `[garmin_status=0][transfer_status=0][next_offset:4]`. The CRC is the
    running CRC-16 (seed `0`) over all file bytes.
-5. The directory file is a sequence of 16-byte entries:
+7. The directory file starts with a 16-byte header/directory entry, followed by
+   16-byte entries:
    `[file_index:2][data_type:1][sub_type:1][file_number:2][specific_flags:1][file_flags:1][size:4][timestamp:4]`.
-   `data_type=128`, `sub_type=4` is an activity; `32/44/49/72` are the wellness
-   types the app imports.
-6. Download one entry at a time with its `file_index`; archive it with
+   Garmin's parser skips the first entry; `data_type=128`, `sub_type=4` is an
+   activity; `32/44/49/72` are the wellness types the app imports.
+8. Download one entry at a time with its `file_index`; archive it with
    `SET_FILE_FLAGS (5008)` payload `[file_index:2][ARCHIVE=0x10]` so it is not
    listed again.
+
+If the watch sends compressed `FILE_TRANSFER_DATA (5054)` because compression
+was requested, Garmin's `CompressedDataProcessor` inflates it. The app requests
+uncompressed data (flags `0`) so it only handles `5004`.
 
 File flags: `0x04` CRYPTO, `0x08` APPEND, `0x10` ARCHIVE, `0x20` ERASE,
 `0x40` WRITE, `0x80` READ.

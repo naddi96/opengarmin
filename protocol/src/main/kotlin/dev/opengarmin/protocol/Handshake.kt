@@ -106,9 +106,12 @@ object Handshake {
     fun deviceSettings(): ByteArray =
         Gfdi.build(Gfdi.MessageType.DEVICE_SETTINGS.id, byteArrayOf(3, 6, 1, 1, 7, 1, 1, 8, 1, 1))
 
-    /** SYSTEM_EVENT (5030) with SYNC_READY payload (8). */
+    /**
+     * SYSTEM_EVENT (5030) with the SYNC_READY event (8) and its value byte.
+     * Garmin Connect's `SystemEventMessage` always writes the value byte.
+     */
     fun systemEventSyncReady(): ByteArray =
-        Gfdi.build(Gfdi.MessageType.SYSTEM_EVENT.id, byteArrayOf(8))
+        Gfdi.build(Gfdi.MessageType.SYSTEM_EVENT.id, byteArrayOf(8, 0))
 
     /** SET_FILE_FLAGS (5008): mark a file ARCHIVE (0x10). */
     fun setFileFlags(fileIndex: Int, flags: Int, seq: Int? = null): ByteArray =

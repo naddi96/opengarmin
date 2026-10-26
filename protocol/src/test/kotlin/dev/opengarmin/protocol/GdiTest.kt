@@ -214,6 +214,12 @@ class GdiTest {
     }
 
     @Test
+    fun `legacy sync request matches garmin connect`() {
+        assertEquals("6a020a00", Hex.encode(Gdi.syncRequest()))
+        assertEquals("6a040a020801", Hex.encode(Gdi.syncRequest(useThisConnection = true)))
+    }
+
+    @Test
     fun `feature capabilities detect file access support`() {
         // FR255: version 1 + FileAccess capabilities (extension 16).
         val modern = assertNotNull(

@@ -321,9 +321,16 @@ object Gdi {
         return FeatureCapabilities(version, guidStatus, fileAccess, garminConnect)
     }
 
-    /** Core.SyncRequest { use_this_connection = true }. */
-    fun syncRequest(): ByteArray {
-        val request = ProtoWriter().uint32(1, 1).toByteArray()
+    /**
+     * Core.SyncRequest.
+     *
+     * Garmin Connect's legacy `SyncManager` builds this with
+     * `use_this_connection = false` (the field is omitted on the wire), then
+     * waits for the watch's GFDI `SYNCHRONIZATION (5037)` message before it
+     * asks the legacy file manager for the directory.
+     */
+    fun syncRequest(useThisConnection: Boolean = false): ByteArray {
+        val request = ProtoWriter().uint32(1, if (useThisConnection) 1 else 0).toByteArray()
         val core = ProtoWriter().bytes(1, request).toByteArray()
         return ProtoWriter().bytes(SMART_CORE, core).toByteArray()
     }

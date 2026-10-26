@@ -483,6 +483,12 @@ class SyncCoordinator(
             filesDir = filesDir,
             handler = handler,
             log = log,
+            requestSyncSession = {
+                log("GDI → SyncRequest")
+                gdi.sendSmart(Gdi.syncRequest()) {
+                    log("GDI: sync response")
+                }
+            },
             isActivityKnown = isItemKnown,
             isWellnessKnown = isWellnessItemKnown,
             onActivityFile = onFinished,

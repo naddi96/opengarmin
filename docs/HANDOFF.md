@@ -783,3 +783,13 @@ Implemented `LegacySync` (`app/.../sync/LegacySync.kt`):
 Tests cover the legacy directory parser, `DOWNLOAD_REQUEST` wire bytes,
 `FILE_TRANSFER_DATA` header parsing and data-status offsets. Not yet verified on
 physical FR245 hardware.
+
+Follow-up after re-reading Garmin Connect 5.19.1's `LegacySyncManager` and
+`com.garmin.gfdi.file.FileManager`: the official sequence is GDI `SyncRequest`
+(empty, `6a020a00`) → watch `SYNCHRONIZATION (5037)` → `DIRECTORY_FILTER (5007)`
+→ `SUPPORTED_FILE_TYPES_REQUEST (5031)` → `DOWNLOAD_REQUEST (5002)` for the
+directory. Garmin parses the directory from offset 16 (a header entry) and
+requests compression (`flags=1`); the app still requests uncompressed data
+(`flags=0`) and handles `5004`. `SYNC_READY` now includes the value byte
+(`[8,0]`), matching `SystemEventMessage`. The legacy path now follows the
+official 5037/5007/5031/5002 order and logs the directory header for diagnosis.

@@ -4,6 +4,7 @@ import android.os.Handler
 import dev.opengarmin.protocol.Crc16
 import dev.opengarmin.protocol.GarminSession
 import dev.opengarmin.protocol.Gfdi
+import dev.opengarmin.protocol.Hex
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -27,6 +28,8 @@ internal class LegacySync(
     private val filesDir: File,
     private val handler: Handler,
     private val log: (String) -> Unit,
+    /** Sends the GDI Core.SyncRequest that makes the watch emit 5037. */
+    private val requestSyncSession: () -> Unit,
     private val isActivityKnown: (String) -> Boolean,
     private val isWellnessKnown: (String) -> Boolean,
     private val onActivityFile: (raw: File, decoded: File, itemUid: String) -> Unit,
@@ -37,8 +40,10 @@ internal class LegacySync(
 ) {
     private enum class Phase {
         IDLE,
+        WAIT_SYNC_SESSION,
+        WAIT_FILTER,
+        WAIT_SUPPORTED_TYPES,
         DIRECTORY_REQUESTED,
-        FILTER_PENDING,
         DIRECTORY_RECEIVING,
         FILE_REQUESTED,
         FILE_RECEIVING,
@@ -80,7 +85,7 @@ internal class LegacySync(
     private var runningCrc = 0
     private var doneCount = 0
     private var total = 0
-    private var filterSent = false
+    private var fileListStarted = false
 
     fun reset() {
         generation++
@@ -93,14 +98,28 @@ internal class LegacySync(
         runningCrc = 0
         doneCount = 0
         total = 0
-        filterSent = false
+        fileListStarted = false
         done = false
     }
 
     fun start() {
         reset()
         log("LEGACY: starting V1 file transfer")
-        requestDirectory()
+        // Garmin Connect's legacy SyncManager sends a Core.SyncRequest and
+        // waits for the watch's SYNCHRONIZATION (5037) before touching the
+        // file manager. Fall back to the directory handshake if the watch
+        // does not answer.
+        phase = Phase.WAIT_SYNC_SESSION
+        requestSyncSession()
+        val expected = generation
+        handler.postDelayed({
+            if (expected == generation && !done && !fileListStarted &&
+                phase == Phase.WAIT_SYNC_SESSION
+            ) {
+                log("LEGACY: no 5037 sync notification; starting file list anyway")
+                startFileList()
+            }
+        }, SYNC_SESSION_TIMEOUT_MS)
     }
 
     fun isDone(): Boolean = done
@@ -120,32 +139,50 @@ internal class LegacySync(
 
     // ---- Directory ---------------------------------------------------------
 
+    /**
+     * Mirrors Garmin Connect's `FileManager.listFiles`:
+     * `DIRECTORY_FILTER (5007)` → `SUPPORTED_FILE_TYPES (5031)` →
+     * `DOWNLOAD_REQUEST (5002)` for file index 0.
+     */
+    private fun startFileList() {
+        if (fileListStarted || done) return
+        fileListStarted = true
+        cancelTimeout()
+        phase = Phase.WAIT_FILTER
+        log("LEGACY → DirectoryFilter only-new")
+        session.sendGfdi(Gfdi.build(MT_DIRECTORY_FILTER, byteArrayOf(FILTER_ONLY_NEW.toByte())))
+        // Some firmware does not answer 5007 but still serves the directory.
+        val expected = generation
+        handler.postDelayed({
+            if (expected == generation && !done && phase == Phase.WAIT_FILTER) {
+                log("LEGACY: no filter response; requesting supported types")
+                requestSupportedFileTypes()
+            }
+        }, STEP_TIMEOUT_MS)
+    }
+
+    private fun requestSupportedFileTypes() {
+        if (done) return
+        cancelTimeout()
+        phase = Phase.WAIT_SUPPORTED_TYPES
+        log("LEGACY → SupportedFileTypesRequest")
+        session.sendGfdi(Gfdi.build(MT_SUPPORTED_FILE_TYPES))
+        val expected = generation
+        handler.postDelayed({
+            if (expected == generation && !done && phase == Phase.WAIT_SUPPORTED_TYPES) {
+                log("LEGACY: no supported-file-types response; requesting directory")
+                requestDirectory()
+            }
+        }, STEP_TIMEOUT_MS)
+    }
+
     private fun requestDirectory() {
+        if (done) return
+        cancelTimeout()
         phase = Phase.DIRECTORY_REQUESTED
         log("LEGACY → DownloadRequest directory")
         sendDownloadRequest(fileIndex = 0)
         armTimeout(15_000, "directory status")
-        armFilterFallback()
-    }
-
-    /**
-     * Some firmware sends SYNCHRONIZATION before the legacy handler exists (it
-     * can arrive during the GDI capability exchange). If the directory request
-     * gets no answer, send the only-new filter once so the watch can resume.
-     */
-    private fun armFilterFallback() {
-        val expected = generation
-        handler.postDelayed({
-            if (expected != generation || done || filterSent) return@postDelayed
-            if (phase != Phase.DIRECTORY_REQUESTED) return@postDelayed
-            filterSent = true
-            phase = Phase.FILTER_PENDING
-            log("LEGACY → DirectoryFilter only-new (fallback)")
-            session.sendGfdi(
-                Gfdi.build(MT_DIRECTORY_FILTER, byteArrayOf(FILTER_ONLY_NEW.toByte())),
-            )
-            armTimeout(10_000, "directory filter")
-        }, 3_000)
     }
 
     private fun startNext() {
@@ -167,7 +204,7 @@ internal class LegacySync(
     }
 
     private fun parseDirectory(bytes: ByteArray) {
-        val found = parseEntries(bytes).filter { entry ->
+        val found = parseEntries(bytes, directoryStart(bytes)).filter { entry ->
             if (entry.isActivity && isActivityKnown(entry.uid)) {
                 log("LEGACY: activity ${entry.fileIndex} already imported")
                 false
@@ -259,6 +296,10 @@ internal class LegacySync(
             Phase.DIRECTORY_RECEIVING -> {
                 phase = Phase.IDLE
                 cancelTimeout()
+                log(
+                    "LEGACY: directory received ${bytes.size} bytes, header=" +
+                        Hex.encode(bytes.copyOfRange(0, minOf(32, bytes.size))),
+                )
                 parseDirectory(bytes)
                 if (entries.isEmpty()) {
                     finish()
@@ -322,11 +363,21 @@ internal class LegacySync(
             MT_DIRECTORY_FILTER -> {
                 if (status != 0) {
                     // The FR245 docs note that 5007 "does not seem to do
-                    // anything"; keep going and ask for the directory anyway.
+                    // anything"; keep going anyway.
                     log("LEGACY: directory filter status=$status; continuing")
                 }
-                if (phase == Phase.FILTER_PENDING) {
+                if (phase == Phase.WAIT_FILTER) {
                     log("LEGACY: directory filter answered")
+                    requestSupportedFileTypes()
+                }
+            }
+            MT_SUPPORTED_FILE_TYPES -> {
+                if (status != 0) {
+                    log("LEGACY: supported file types status=$status; continuing")
+                } else {
+                    logSupportedFileTypes(data)
+                }
+                if (phase == Phase.WAIT_SUPPORTED_TYPES) {
                     requestDirectory()
                 }
             }
@@ -454,14 +505,28 @@ internal class LegacySync(
             ""
         }
         log("LEGACY: synchronization type=$type mask=$mask")
-        // Legacy syncing is driven by the user: always select new files.
-        if (!filterSent && (phase == Phase.IDLE || phase == Phase.DIRECTORY_REQUESTED)) {
-            filterSent = true
-            phase = Phase.FILTER_PENDING
-            log("LEGACY → DirectoryFilter only-new")
-            session.sendGfdi(Gfdi.build(MT_DIRECTORY_FILTER, byteArrayOf(FILTER_ONLY_NEW.toByte())))
-            armTimeout(10_000, "directory filter")
+        // This is the official trigger: the watch is now ready for the
+        // directory handshake.
+        startFileList()
+    }
+
+    private fun logSupportedFileTypes(data: ByteArray) {
+        if (data.isEmpty()) return
+        val count = data[0].toInt() and 0xFF
+        val names = ArrayList<String>()
+        var offset = 1
+        repeat(count) {
+            if (offset + 3 > data.size) return@repeat
+            val dataType = data[offset].toInt() and 0xFF
+            val subType = data[offset + 1].toInt() and 0xFF
+            val nameLen = data[offset + 2].toInt() and 0xFF
+            offset += 3
+            if (offset + nameLen > data.size) return@repeat
+            val name = String(data, offset, nameLen, Charsets.UTF_8)
+            offset += nameLen
+            names.add("$dataType/$subType:$name")
         }
+        if (names.isNotEmpty()) log("LEGACY: supported types ${names.joinToString(", ")}")
     }
 
     // ---- Messaging ---------------------------------------------------------
@@ -559,6 +624,7 @@ internal class LegacySync(
         const val MT_DIRECTORY_FILTER = 5007
         const val MT_SET_FILE_FLAGS = 5008
         const val MT_FILE_AVAILABLE = 5009
+        const val MT_SUPPORTED_FILE_TYPES = 5031
         const val MT_SYNCHRONIZATION = 5037
 
         const val REQUEST_TYPE_NEW = 1
@@ -578,6 +644,8 @@ internal class LegacySync(
         const val FILE_DATA_HEADER = 7
 
         const val MAX_FILE_SIZE = 64L * 1024 * 1024
+        const val STEP_TIMEOUT_MS = 3_000L
+        const val SYNC_SESSION_TIMEOUT_MS = 5_000L
 
         val WELLNESS_TYPES = setOf(
             "FIT_TYPE_29", // monitoring day
@@ -621,10 +689,22 @@ internal class LegacySync(
             )
         }
 
+        /**
+         * Garmin's `FileManager.listFiles` skips a 16-byte header before the
+         * directory entries. Some captures start directly with entries, so
+         * only skip it when the first block is the root/directory entry.
+         */
+        internal fun directoryStart(bytes: ByteArray): Int =
+            if (bytes.size >= 32 && u16(bytes, 0) == 0 && (bytes[2].toInt() and 0xFF) == 0) {
+                DIRECTORY_ENTRY_SIZE
+            } else {
+                0
+            }
+
         /** Parses the 16-byte legacy directory entries, ignoring non-FIT traffic. */
-        internal fun parseEntries(bytes: ByteArray): List<Entry> {
+        internal fun parseEntries(bytes: ByteArray, start: Int = 0): List<Entry> {
             val out = ArrayList<Entry>()
-            var offset = 0
+            var offset = start
             while (offset + DIRECTORY_ENTRY_SIZE <= bytes.size) {
                 val fileIndex = u16(bytes, offset)
                 val dataType = bytes[offset + 2].toInt() and 0xFF

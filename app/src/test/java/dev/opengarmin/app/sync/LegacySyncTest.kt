@@ -73,6 +73,17 @@ class LegacySyncTest {
     }
 
     @Test
+    fun `skips the directory header before parsing entries`() {
+        val header = ByteArray(16)
+        val activity = entry(fileIndex = 0x0102, dataType = 128, subType = 4)
+        val bytes = header + activity
+        assertEquals(16, LegacySync.directoryStart(bytes))
+        val parsed = LegacySync.parseEntries(bytes, LegacySync.directoryStart(bytes))
+        assertEquals(1, parsed.size)
+        assertEquals(0x0102, parsed[0].fileIndex)
+    }
+
+    @Test
     fun `download request payload matches the legacy wire layout`() {
         assertEquals(
             "2301000000000100000000000000",
