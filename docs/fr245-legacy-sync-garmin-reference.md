@@ -400,3 +400,74 @@ To regenerate the good decompile of the classes that `jadx_out` missed:
 JAVA_HOME=tools/jdk tools/jadx/bin/jadx --no-res \
   -d /tmp/opencode/jadx6 apk/extracted/classes6.dex
 ```
+
+---
+
+## 9. Firmware / root-cause research
+
+There is no public **full flash dump** of the FR245 in the repositories found so
+far, but the firmware *has* been reversed:
+
+- **Anvil Secure reversed the Forerunner 245 Music firmware (2022–2023).** They
+  extracted the `FW_ALL_BIN` record from an official Garmin beta `.GCD` update,
+  loaded it in Ghidra as **ARM:LE:32:Cortex with the image based at `0x3000`**,
+  and documented the GarminOS/TVM internals. The research repository contains
+  tools and advisories, not the firmware image itself:
+  - https://www.anvilsecure.com/blog/compromising-garmins-sport-watches-a-deep-dive-into-garminos-and-its-monkeyc-virtual-machine.html
+  - https://github.com/anvilsecure/garmin-ciq-app-research
+  - https://github.com/anvilventures/GhidraGarminApp (Ghidra loader for PRG apps)
+
+- **GCD format** (the container Anvil parsed):
+  - https://www.memotech.franken.de/FileFormats/Garmin_GCD_Format.pdf
+
+- **GCD extractors** that can pull `FW_ALL_BIN`:
+  - https://github.com/RomainQuidet/garminExtractor
+  - https://github.com/theodorebeaupre-prog/garmin-gcd-toolkit
+  - https://github.com/rbran/gcd-rs
+  - https://github.com/slxsh9/GARMIN_GCD_Extractor
+
+- **Gadgetbridge's Garmin implementation** is the other public reference for the
+  BLE file manager and activity flags:
+  - https://codeberg.org/Freeyourgadget/Gadgetbridge
+  - https://gadgetbridge.org/basics/topics/garmin
+
+### Getting the exact 13.70 image
+
+Garmin no longer serves the old beta `.zip` files (`Forerunner245_*Beta.zip`
+links are 404). The 13.70 beta was OTA-only:
+https://forums.garmin.com/beta-program/forerunner-245-series/f/announcements/392136/public-beta-version-13-70---100
+
+The practical sources are:
+
+1. The watch itself via USB: look for `GARMIN/GUPDATE.GCD`,
+   `GARMIN/RemoteSW/GUP3078.GCD`, or any other `.gcd` file. The main firmware
+   update is sometimes removed after installation, but the remote-SW file often
+   remains.
+2. The Garmin Express cache on the PC that performed the update (search for
+   `*.gcd` under the Garmin Express/CoreService data directories).
+3. A beta firmware zip if one is still mirrored. Only use official Garmin
+   images; do not redistribute them.
+
+### What to look for in the firmware
+
+After extracting `FW_ALL_BIN` and loading it at `0x3000`:
+
+- strings: `PendingHD`, `ACTIVITY`, `ARCHIVE`, `PENDING`, `FILTER`,
+  `FIT_TYPE`, `DIRECTORY`;
+- the GFDI 5007 handler and the function that builds the directory response;
+- whether the directory enumerator walks the FAT/activity directory or a
+  separate pending-upload index;
+- whether filter `0` (`NO_FILTER`) includes files with the `ARCHIVE` flag.
+
+That would settle the root cause:
+
+- if the enumerator only reads a pending-upload index, **no BLE filter can
+  recover an archived activity** and USB is the only local route;
+- if it reads the FAT directory but applies `ARCHIVE` filtering, a filter-0
+  request can expose it and a recovery mode is possible;
+- if activities land in `PendingHD` and the enumerator does not recurse into
+  subdirectories, that explains both the Garmin and third-party failures.
+
+The firmware is proprietary. Use it only for interoperability/research on your
+own device and do not redistribute the image.
+
