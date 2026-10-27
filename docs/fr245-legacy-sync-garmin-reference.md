@@ -471,3 +471,52 @@ That would settle the root cause:
 The firmware is proprietary. Use it only for interoperability/research on your
 own device and do not redistribute the image.
 
+### First result — firmware 3.10 (2026-10-27)
+
+Downloaded the official `Forerunner245_310.gcd` from
+`https://download.garmin.com/software/Forerunner245_310.gcd`
+(4,245,103 bytes, SHA-256
+`ffc802fd505cb62fe680dd50935654ef8177c8a0c74d20de3a6b32a4d185ff43`)
+and extracted `fw_all_310.bin` (4,201,216 bytes, record `0x02bd`). The image is
+ARM Cortex-M code based at `0x3000` (vector table at the start: SP
+`0x2002e388`, reset `0x31f1`).
+
+Strings confirm the file/activity subsystem is in the image: `FIT_TYPE_4`,
+`FIT_TYPE_32`, `FIT_TYPE_44`, `FIT_TYPE_41`, `FIT_TYPE_49`,
+`time_sorted_activity_list_smphr`, `activity_file_smphr`,
+`TempFIT/Activity`, `0:/Garmin/NewFiles`, `0:/Garmin/RemoteSW/`,
+`0:/Garmin/GUPDATE.GCD`.
+
+The GFDI handler registration function is at `0x39208`. It registers:
+
+| Type | Handler |
+|---|---|
+| 5002 | `0x396cc` |
+| 5003 | `0x393c4` |
+| 5022 | `0x380c8` |
+| 5004 | `0x38bb8` |
+| 5005 | `0x384dc` |
+| 5006 | `0x38ae4` |
+| 5007 | `0x3892c` |
+| 5008 | `0x38a6c` |
+| 5031 | `0x38284` |
+
+**The 5007 handler ignores the filter byte.** It only checks whether the
+request has a non-empty payload: non-empty → `RESPONSE` ACK; empty → NAK via
+`0x384b4`. It never stores the filter value and no code path applies
+`0`/`1`/`3`. On firmware 3.10, `DIRECTORY_FILTER` is a no-op; the file list is
+whatever the internal file table returns.
+
+The 5002 handler (`0x396cc`) builds the directory response. For file index 0 it
+calls a file-list helper (`0x3ec90`, `0x3f40c`, `0x3ed60`, `0x3a1f8`,
+`0x39f58`) and converts each entry with `0x3844c` into the 16-byte directory
+record. The decision to include/exclude an activity is therefore in the file
+entry state/flags, **not** in the 5007 filter value.
+
+This matches the field log: the watch returns the same two wellness files for
+every filter. The audit on 13.70 is still useful, but the 3.10 code already
+shows that changing the filter alone cannot make an archived activity appear.
+Recovering it over BLE would require the internal file entry to be back in the
+directory/list state; USB is the practical route.
+
+

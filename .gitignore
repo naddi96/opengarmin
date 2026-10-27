@@ -28,3 +28,6 @@ captures/
 
 # Captures (HCI logs, adb output, bugreports)
 /captures/
+
+# Proprietary firmware images for local analysis (never commit)
+/firmware/
