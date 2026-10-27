@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.compose.runtime.mutableStateListOf
 import androidx.core.content.ContextCompat
 import dev.opengarmin.app.ble.GarminBleClient
@@ -55,6 +56,7 @@ class SyncSessionController(
     private var syncTrigger = "manual"
     private var syncStartedAt = 0L
     private var syncFullScan = false
+    private var pendingAudit = false
     private var appVisible = false
     private var disconnectWhenSyncFinishes = false
     private var syncNotificationActive = false
@@ -472,11 +474,24 @@ class SyncSessionController(
      * archive anything. Used to find activities the pending-upload list hides.
      */
     fun auditWatchDirectory() {
+        if (syncInProgress) {
+            pendingAudit = true
+            ui.log("SYNC audit queued: waiting for the current sync to finish")
+            main.post {
+                Toast.makeText(
+                    context,
+                    "Audit queued. It will run when this sync finishes.",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+            return
+        }
         syncNow(pendingWorkout = null, trigger = "audit", fullScan = true)
     }
 
     fun disconnectWatch() {
         cancelWatchdog()
+        pendingAudit = false
         if (syncInProgress) {
             val durationMs = (SystemClock.elapsedRealtime() - syncStartedAt).coerceAtLeast(0L)
             settings.recordSyncError(
@@ -502,17 +517,25 @@ class SyncSessionController(
         if (pendingWorkout != null) pendingWorkoutSend = pendingWorkout
         val c = client ?: return
         if (syncInProgress) {
+            if (fullScan || pendingAudit) {
+                pendingAudit = true
+                ui.log("SYNC audit queued: waiting for the current sync to finish")
+            } else {
+                ui.log("SYNC request ignored: a sync is already running (trigger=$trigger)")
+            }
             pendingWorkout?.let { pending ->
                 markPendingUploadFailed(pending, "A sync is already running. Try again when it finishes.")
             }
             return
         }
+        val effectiveFullScan = fullScan || pendingAudit
         if (!SyncGate.tryAcquire(SyncGate.OWNER_UI)) {
             val message = "A background sync is running. Try again when it finishes."
             ui.log(message)
             pendingWorkout?.let { markPendingUploadFailed(it, message) }
             return
         }
+        pendingAudit = false
         if (!c.hasBluetoothAdapter()) {
             SyncGate.release(SyncGate.OWNER_UI)
             recordPermanentSetupError("Bluetooth LE is not available on this phone.", trigger)
@@ -542,7 +565,8 @@ class SyncSessionController(
         syncInProgress = true
         ui.phase = SyncPhase.Connecting
         syncTrigger = trigger
-        syncFullScan = fullScan
+        syncFullScan = effectiveFullScan
+        ui.log("SYNC start trigger=$trigger fullScan=$effectiveFullScan")
         syncStartedAt = SystemClock.elapsedRealtime()
         disconnectWhenSyncFinishes = false
         settings.recordSyncStarted(trigger)
@@ -698,6 +722,13 @@ class SyncSessionController(
             coordinator?.reset()
             client?.disconnect()
             SyncGate.release(SyncGate.OWNER_UI)
+        }
+        if (pendingAudit) {
+            main.postDelayed({
+                if (!syncInProgress && pendingAudit) {
+                    syncNow(pendingWorkout = null, trigger = "audit", fullScan = true)
+                }
+            }, 1_500)
         }
     }
 
