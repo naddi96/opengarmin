@@ -54,6 +54,7 @@ class SyncSessionController(
     private var syncInProgress = false
     private var syncTrigger = "manual"
     private var syncStartedAt = 0L
+    private var syncFullScan = false
     private var appVisible = false
     private var disconnectWhenSyncFinishes = false
     private var syncNotificationActive = false
@@ -256,11 +257,24 @@ class SyncSessionController(
                 ui.log("WELLNESS file $type: ${decoded.name} (${decoded.length()} bytes)")
                 importer.importWellness(decoded, type, itemUid)
             },
+            onLegacyActivityFile = { _, decoded, itemUid, onResult ->
+                importer.importFit(decoded, itemUid, onResult)
+            },
+            onLegacyWellnessFile = { decoded, type, itemUid, onResult ->
+                ui.log("WELLNESS file $type: ${decoded.name} (${decoded.length()} bytes)")
+                importer.importWellness(decoded, type, itemUid, onResult)
+            },
+            legacyFullScan = syncFullScan,
+            legacyDirectoryFilter = if (syncFullScan) {
+                LegacySync.FILTER_NO_FILTER
+            } else {
+                LegacySync.FILTER_ONLY_NEW
+            },
             onUpToDate = {
                 cancelWatchdog()
                 ui.activityProgress = null
                 ui.phase = SyncPhase.UpToDate
-                ui.log("SYNC up to date: all activity files already imported")
+                ui.log("SYNC up to date: watch sync finished")
                 finishSync(success = true)
             },
             onSyncError = { reason ->
@@ -449,7 +463,16 @@ class SyncSessionController(
     // Sync -------------------------------------------------------------------
 
     fun syncNow(trigger: String = "manual") {
-        syncNow(pendingWorkout = null, trigger = trigger)
+        syncNow(pendingWorkout = null, trigger = trigger, fullScan = false)
+    }
+
+    /**
+     * Diagnostic-only: ask the watch for its file directory with the
+     * no-filter/default filter, log every entry, and never download or
+     * archive anything. Used to find activities the pending-upload list hides.
+     */
+    fun auditWatchDirectory() {
+        syncNow(pendingWorkout = null, trigger = "audit", fullScan = true)
     }
 
     fun disconnectWatch() {
@@ -475,7 +498,7 @@ class SyncSessionController(
         }
     }
 
-    private fun syncNow(pendingWorkout: PendingWorkoutSend?, trigger: String) {
+    private fun syncNow(pendingWorkout: PendingWorkoutSend?, trigger: String, fullScan: Boolean = false) {
         if (pendingWorkout != null) pendingWorkoutSend = pendingWorkout
         val c = client ?: return
         if (syncInProgress) {
@@ -519,6 +542,7 @@ class SyncSessionController(
         syncInProgress = true
         ui.phase = SyncPhase.Connecting
         syncTrigger = trigger
+        syncFullScan = fullScan
         syncStartedAt = SystemClock.elapsedRealtime()
         disconnectWhenSyncFinishes = false
         settings.recordSyncStarted(trigger)

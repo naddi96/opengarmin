@@ -287,6 +287,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onImportFit = { uri -> importer.importFitFromUri(uri) },
+                    onAuditWatchFiles = { syncController.auditWatchDirectory() },
                     onSaveWorkout = { workout -> saveWorkout(workout) },
                     onDeleteWorkout = { id -> deleteWorkout(id) },
                     onSendWorkout = { workout -> syncController.sendWorkout(workout) },

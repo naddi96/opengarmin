@@ -71,7 +71,7 @@ class ActivityImporter(
         ui.lastImportedLabel = null
     }
 
-    fun importFit(file: File, itemUid: String) {
+    fun importFit(file: File, itemUid: String, onResult: ((Boolean) -> Unit)? = null) {
         ui.phase = SyncPhase.Importing
         scope.launch {
             val result = withContext(Dispatchers.IO) {
@@ -89,8 +89,9 @@ class ActivityImporter(
                         "IMPORTED ${formatDate(entity.startTime)} ${sportName(entity.sport)} " +
                             "%.2f km".format(entity.distanceMeters / 1000.0),
                     )
-                    onActivityImported?.invoke(entity)
                 }
+                onResult?.invoke(true)
+                if (entity != null) onActivityImported?.invoke(entity)
             }.onFailure { e ->
                 val message = e.message ?: "FIT import failed"
                 Diagnostics.record(
@@ -105,6 +106,7 @@ class ActivityImporter(
                 }
                 ui.importErrorThisSync = message
                 ui.log("FIT import failed: $message")
+                onResult?.invoke(false)
             }
             if (ui.activityProgress != null) {
                 onImportProgress?.invoke()
@@ -178,7 +180,12 @@ class ActivityImporter(
         return if (safe.endsWith(".fit", ignoreCase = true)) safe else "$safe.fit"
     }
 
-    fun importWellness(file: File, type: String, itemUid: String) {
+    fun importWellness(
+        file: File,
+        type: String,
+        itemUid: String,
+        onResult: ((Boolean) -> Unit)? = null,
+    ) {
         scope.launch {
             val immutable = WellnessFileTypes.isImmutable(type)
             val result = withContext(Dispatchers.IO) {
@@ -203,6 +210,7 @@ class ActivityImporter(
                         )
                     }
                 }
+                onResult?.invoke(true)
             }.onFailure { e ->
                 Diagnostics.record(
                     area = Diagnostics.AREA_IMPORT,
@@ -212,6 +220,7 @@ class ActivityImporter(
                     context = mapOf("type" to type, "itemUid" to itemUid),
                 )
                 ui.log("WELLNESS import failed: ${e.message}")
+                onResult?.invoke(false)
             }
         }
     }

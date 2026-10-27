@@ -84,6 +84,42 @@ class LegacySyncTest {
     }
 
     @Test
+    fun `accepts a headerless directory`() {
+        val activity = entry(fileIndex = 0x0102, dataType = 128, subType = 4)
+        val sleep = entry(fileIndex = 0x0103, dataType = 128, subType = 49)
+        assertEquals(0, LegacySync.directoryStart(activity + sleep))
+        assertEquals(2, LegacySync.parseEntries(activity + sleep).size)
+    }
+
+    @Test
+    fun `hides archived and unreadable entries like Garmin`() {
+        val pending = entry(fileIndex = 1, dataType = 128, subType = 4, fileFlags = 0xA0)
+        val archived = entry(fileIndex = 2, dataType = 128, subType = 4, fileFlags = 0xB0)
+        val noRead = entry(fileIndex = 3, dataType = 128, subType = 4, fileFlags = 0x20)
+        val bytes = pending + archived + noRead
+
+        assertEquals(listOf(1), LegacySync.parseEntries(bytes).map { it.fileIndex })
+        assertEquals(
+            listOf(1, 2, 3),
+            LegacySync.parseEntries(bytes, includeArchived = true).map { it.fileIndex },
+        )
+    }
+
+    @Test
+    fun `full scan can log FIT subtypes the client does not import`() {
+        val unknown = entry(fileIndex = 4, dataType = 128, subType = 41, fileFlags = 0xB0)
+        assertTrue(LegacySync.parseEntries(unknown).isEmpty())
+        assertEquals(
+            listOf(4),
+            LegacySync.parseEntries(
+                unknown,
+                includeArchived = true,
+                includeAllTypes = true,
+            ).map { it.fileIndex },
+        )
+    }
+
+    @Test
     fun `download request payload matches the legacy wire layout`() {
         assertEquals(
             "2301000000000100000000000000",

@@ -66,6 +66,7 @@ fun SettingsScreen(
     onDisconnect: () -> Unit,
     onShowLog: () -> Unit,
     onImportFit: (Uri) -> Unit,
+    onAuditWatchFiles: () -> Unit,
     backupStatus: String?,
     backupBusy: Boolean,
     onExportBackup: (Uri) -> Unit,
@@ -429,6 +430,15 @@ fun SettingsScreen(
                     "Import FIT file",
                     onClick = { fitPicker.launch(arrayOf("*/*")) },
                 )
+                Text(
+                    "Diagnostic for legacy watches (Forerunner 245): audit the " +
+                        "watch file list without downloading or archiving anything. " +
+                        "The log lists every entry the watch exposes, including files " +
+                        "hidden by the pending-upload filter.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                )
+                PrimaryButton("Audit watch file list", onAuditWatchFiles)
             }
         }
 

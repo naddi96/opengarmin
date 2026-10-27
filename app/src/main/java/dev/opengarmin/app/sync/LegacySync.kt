@@ -32,11 +32,25 @@ internal class LegacySync(
     private val requestSyncSession: () -> Unit,
     private val isActivityKnown: (String) -> Boolean,
     private val isWellnessKnown: (String) -> Boolean,
-    private val onActivityFile: (raw: File, decoded: File, itemUid: String) -> Unit,
-    private val onWellnessFile: (decoded: File, type: String, itemUid: String) -> Unit,
+    private val onActivityFile: (
+        raw: File,
+        decoded: File,
+        itemUid: String,
+        onResult: (Boolean) -> Unit,
+    ) -> Unit,
+    private val onWellnessFile: (
+        decoded: File,
+        type: String,
+        itemUid: String,
+        onResult: (Boolean) -> Unit,
+    ) -> Unit,
     private val onProgress: (ActivitySyncProgress) -> Unit,
     private val onFinished: () -> Unit,
     private val onError: (String) -> Unit,
+    /** Directory filter value; 3 = pending uploads, 0/1 = full/default. */
+    private val directoryFilter: Int = FILTER_ONLY_NEW,
+    /** When true, log the directory only and never download or archive. */
+    private val fullScan: Boolean = false,
 ) {
     private enum class Phase {
         IDLE,
@@ -87,6 +101,11 @@ internal class LegacySync(
     private var total = 0
     private var fileListStarted = false
 
+    /** Entry whose bytes are written but whose import has not reported back. */
+    private var pendingImportEntry: Entry? = null
+    private var importToken = 0
+    private var importTimeout: Runnable? = null
+
     fun reset() {
         generation++
         cancelTimeout()
@@ -99,6 +118,9 @@ internal class LegacySync(
         doneCount = 0
         total = 0
         fileListStarted = false
+        pendingImportEntry = null
+        importToken++
+        cancelImportTimeout()
         done = false
     }
 
@@ -149,8 +171,8 @@ internal class LegacySync(
         fileListStarted = true
         cancelTimeout()
         phase = Phase.WAIT_FILTER
-        log("LEGACY → DirectoryFilter only-new")
-        session.sendGfdi(Gfdi.build(MT_DIRECTORY_FILTER, byteArrayOf(FILTER_ONLY_NEW.toByte())))
+        log("LEGACY → DirectoryFilter ${filterName(directoryFilter)}")
+        session.sendGfdi(Gfdi.build(MT_DIRECTORY_FILTER, byteArrayOf(directoryFilter.toByte())))
         // Some firmware does not answer 5007 but still serves the directory.
         val expected = generation
         handler.postDelayed({
@@ -186,7 +208,7 @@ internal class LegacySync(
     }
 
     private fun startNext() {
-        if (done) return
+        if (done || pendingImportEntry != null) return
         val next = entries.removeFirstOrNull()
         if (next == null) {
             finish()
@@ -204,7 +226,34 @@ internal class LegacySync(
     }
 
     private fun parseDirectory(bytes: ByteArray) {
-        val found = parseEntries(bytes, directoryStart(bytes)).filter { entry ->
+        if (bytes.size % DIRECTORY_ENTRY_SIZE != 0) {
+            log("LEGACY: directory length ${bytes.size} is not a multiple of $DIRECTORY_ENTRY_SIZE")
+        }
+
+        val parsed = parseEntries(
+            bytes,
+            directoryStart(bytes),
+            includeArchived = fullScan,
+            includeAllTypes = fullScan,
+        )
+        if (fullScan) {
+            log(
+                "LEGACY: full scan filter=${filterName(directoryFilter)} " +
+                    "entries=${parsed.size} (read-only; nothing downloaded or archived)",
+            )
+            parsed.forEach { entry ->
+                log(
+                    "LEGACY: entry index=${entry.fileIndex} type=${entry.typeName} " +
+                        "dataType=${entry.dataType} fileNumber=${entry.fileNumber} " +
+                        "flags=0x%02x size=${entry.size} timestamp=${entry.timestamp}"
+                            .format(entry.fileFlags),
+                )
+            }
+            finish()
+            return
+        }
+
+        val found = parsed.filter { entry ->
             if (entry.isActivity && isActivityKnown(entry.uid)) {
                 log("LEGACY: activity ${entry.fileIndex} already imported")
                 false
@@ -214,9 +263,6 @@ internal class LegacySync(
             } else {
                 true
             }
-        }
-        if (bytes.size % DIRECTORY_ENTRY_SIZE != 0) {
-            log("LEGACY: directory length ${bytes.size} is not a multiple of $DIRECTORY_ENTRY_SIZE")
         }
 
         val seen = entries.map { it.uid }.toHashSet()
@@ -317,17 +363,9 @@ internal class LegacySync(
                 current = null
                 phase = Phase.IDLE
                 cancelTimeout()
-                if (handleCompletedFile(entry, bytes)) {
-                    doneCount++
-                    reportProgress()
-                    sendArchive(entry.fileIndex)
+                if (!handleCompletedFile(entry, bytes)) {
+                    scheduleNext()
                 }
-                // Give the watch a moment to apply SET_FILE_FLAGS before the
-                // next DOWNLOAD_REQUEST. The BLE write queue preserves order.
-                val expected = generation
-                handler.postDelayed({
-                    if (!done && expected == generation) startNext()
-                }, 200)
             }
             else -> Unit
         }
@@ -343,12 +381,98 @@ internal class LegacySync(
         }
         if (entry.isActivity) {
             log("LEGACY: activity ${entry.typeName} index=${entry.fileIndex} bytes=${bytes.size}")
-            onActivityFile(file, file, entry.uid)
+            awaitImport(entry) { onResult ->
+                onActivityFile(file, file, entry.uid, onResult)
+            }
         } else {
             log("LEGACY: wellness ${entry.typeName} index=${entry.fileIndex} bytes=${bytes.size}")
-            onWellnessFile(file, entry.typeName, entry.uid)
+            awaitImport(entry) { onResult ->
+                onWellnessFile(file, entry.typeName, entry.uid, onResult)
+            }
         }
         return true
+    }
+
+    /**
+     * Waits for the importer before archiving. Garmin archives a file after its
+     * cloud upload succeeds; a local client must archive only after the local
+     * import succeeds, otherwise a failed import loses the watch copy forever.
+     */
+    private fun awaitImport(entry: Entry, start: ((Boolean) -> Unit) -> Unit) {
+        pendingImportEntry = entry
+        val token = ++importToken
+        val expected = generation
+        armImportTimeout(entry, token, expected)
+        runCatching {
+            start { success -> onImportResult(entry, token, expected, success) }
+        }.onFailure { e ->
+            log(
+                "LEGACY: could not start import for ${entry.typeName} " +
+                    "index=${entry.fileIndex}: ${e.message}",
+            )
+            finishImportedFile(entry, success = false)
+        }
+    }
+
+    private fun onImportResult(entry: Entry, token: Int, expected: Int, success: Boolean) {
+        handler.post {
+            if (done || expected != generation || token != importToken ||
+                pendingImportEntry?.fileIndex != entry.fileIndex
+            ) {
+                return@post
+            }
+            finishImportedFile(entry, success)
+        }
+    }
+
+    private fun finishImportedFile(entry: Entry, success: Boolean) {
+        if (pendingImportEntry?.fileIndex != entry.fileIndex) return
+        pendingImportEntry = null
+        importToken++
+        cancelImportTimeout()
+        doneCount++
+        reportProgress()
+        if (success) {
+            log("LEGACY: ${entry.typeName} index=${entry.fileIndex} imported; archiving on watch")
+            sendArchive(entry.fileIndex)
+        } else {
+            log(
+                "LEGACY: ${entry.typeName} index=${entry.fileIndex} not archived; " +
+                    "it stays pending on the watch for the next sync",
+            )
+        }
+        scheduleNext()
+    }
+
+    private fun armImportTimeout(entry: Entry, token: Int, expected: Int) {
+        cancelImportTimeout()
+        val runnable = Runnable {
+            if (!done && expected == generation && token == importToken &&
+                pendingImportEntry?.fileIndex == entry.fileIndex
+            ) {
+                log(
+                    "LEGACY: import of ${entry.typeName} index=${entry.fileIndex} " +
+                        "did not finish; leaving it pending on the watch",
+                )
+                finishImportedFile(entry, success = false)
+            }
+        }
+        importTimeout = runnable
+        handler.postDelayed(runnable, IMPORT_TIMEOUT_MS)
+    }
+
+    private fun cancelImportTimeout() {
+        importTimeout?.let { handler.removeCallbacks(it) }
+        importTimeout = null
+    }
+
+    private fun scheduleNext() {
+        // Give the watch a moment to apply SET_FILE_FLAGS before the next
+        // DOWNLOAD_REQUEST. The BLE write queue preserves order.
+        val expected = generation
+        handler.postDelayed({
+            if (!done && expected == generation) startNext()
+        }, 200)
     }
 
     // ---- Incoming messages -------------------------------------------------
@@ -565,6 +689,9 @@ internal class LegacySync(
         done = true
         phase = Phase.DONE
         cancelTimeout()
+        pendingImportEntry = null
+        importToken++
+        cancelImportTimeout()
         onProgress(ActivitySyncProgress(done = doneCount, total = total, currentSize = null))
         log("LEGACY: complete files=$doneCount")
         onFinished()
@@ -575,6 +702,9 @@ internal class LegacySync(
         done = true
         phase = Phase.DONE
         cancelTimeout()
+        pendingImportEntry = null
+        importToken++
+        cancelImportTimeout()
         log("LEGACY: $message")
         onError(message)
     }
@@ -616,6 +746,13 @@ internal class LegacySync(
         else -> "UNKNOWN"
     }
 
+    private fun filterName(filter: Int): String = when (filter) {
+        FILTER_NO_FILTER -> "no-filter"
+        FILTER_DEFAULT -> "default"
+        FILTER_ONLY_NEW -> "only-new"
+        else -> "unknown($filter)"
+    }
+
     internal data class FileChunk(val crc: Int, val offset: Long, val data: ByteArray)
 
     internal companion object {
@@ -628,8 +765,11 @@ internal class LegacySync(
         const val MT_SYNCHRONIZATION = 5037
 
         const val REQUEST_TYPE_NEW = 1
+        const val FILTER_NO_FILTER = 0
+        const val FILTER_DEFAULT = 1
         const val FILTER_ONLY_NEW = 3
         const val FILE_FLAG_ARCHIVE = 0x10
+        const val FILE_FLAG_READ = 0x80
 
         const val TRANSFER_OK = 0
         const val TRANSFER_ABORT = 2
@@ -646,6 +786,7 @@ internal class LegacySync(
         const val MAX_FILE_SIZE = 64L * 1024 * 1024
         const val STEP_TIMEOUT_MS = 3_000L
         const val SYNC_SESSION_TIMEOUT_MS = 5_000L
+        const val IMPORT_TIMEOUT_MS = 30_000L
 
         val WELLNESS_TYPES = setOf(
             "FIT_TYPE_29", // monitoring day
@@ -690,19 +831,31 @@ internal class LegacySync(
         }
 
         /**
-         * Garmin's `FileManager.listFiles` skips a 16-byte header before the
-         * directory entries. Some captures start directly with entries, so
-         * only skip it when the first block is the root/directory entry.
+         * Garmin's parser always skips the 16-byte root/directory header.
+         * Some firmware answers with entries directly, so fall back to offset
+         * 0 only when the first block looks like a real FIT entry.
          */
         internal fun directoryStart(bytes: ByteArray): Int =
-            if (bytes.size >= 32 && u16(bytes, 0) == 0 && (bytes[2].toInt() and 0xFF) == 0) {
+            if (bytes.size >= 32 && (bytes[2].toInt() and 0xFF) != FIT_DATA_TYPE) {
                 DIRECTORY_ENTRY_SIZE
             } else {
                 0
             }
 
-        /** Parses the 16-byte legacy directory entries, ignoring non-FIT traffic. */
-        internal fun parseEntries(bytes: ByteArray, start: Int = 0): List<Entry> {
+        /**
+         * Parses the 16-byte legacy directory entries, ignoring non-FIT traffic.
+         *
+         * [includeArchived] is used by the read-only full scan: it keeps
+         * entries that Garmin's client would hide (no READ flag, ARCHIVE set)
+         * so they can be logged and diagnosed. [includeAllTypes] also keeps
+         * FIT subtypes this client does not import.
+         */
+        internal fun parseEntries(
+            bytes: ByteArray,
+            start: Int = 0,
+            includeArchived: Boolean = false,
+            includeAllTypes: Boolean = false,
+        ): List<Entry> {
             val out = ArrayList<Entry>()
             var offset = start
             while (offset + DIRECTORY_ENTRY_SIZE <= bytes.size) {
@@ -717,6 +870,12 @@ internal class LegacySync(
                 offset += DIRECTORY_ENTRY_SIZE
 
                 if (fileIndex == 0 || dataType != FIT_DATA_TYPE || size <= 0) continue
+                if (!includeArchived) {
+                    // Match Garmin's FileManagerCompat.listFiles filter: the
+                    // watch must grant READ and must not have archived it yet.
+                    if (fileFlags and FILE_FLAG_READ == 0) continue
+                    if (fileFlags and FILE_FLAG_ARCHIVE != 0) continue
+                }
                 val entry = Entry(
                     fileIndex = fileIndex,
                     dataType = dataType,
@@ -727,7 +886,7 @@ internal class LegacySync(
                     size = size,
                     timestamp = timestamp,
                 )
-                if (entry.isActivity || entry.isWellness) out.add(entry)
+                if (entry.isActivity || entry.isWellness || includeAllTypes) out.add(entry)
             }
             return out
         }

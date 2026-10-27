@@ -50,6 +50,12 @@ The app asks for **uncompressed** data (`DOWNLOAD_REQUEST` flags `0`, handles
 `COMPRESSED_FILE_DATA (5054)` via its `CompressedDataProcessor`. If the next
 FR245 log shows `5054`, implement that path; otherwise keep `5004`.
 
+The watch's normal directory is the **pending-upload** list. A run already
+uploaded by Garmin Connect is not offered to any legacy client. **Settings →
+Audit watch file list** runs a read-only `DIRECTORY_FILTER = 0` scan and logs
+every entry (type, flags, size) without downloading or archiving, so we can
+tell whether an archived activity is still reachable on this firmware.
+
 ### How to continue
 
 1. Install the v0.9.2 release APK (or `app/build/outputs/apk/debug/app-debug.apk`).
@@ -859,3 +865,8 @@ requests compression (`flags=1`); the app still requests uncompressed data
 (`flags=0`) and handles `5004`. `SYNC_READY` now includes the value byte
 (`[8,0]`), matching `SystemEventMessage`. The legacy path now follows the
 official 5037/5007/5031/5002 order and logs the directory header for diagnosis.
+
+See `docs/fr245-legacy-sync-garmin-reference.md` for the reverse-engineered
+Garmin Connect 5.19.1 implementation of this path, including the directory
+filter/flag rules that explain why an already-uploaded activity is never
+offered to a local client.

@@ -31,6 +31,30 @@ class SyncCoordinator(
     private val isWellnessItemKnown: (String) -> Boolean = { false },
     private val onFinished: (raw: File, decoded: File, itemUid: String) -> Unit,
     private val onWellnessFile: (decoded: File, type: String, itemUid: String) -> Unit,
+    /**
+     * Legacy-path variants that report whether the import finished. The watch
+     * copy is archived only when this reports success.
+     */
+    private val onLegacyActivityFile: (
+        raw: File,
+        decoded: File,
+        itemUid: String,
+        onResult: (Boolean) -> Unit,
+    ) -> Unit = { raw, decoded, itemUid, onResult ->
+        onFinished(raw, decoded, itemUid)
+        onResult(true)
+    },
+    private val onLegacyWellnessFile: (
+        decoded: File,
+        type: String,
+        itemUid: String,
+        onResult: (Boolean) -> Unit,
+    ) -> Unit = { decoded, type, itemUid, onResult ->
+        onWellnessFile(decoded, type, itemUid)
+        onResult(true)
+    },
+    private val legacyFullScan: Boolean = false,
+    private val legacyDirectoryFilter: Int = LegacySync.FILTER_ONLY_NEW,
     private val onUpToDate: () -> Unit,
     /** A failure in the legacy (pre-GDI) file-transfer path; user-facing. */
     private val onSyncError: (String) -> Unit = {},
@@ -538,13 +562,15 @@ class SyncCoordinator(
             },
             isActivityKnown = isItemKnown,
             isWellnessKnown = isWellnessItemKnown,
-            onActivityFile = onFinished,
-            onWellnessFile = onWellnessFile,
+            onActivityFile = onLegacyActivityFile,
+            onWellnessFile = onLegacyWellnessFile,
             onProgress = onActivityProgress,
             onFinished = {
                 reportUpToDate("SYNC up to date: legacy file transfer complete")
             },
             onError = onSyncError,
+            directoryFilter = legacyDirectoryFilter,
+            fullScan = legacyFullScan,
         )
         legacy = sync
         sync.start()

@@ -461,6 +461,14 @@ class WatchSyncWorker(
                     noteProgress()
                     queueWellnessImport(decoded, type, itemUid)
                 },
+                onLegacyActivityFile = { _, decoded, itemUid, onResult ->
+                    noteProgress()
+                    queueActivityImport(decoded, itemUid, onResult)
+                },
+                onLegacyWellnessFile = { decoded, type, itemUid, onResult ->
+                    noteProgress()
+                    queueWellnessImport(decoded, type, itemUid, onResult)
+                },
                 onUpToDate = {
                     noteProgress()
                     finishWhenImportsDone(BackgroundSyncOutcome.success())
@@ -488,27 +496,38 @@ class WatchSyncWorker(
             return coordinator
         }
 
-        private fun queueActivityImport(decoded: File, itemUid: String) {
-            if (itemUid.isNotEmpty()) knownActivities.add(itemUid)
+        private fun queueActivityImport(
+            decoded: File,
+            itemUid: String,
+            onResult: (Boolean) -> Unit = {},
+        ) {
             pendingImports += importScope.launch {
                 runCatching {
                     repository.importFit(decoded.name, decoded.readBytes(), itemUid)
                 }.onSuccess { entity ->
+                    if (itemUid.isNotEmpty()) knownActivities.add(itemUid)
                     if (entity != null) {
                         importedActivities.incrementAndGet()
                         runCatching { analysisScheduler.enqueue(entity.id) }
                     }
+                    onResult(true)
                 }.onFailure { error ->
                     val message = error.message ?: "FIT import failed"
                     if (itemUid.isNotEmpty()) {
                         runCatching { repository.recordActivityImportFailure(itemUid, message) }
                     }
                     importError.compareAndSet(null, message)
+                    onResult(false)
                 }
             }
         }
 
-        private fun queueWellnessImport(decoded: File, type: String, itemUid: String) {
+        private fun queueWellnessImport(
+            decoded: File,
+            type: String,
+            itemUid: String,
+            onResult: (Boolean) -> Unit = {},
+        ) {
             pendingImports += importScope.launch {
                 runCatching {
                     val days = repository.importWellness(decoded.readBytes())
@@ -519,8 +538,10 @@ class WatchSyncWorker(
                     days.size
                 }.onSuccess { count ->
                     if (count > 0) importedWellnessDays.addAndGet(count)
+                    onResult(true)
                 }.onFailure { error ->
                     importError.compareAndSet(null, error.message ?: "Wellness import failed")
+                    onResult(false)
                 }
             }
         }
