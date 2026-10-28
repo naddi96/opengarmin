@@ -747,6 +747,7 @@ object AppStrings {
             "Ciao, sono il tuo coach. Aggiungi un provider compatibile OpenAI in Gestisci, poi chiedimi dei dati di salute salvati su questo dispositivo o chiedimi di pianificare un allenamento.",
         "Thinking…" to "Sto pensando…",
         "Checking your %s…" to "Controllo %s…",
+        "date and time" to "data e ora",
         "steps" to "passi",
         "heart rate" to "frequenza cardiaca",
         "sleep data" to "dati sul sonno",
@@ -1231,6 +1232,31 @@ object AppStrings {
         "Load recent activities" to "Carica attività recenti",
         "Import all activities" to "Importa tutte le attività",
         "Import all Garmin activities?" to "Importare tutte le attività Garmin?",
+        "Recover daily data" to "Recupera dati giornalieri",
+        "Importing daily data…" to "Importazione dati giornalieri…",
+        "Recover daily data?" to "Recuperare i dati giornalieri?",
+        "Choose how many recent days to read from Garmin Connect. Values already imported from the watch are kept when they are higher." to
+            "Scegli quanti giorni recenti leggere da Garmin Connect. I valori già importati dall'orologio vengono mantenuti quando sono più alti.",
+        "Recover steps, distance, calories, active minutes, resting heart rate, stress and Body Battery for recent days. Watch data already stored locally is never lowered." to
+            "Recupera passi, distanza, calorie, minuti attivi, frequenza cardiaca a riposo, stress e Body Battery per i giorni recenti. I dati dell'orologio già salvati non vengono mai abbassati.",
+        "Import %s days" to "Importa %s giorni",
+        "Days to recover: %s" to "Giorni da recuperare: %s",
+        "From %s to %s" to "Dal %s al %s",
+        "Drag to choose how far back to read, up to one year." to
+            "Trascina per scegliere quanto indietro leggere, fino a un anno.",
+        "Importing %s of %s days…" to "Importazione di %s giorni su %s…",
+        "Cancel import" to "Annulla importazione",
+        "Import cancelled." to "Importazione annullata.",
+        "Importing daily data from Garmin Connect…" to
+            "Importazione dei dati giornalieri da Garmin Connect…",
+        "Recovered %s day(s) from Garmin Connect." to
+            "Recuperati %s giorni da Garmin Connect.",
+        "Garmin Connect returned no daily data for this range." to
+            "Garmin Connect non ha restituito dati giornalieri per questo intervallo.",
+        "Garmin returned an unexpected profile." to "Garmin ha restituito un profilo inatteso.",
+        "Garmin did not return a profile name." to "Garmin non ha restituito un nome profilo.",
+        "Garmin returned an unexpected daily summary." to
+            "Garmin ha restituito un riepilogo giornaliero inatteso.",
         "Start import" to "Avvia importazione",
         "Stop import" to "Ferma importazione",
         "Imported" to "Importate",

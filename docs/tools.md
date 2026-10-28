@@ -27,6 +27,13 @@ locally against the app's Room data and returns compact JSON.
 
 ## Tools
 
+### `get_current_datetime()`
+Returns the device's current local date, time, weekday, time zone, UTC offset,
+ISO-8601 timestamp, Unix seconds and whether it is a weekend, plus a coarse
+`partOfDay` (morning/afternoon/evening/night). Values are generated in code, so
+the coach can resolve relative dates ("today", "tomorrow", "this week") and
+time-of-day context without guessing. It reads no health data.
+
 ### `get_daily_summary(from?, to?)`
 Daily wellness totals/averages: steps, distance, active minutes/calories,
 resting/avg/max HR, stress, SpO2, respiration. Missing metrics are omitted and

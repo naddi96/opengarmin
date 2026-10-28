@@ -46,6 +46,7 @@ import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.diagnostics.AppEvent
 import dev.opengarmin.app.diagnostics.Diagnostics
 import dev.opengarmin.app.diagnostics.SyncLogExport
+import dev.opengarmin.app.garmin.GarminDailySummary
 import dev.opengarmin.app.garmin.garminActivityUid
 import dev.opengarmin.app.i18n.LocalAppLanguage
 import java.text.SimpleDateFormat
@@ -304,6 +305,7 @@ class MainActivity : ComponentActivity() {
                         isGarminActivityKnown = { id ->
                             importer.isKnownActivityUid(garminActivityUid(id))
                         },
+                        onImportGarminWellness = { summaries -> importGarminWellness(summaries) },
                         onAuditWatchFiles = { syncController.auditWatchDirectory() },
                         onSaveWorkout = { workout -> saveWorkout(workout) },
                         onDeleteWorkout = { id -> deleteWorkout(id) },
@@ -593,6 +595,14 @@ class MainActivity : ComponentActivity() {
         dataActivity = null
         dataMessages = emptyList()
         dataLoading = false
+    }
+
+    private suspend fun importGarminWellness(summaries: List<GarminDailySummary>): Int {
+        val updated = withContext(Dispatchers.IO) {
+            repository.mergeGarminDailySummaries(summaries)
+        }
+        if (updated > 0) log("GARMIN wellness: $updated day(s) merged")
+        return updated
     }
 
     private fun saveWorkout(workout: PlannedWorkoutEntity) {

@@ -50,6 +50,7 @@ import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.data.WorkoutSendStatus
 import dev.opengarmin.app.diagnostics.AppEvent
+import dev.opengarmin.app.garmin.GarminDailySummary
 import dev.opengarmin.app.llm.ProviderConfig
 import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
@@ -138,6 +139,7 @@ fun PulseApp(
     onImportFit: (android.net.Uri) -> Unit,
     onImportGarminFit: suspend (String, ByteArray, String) -> dev.opengarmin.app.sync.FitImportResult,
     isGarminActivityKnown: (String) -> Boolean,
+    onImportGarminWellness: suspend (List<GarminDailySummary>) -> Int,
     onAuditWatchFiles: () -> Unit,
     onSaveWorkout: (PlannedWorkoutEntity) -> Unit,
     onDeleteWorkout: (Long) -> Unit,
@@ -459,6 +461,7 @@ fun PulseApp(
                 onImportFit = onImportFit,
                 onImportGarminFit = onImportGarminFit,
                 isGarminActivityKnown = isGarminActivityKnown,
+                onImportGarminWellness = onImportGarminWellness,
                 onAuditWatchFiles = onAuditWatchFiles,
                 backupStatus = backupStatus,
                 backupBusy = backupBusy,

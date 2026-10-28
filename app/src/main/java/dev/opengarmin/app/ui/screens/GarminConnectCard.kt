@@ -4,11 +4,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import dev.opengarmin.app.i18n.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -22,9 +25,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.garmin.GarminActivity
 import dev.opengarmin.app.garmin.GarminConnectClient
 import dev.opengarmin.app.garmin.GarminCredentialStore
+import dev.opengarmin.app.garmin.GarminDailySummary
 import dev.opengarmin.app.garmin.GarminException
 import dev.opengarmin.app.garmin.GarminLoginResult
 import dev.opengarmin.app.garmin.garminActivityUid
@@ -32,6 +37,7 @@ import dev.opengarmin.app.i18n.AppStrings
 import dev.opengarmin.app.i18n.LocalAppLanguage
 import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.sync.FitImportResult
+import dev.opengarmin.app.ui.components.PillChip
 import dev.opengarmin.app.ui.components.PrimaryButton
 import dev.opengarmin.app.ui.components.PulseCard
 import dev.opengarmin.app.ui.theme.PulseColors
@@ -41,6 +47,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlin.math.roundToInt
 
 /**
  * Garmin Connect cloud recovery for watches whose pending-upload queue no
@@ -51,6 +61,7 @@ import kotlinx.coroutines.launch
 fun GarminConnectCard(
     onImportFit: suspend (String, ByteArray, String) -> FitImportResult,
     isActivityKnown: (String) -> Boolean,
+    onImportWellness: suspend (List<GarminDailySummary>) -> Int,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -75,6 +86,11 @@ fun GarminConnectCard(
     var bulkRunning by remember { mutableStateOf(false) }
     var bulkJob by remember { mutableStateOf<Job?>(null) }
     var confirmBulkImport by remember { mutableStateOf(false) }
+    var showWellnessImport by remember { mutableStateOf(false) }
+    var wellnessDays by remember { mutableStateOf(30) }
+    var wellnessBusy by remember { mutableStateOf(false) }
+    var wellnessProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var wellnessJob by remember { mutableStateOf<Job?>(null) }
 
     fun fail(error: Throwable) {
         val garminError = error as? GarminException
@@ -196,6 +212,41 @@ fun GarminConnectCard(
                 fail(error)
             } finally {
                 importingId = null
+            }
+        }
+    }
+
+    fun importWellness(days: Int) {
+        if (wellnessBusy) return
+        showWellnessImport = false
+        wellnessBusy = true
+        wellnessProgress = 0 to days
+        status = l("Importing daily data from Garmin Connect…")
+        statusIsError = false
+        val today = LocalDate.now()
+        val dates = (0 until days).map { offset -> today.minusDays(offset.toLong()).toString() }
+        wellnessJob = scope.launch {
+            try {
+                val summaries = client.dailySummaries(dates) { done, total ->
+                    wellnessProgress = done to total
+                }
+                val updated = onImportWellness(summaries)
+                status = if (updated > 0) {
+                    l("Recovered %s day(s) from Garmin Connect.", updated)
+                } else {
+                    l("Garmin Connect returned no daily data for this range.")
+                }
+                statusIsError = false
+            } catch (cancelled: CancellationException) {
+                status = l("Import cancelled.")
+                statusIsError = false
+                throw cancelled
+            } catch (error: Throwable) {
+                fail(error)
+            } finally {
+                wellnessBusy = false
+                wellnessProgress = null
+                wellnessJob = null
             }
         }
     }
@@ -398,6 +449,9 @@ fun GarminConnectCard(
                     PrimaryButton(
                         "Sign out",
                         onClick = {
+                            wellnessJob?.cancel()
+                            wellnessJob = null
+                            wellnessBusy = false
                             store.signOut()
                             signedIn = false
                             activities = emptyList()
@@ -409,6 +463,45 @@ fun GarminConnectCard(
                         },
                         enabled = !busy && !bulkRunning && importingId == null,
                     )
+                }
+                PrimaryButton(
+                    if (wellnessBusy) {
+                        l("Importing daily data…")
+                    } else {
+                        l("Recover daily data")
+                    },
+                    onClick = { showWellnessImport = true },
+                    enabled = !busy && !bulkRunning &&
+                        importingId == null && !wellnessBusy,
+                )
+                Text(
+                    "Recover steps, distance, calories, active minutes, resting heart rate, stress and Body Battery for recent days. Watch data already stored locally is never lowered.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                )
+                if (wellnessBusy) {
+                    val progress = wellnessProgress
+                    val total = progress?.second ?: wellnessDays
+                    val done = progress?.first ?: 0
+                    Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
+                        Text(
+                            tr("Importing %s of %s days…", done, total),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = PulseColors.Accent,
+                        )
+                        LinearProgressIndicator(
+                            progress = if (total > 0) done.toFloat() / total else 0f,
+                            modifier = Modifier.fillMaxWidth().height(6.dp),
+                            color = PulseColors.Accent,
+                            trackColor = PulseColors.Border,
+                        )
+                        TextButton(onClick = {
+                            wellnessJob?.cancel()
+                            wellnessJob = null
+                        }) {
+                            Text(tr("Cancel import"), color = PulseColors.Coral)
+                        }
+                    }
                 }
                 PrimaryButton(
                     if (bulkRunning) "Stop import" else "Import all activities",
@@ -468,6 +561,66 @@ fun GarminConnectCard(
                 color = PulseColors.TextMuted,
             )
         }
+    }
+
+    if (showWellnessImport) {
+        AlertDialog(
+            onDismissRequest = { showWellnessImport = false },
+            title = { Text("Recover daily data?") },
+            text = {
+                val end = LocalDate.now()
+                val start = end.minusDays((wellnessDays - 1).coerceAtLeast(0).toLong())
+                val pattern = if (start.year == end.year) "d MMM" else "d MMM yyyy"
+                val formatter = DateTimeFormatter.ofPattern(pattern, Locale.getDefault())
+                Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+                    Text(
+                        "Choose how many recent days to read from Garmin Connect. " +
+                            "Values already imported from the watch are kept when they are higher.",
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
+                        listOf(7, 30, 90).forEach { option ->
+                            PillChip(
+                                label = tr("%s days", option),
+                                selected = wellnessDays == option,
+                                onClick = { wellnessDays = option },
+                            )
+                        }
+                    }
+                    Text(
+                        tr("Days to recover: %s", wellnessDays),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = PulseColors.Text,
+                    )
+                    Slider(
+                        value = wellnessDays.toFloat(),
+                        onValueChange = { wellnessDays = it.roundToInt().coerceIn(1, 365) },
+                        valueRange = 1f..365f,
+                    )
+                    Text(
+                        tr(
+                            "From %s to %s",
+                            start.format(formatter),
+                            end.format(formatter),
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PulseColors.TextMuted,
+                    )
+                    Text(
+                        "Drag to choose how far back to read, up to one year.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { importWellness(wellnessDays) }) {
+                    Text(tr("Import %s days", wellnessDays), color = PulseColors.Accent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWellnessImport = false }) { Text("Cancel") }
+            },
+        )
     }
 
     if (confirmBulkImport) {

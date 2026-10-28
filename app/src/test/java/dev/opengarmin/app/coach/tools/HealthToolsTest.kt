@@ -27,6 +27,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 class HealthToolsTest {
     private val today = LocalDate.of(2026, 10, 17)
@@ -244,6 +246,24 @@ class HealthToolsTest {
         assertTrue(
             runCatching { registry.execute("get_daily_summary", "{not json", ToolScope()) }.exceptionOrNull() is ToolException,
         )
+    }
+
+    @Test
+    fun `current datetime reports the device clock and timezone`() = runBlocking {
+        val fixed = ZonedDateTime.of(2026, 10, 28, 18, 42, 5, 0, ZoneId.of("Europe/Rome"))
+        val clockRegistry = ToolRegistry(source, now = { fixed }) { today }
+
+        val result = clockRegistry.execute("get_current_datetime", "{}", ToolScope())
+        val json = JSONObject(result.json)
+
+        assertEquals("2026-10-28", json.getString("date"))
+        assertEquals("18:42", json.getString("time"))
+        assertEquals("Wednesday", json.getString("weekday"))
+        assertEquals("Europe/Rome", json.getString("timeZone"))
+        assertEquals("+01:00", json.getString("utcOffset"))
+        assertEquals("evening", json.getString("partOfDay"))
+        assertFalse(json.getBoolean("isWeekend"))
+        assertTrue(result.evidence.single().startsWith("Date & time"))
     }
 
     @Test

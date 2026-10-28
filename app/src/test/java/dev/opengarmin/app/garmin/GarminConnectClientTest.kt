@@ -41,6 +41,7 @@ class GarminConnectClientTest {
         loginPageDelayMillis = 0,
         downloadDelayMinMillis = 0,
         downloadDelayMaxMillis = 0,
+        summaryDelayMillis = 0,
         okHttpClient = OkHttpClient.Builder()
             .connectTimeout(2, TimeUnit.SECONDS)
             .readTimeout(2, TimeUnit.SECONDS)
@@ -176,6 +177,93 @@ class GarminConnectClientTest {
         val request = server.takeRequest()
         assertEquals("/api/download-service/files/activity/987654321", request.path)
         assertEquals("*/*", request.getHeader("Accept"))
+    }
+
+    @Test
+    fun `daily summary uses the profile display name and parses wellness totals`() = runBlocking {
+        tokens.tokens = GarminTokens(
+            accessToken = "access-token",
+            refreshToken = null,
+            clientId = "client",
+            expiresAtMillis = Long.MAX_VALUE,
+        )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"displayName":"runner42","fullName":"Runner"}"""),
+        )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """{
+                        "totalSteps": 12843,
+                        "totalDistanceMeters": 10320.5,
+                        "activeKilocalories": 742,
+                        "activeSeconds": 5400,
+                        "restingHeartRate": 54,
+                        "averageStressLevel": 27,
+                        "bodyBatteryLowestValue": 21,
+                        "bodyBatteryHighestValue": 88,
+                        "bodyBatteryMostRecentValue": 55
+                    }""",
+                ),
+        )
+
+        val summary = client().dailySummary("2026-10-27")
+
+        assertEquals(
+            GarminDailySummary(
+                date = "2026-10-27",
+                steps = 12843,
+                distanceMeters = 10320.5,
+                activeCalories = 742,
+                activeSeconds = 5400,
+                restingHeartRate = 54,
+                stressAvg = 27,
+                bodyBatteryMin = 21,
+                bodyBatteryMax = 88,
+                bodyBatteryLatest = 55,
+            ),
+            summary,
+        )
+        val profile = server.takeRequest()
+        assertEquals("/api/userprofile-service/socialProfile", profile.path)
+        val daily = server.takeRequest()
+        assertEquals(
+            "/api/usersummary-service/usersummary/daily/runner42?calendarDate=2026-10-27",
+            daily.path,
+        )
+    }
+
+    @Test
+    fun `missing daily summary is skipped and empty days are not invented`() = runBlocking {
+        tokens.tokens = GarminTokens(
+            accessToken = "access-token",
+            refreshToken = null,
+            clientId = "client",
+            expiresAtMillis = Long.MAX_VALUE,
+        )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"displayName":"runner42"}"""),
+        )
+        server.enqueue(MockResponse().setResponseCode(404))
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"totalSteps":0,"activeSeconds":0}"""),
+        )
+
+        val progress = mutableListOf<Pair<Int, Int>>()
+        val summaries = client().dailySummaries(
+            dates = listOf("2026-10-26", "2026-10-25"),
+            onProgress = { done, total -> progress += done to total },
+        )
+
+        assertTrue(summaries.isEmpty())
+        assertEquals(listOf(0 to 2, 1 to 2, 2 to 2), progress)
     }
 
     @Test

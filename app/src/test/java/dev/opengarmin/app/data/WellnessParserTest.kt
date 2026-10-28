@@ -167,6 +167,69 @@ class WellnessParserTest {
     }
 
     @Test
+    fun `metadata-only monitoring messages do not erase daily totals`() {
+        val messages = listOf(
+            monitoring(epoch(2026, 10, 27, 8, 0), cycles16 = 1_000, distance = 2_500.0, activeSeconds = 600.0, calories = 50),
+            message(
+                "monitoring",
+                epoch(2026, 10, 27, 23, 58),
+                field(35, "field_35", 21_645),
+                field(36, "field_36", 17_824),
+            ),
+            message(
+                "monitoring",
+                epoch(2026, 10, 27, 23, 59),
+                field(37, "field_37", 0),
+                field(38, "field_38", 0),
+            ),
+        )
+
+        val day = WellnessParser.parse(messages, zone).single()
+
+        assertEquals("2026-10-27", day.date)
+        assertEquals(2_000, day.steps)
+        assertEquals(2_500.0, day.distanceMeters, 0.01)
+        assertEquals(600, day.activeSeconds)
+        assertEquals(50, day.activeCalories)
+    }
+
+    @Test
+    fun `sums cumulative totals per monitoring activity type`() {
+        val messages = listOf(
+            monitoring(epoch(2026, 10, 27, 22, 0), cycles16 = 1_000, distance = 2_500.0, activeSeconds = 600.0, calories = 50),
+            message(
+                "monitoring",
+                epoch(2026, 10, 27, 22, 5),
+                field(5, "activity_type", 6),
+                field(3, "cycles", 1_921.0),
+                field(2, "distance", 3_059.04),
+                field(4, "active_time", 1_818.0),
+                field(19, "active_calories", 69),
+            ),
+            message(
+                "monitoring",
+                epoch(2026, 10, 27, 22, 6),
+                field(5, "activity_type", 1),
+                field(3, "cycles", 8.0),
+                field(2, "distance", 19.11),
+                field(4, "active_time", 4.0),
+            ),
+            message(
+                "monitoring",
+                epoch(2026, 10, 27, 23, 59),
+                field(35, "field_35", 21_645),
+            ),
+        )
+
+        val day = WellnessParser.parse(messages, zone).single()
+
+        assertEquals(2_000 + 3_842 + 16, day.steps)
+        assertEquals(2_500.0 + 3_059.04 + 19.11, day.distanceMeters, 0.01)
+        assertEquals(600 + 1_818 + 4, day.activeSeconds)
+        assertEquals(50 + 69, day.activeCalories)
+    }
+
+    @Test
     fun `drops the all-zero midnight rollover row`() {
         val drafts = WellnessParser.parse(
             listOf(

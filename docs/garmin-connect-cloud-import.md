@@ -17,6 +17,13 @@ and feeds it to the normal local importer.
    Alternatively, tap **Import all activities** to page through the whole Garmin
    history (newest first), skipping activities already in Pulse. Bulk import can
    be stopped; it stops cleanly after the current file.
+5. Tap **Recover daily data** to repair wellness totals that the watch no longer
+   exposes. Use the 7/30/90 shortcuts or the slider to choose any period up to
+   one year. A progress bar shows how many days have been read and the import can
+   be cancelled. This reads steps, distance, active calories, active minutes,
+   resting heart rate, stress and Body Battery from Garmin Connect and merges
+   them into the local wellness rows. Cumulative values are raised only when
+   Garmin has a larger total; existing watch data is never lowered.
 
 Imported files go through `ActivityImporter.importFitBytes`, so they get the
 same parsing, duplicate detection, local storage, sync log entry, and automatic
@@ -43,6 +50,8 @@ Endpoints used:
 | Activity count | `GET /activitylist-service/activities/count` |
 | Activity list | `GET /activitylist-service/activities/search/activities?start=0&limit=50` |
 | Original FIT | `GET /download-service/files/activity/{activityId}` |
+| Profile display name | `GET /userprofile-service/socialProfile` |
+| Daily wellness summary | `GET /usersummary-service/usersummary/daily/{displayName}?calendarDate=YYYY-MM-DD` |
 
 Bulk import requests 50 activities per page, downloads originals one at a
 time, and uses the local Garmin activity id as the activity UID so a re-run

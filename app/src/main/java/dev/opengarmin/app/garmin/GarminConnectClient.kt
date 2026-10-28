@@ -46,6 +46,7 @@ class GarminConnectClient(
     private val loginPageDelayMillis: Long = 2_000,
     private val downloadDelayMinMillis: Long = 1_500,
     private val downloadDelayMaxMillis: Long = 3_500,
+    private val summaryDelayMillis: Long = 350,
     private val random: Random = Random.Default,
     private val okHttpClient: OkHttpClient = defaultHttpClient(),
     private val clock: () -> Long = { System.currentTimeMillis() },
@@ -58,6 +59,7 @@ class GarminConnectClient(
     private val downloadMutex = Mutex()
     private var lastDownloadAtMillis = 0L
     private var pendingMfa: PendingMfa? = null
+    private var cachedDisplayName: String? = null
 
     suspend fun login(username: String, password: String): GarminLoginResult {
         val email = username.trim()
@@ -213,6 +215,89 @@ class GarminConnectClient(
         activities(start = 0, limit = limit)
 
     /**
+     * Garmin's public display name, required by the wellness summary API.
+     * Cached for the lifetime of this client instance.
+     */
+    suspend fun displayName(): String {
+        cachedDisplayName?.let { return it }
+        val payload = authorizedGet("$apiBase/userprofile-service/socialProfile".toHttpUrl())
+        val json = parseJson(payload) ?: throw GarminException(
+            GarminException.Kind.Malformed,
+            "Garmin returned an unexpected profile.",
+        )
+        val name = json.optString("displayName").trim()
+        if (name.isBlank()) {
+            throw GarminException(
+                GarminException.Kind.Malformed,
+                "Garmin did not return a profile name.",
+            )
+        }
+        cachedDisplayName = name
+        return name
+    }
+
+    /**
+     * Daily wellness totals for one calendar date. Returns null when Garmin has
+     * no summary for that day (for example, before the account existed).
+     */
+    suspend fun dailySummary(date: String): GarminDailySummary? {
+        val name = displayName()
+        val url = "$apiBase/usersummary-service/usersummary/daily/".toHttpUrl().newBuilder()
+            .addPathSegment(name)
+            .addQueryParameter("calendarDate", date)
+            .build()
+        val payload = authorizedGetOptional(url) ?: return null
+        val json = parseJson(payload) ?: throw GarminException(
+            GarminException.Kind.Malformed,
+            "Garmin returned an unexpected daily summary.",
+        )
+        val steps = json.optInt("totalSteps", 0).coerceAtLeast(0)
+        val distance = json.optDouble("totalDistanceMeters", 0.0)
+            .takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
+        val calories = json.optInt("activeKilocalories", 0).coerceAtLeast(0)
+        val activeSeconds = json.optInt("activeSeconds", 0).coerceAtLeast(0)
+        val restingHr = json.optInt("restingHeartRate", 0).takeIf { it in 1..250 }
+        val stress = json.optInt("averageStressLevel", -1).takeIf { it in 0..100 }
+        val batteryMin = json.optInt("bodyBatteryLowestValue", -1).takeIf { it in 1..100 }
+        val batteryMax = json.optInt("bodyBatteryHighestValue", -1).takeIf { it in 1..100 }
+        val batteryLatest = json.optInt("bodyBatteryMostRecentValue", -1).takeIf { it in 1..100 }
+
+        val hasAnyValue = steps > 0 || distance > 0.0 || calories > 0 || activeSeconds > 0 ||
+            restingHr != null || stress != null || batteryLatest != null
+        if (!hasAnyValue) return null
+        return GarminDailySummary(
+            date = date,
+            steps = steps,
+            distanceMeters = distance,
+            activeCalories = calories,
+            activeSeconds = activeSeconds,
+            restingHeartRate = restingHr,
+            stressAvg = stress,
+            bodyBatteryMin = batteryMin,
+            bodyBatteryMax = batteryMax,
+            bodyBatteryLatest = batteryLatest,
+        )
+    }
+
+    /**
+     * Fetch daily summaries newest-first, skipping days Garmin does not have.
+     * Requests are spaced out to stay clear of Garmin's rate limiter.
+     */
+    suspend fun dailySummaries(
+        dates: List<String>,
+        onProgress: ((done: Int, total: Int) -> Unit)? = null,
+    ): List<GarminDailySummary> {
+        val result = mutableListOf<GarminDailySummary>()
+        onProgress?.invoke(0, dates.size)
+        dates.forEachIndexed { index, date ->
+            dailySummary(date)?.let { result += it }
+            onProgress?.invoke(index + 1, dates.size)
+            if (summaryDelayMillis > 0 && index < dates.lastIndex) delay(summaryDelayMillis)
+        }
+        return result
+    }
+
+    /**
      * Download the original activity file and return the FIT payload.
      *
      * Garmin serves the original as a ZIP; a few activities come back as a bare
@@ -326,6 +411,44 @@ class GarminConnectClient(
             GarminException.Kind.Auth,
             "Garmin rejected the sign-in exchange (HTTP $lastStatus). Try again later.",
         )
+    }
+
+    /**
+     * Same authentication/refresh flow as [authorizedGet], but treats HTTP 404
+     * as "no data for this date" instead of an error.
+     */
+    private suspend fun authorizedGetOptional(url: HttpUrl, accept: String = "application/json"): ByteArray? {
+        var tokens = tokenStore.load() ?: throw GarminException(
+            GarminException.Kind.NotSignedIn,
+            "Sign in to Garmin Connect first.",
+        )
+        if (tokens.refreshToken != null && tokens.expiresAtMillis - clock() < TOKEN_REFRESH_WINDOW_MS) {
+            tokens = refreshTokens(tokens)
+        }
+        var response = call(apiRequest(url, tokens.accessToken, accept))
+        if ((response.code == 401 || response.code == 403) && tokens.refreshToken != null) {
+            tokens = refreshTokens(tokens)
+            response = call(apiRequest(url, tokens.accessToken, accept))
+        }
+        return when {
+            response.code == 404 -> null
+            response.code == 429 -> throw rateLimited(
+                "Garmin is rate-limiting requests.",
+                response.retryAfterSeconds,
+            )
+            response.code in 200..299 -> response.body
+            response.code == 401 || response.code == 403 -> {
+                tokenStore.clear()
+                throw GarminException(
+                    GarminException.Kind.NotSignedIn,
+                    "The Garmin session expired. Sign in again.",
+                )
+            }
+            else -> throw GarminException(
+                GarminException.Kind.Server,
+                "Garmin returned HTTP ${response.code}.",
+            )
+        }
     }
 
     private suspend fun authorizedGet(url: HttpUrl, accept: String = "application/json"): ByteArray {

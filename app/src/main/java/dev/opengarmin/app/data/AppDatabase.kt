@@ -15,6 +15,7 @@ import androidx.room.RoomDatabase
 import androidx.room.Update
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import dev.opengarmin.app.garmin.GarminDailySummary
 import dev.opengarmin.protocol.Fit
 import dev.opengarmin.protocol.Gfdi
 import kotlinx.coroutines.flow.Flow
@@ -952,6 +953,59 @@ class ActivityRepository(private val database: () -> AppDatabase) {
     suspend fun wellnessDaysBetween(start: String, end: String): List<WellnessDayEntity> =
         dao.wellnessDaysBetween(start, end)
 
+    /**
+     * Merge Garmin Connect daily summaries into local wellness rows.
+     *
+     * Monitoring counters are cumulative for a day, so an older or partial
+     * source can only raise them. Resting HR, stress and Body Battery are
+     * filled only when the local watch import did not provide them.
+     */
+    suspend fun mergeGarminDailySummaries(summaries: List<GarminDailySummary>): Int {
+        var updated = 0
+        for (summary in summaries) {
+            val existing = dao.wellnessDay(summary.date)
+            val entity = if (existing == null) {
+                WellnessDayEntity(
+                    date = summary.date,
+                    steps = summary.steps,
+                    distanceMeters = summary.distanceMeters,
+                    activeCalories = summary.activeCalories,
+                    activeSeconds = summary.activeSeconds,
+                    restingHeartRate = summary.restingHeartRate,
+                    avgHeartRate = null,
+                    maxHeartRate = null,
+                    stressAvg = summary.stressAvg,
+                    spo2Avg = null,
+                    respirationAvg = null,
+                    updatedAt = nowSeconds(),
+                    bodyBatteryMin = summary.bodyBatteryMin,
+                    bodyBatteryMax = summary.bodyBatteryMax,
+                    bodyBatteryLatest = summary.bodyBatteryLatest,
+                )
+            } else {
+                existing.copy(
+                    steps = maxOf(existing.steps, summary.steps),
+                    distanceMeters = maxOf(existing.distanceMeters, summary.distanceMeters),
+                    activeCalories = maxOf(existing.activeCalories, summary.activeCalories),
+                    activeSeconds = maxOf(existing.activeSeconds, summary.activeSeconds),
+                    restingHeartRate = existing.restingHeartRate ?: summary.restingHeartRate,
+                    stressAvg = existing.stressAvg ?: summary.stressAvg,
+                    bodyBatteryMin = existing.bodyBatteryMin ?: summary.bodyBatteryMin,
+                    bodyBatteryMax = existing.bodyBatteryMax ?: summary.bodyBatteryMax,
+                    bodyBatteryLatest = existing.bodyBatteryLatest ?: summary.bodyBatteryLatest,
+                    updatedAt = nowSeconds(),
+                )
+            }
+            if (existing == null) {
+                dao.insertWellnessDay(entity)
+            } else {
+                dao.updateWellnessDay(entity)
+            }
+            updated++
+        }
+        return updated
+    }
+
     suspend fun dailySampleAverages(kind: String): List<DailySampleAverage> =
         dao.dailySampleAverages(kind)
 
@@ -1287,10 +1341,13 @@ class ActivityRepository(private val database: () -> AppDatabase) {
      * when this file actually contains one; never zero-fill.
      */
     private fun WellnessDayEntity.mergedWith(draft: WellnessDayDraft): WellnessDayEntity = copy(
-        steps = if (draft.hasMonitoring) draft.steps else steps,
-        distanceMeters = if (draft.hasMonitoring) draft.distanceMeters else distanceMeters,
-        activeCalories = if (draft.hasMonitoring) draft.activeCalories else activeCalories,
-        activeSeconds = if (draft.hasMonitoring) draft.activeSeconds else activeSeconds,
+        // Monitoring counters are cumulative for the day. Overlapping cuts can
+        // arrive out of order (the watch rewrites them), so never let an older
+        // or partial file lower a value already stored for that day.
+        steps = if (draft.hasMonitoring) maxOf(steps, draft.steps) else steps,
+        distanceMeters = if (draft.hasMonitoring) maxOf(distanceMeters, draft.distanceMeters) else distanceMeters,
+        activeCalories = if (draft.hasMonitoring) maxOf(activeCalories, draft.activeCalories) else activeCalories,
+        activeSeconds = if (draft.hasMonitoring) maxOf(activeSeconds, draft.activeSeconds) else activeSeconds,
         restingHeartRate = draft.restingHeartRate ?: restingHeartRate,
         avgHeartRate = draft.avgHeartRate ?: avgHeartRate,
         maxHeartRate = draft.maxHeartRate ?: maxHeartRate,

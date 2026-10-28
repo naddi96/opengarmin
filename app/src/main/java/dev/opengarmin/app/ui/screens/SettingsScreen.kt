@@ -34,6 +34,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import android.net.Uri
 import dev.opengarmin.app.BuildConfig
+import dev.opengarmin.app.garmin.GarminDailySummary
 import dev.opengarmin.app.i18n.AppLanguage
 import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.llm.ProviderConfig
@@ -72,6 +73,7 @@ fun SettingsScreen(
     onImportFit: (Uri) -> Unit,
     onImportGarminFit: suspend (String, ByteArray, String) -> FitImportResult,
     isGarminActivityKnown: (String) -> Boolean,
+    onImportGarminWellness: suspend (List<GarminDailySummary>) -> Int,
     onAuditWatchFiles: () -> Unit,
     backupStatus: String?,
     backupBusy: Boolean,
@@ -497,6 +499,7 @@ fun SettingsScreen(
         GarminConnectCard(
             onImportFit = onImportGarminFit,
             isActivityKnown = isGarminActivityKnown,
+            onImportWellness = onImportGarminWellness,
         )
 
         SectionLabel("Background sync")

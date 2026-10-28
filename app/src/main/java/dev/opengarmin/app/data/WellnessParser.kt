@@ -246,29 +246,37 @@ object WellnessParser {
         )
     }
 
-    // Monitoring totals are cumulative, so keep the last message per
-    // activity type for each day and sum those.
+    // Monitoring totals are cumulative, so keep the last non-null value per
+    // metric and activity type, then sum the types. The watch also emits
+    // monitoring messages that only carry metadata (fields 35-38) and no
+    // activity_type; treating those as a fresh type-0 sample used to erase the
+    // day's real step total and produce a zero row.
     private fun aggregateMonitoring(
         monitoringByDate: Map<String, List<Fit.Message>>,
     ): Map<String, MonitoringTotals> {
         val monitoringTotals = HashMap<String, MonitoringTotals>()
         for ((date, messagesForDay) in monitoringByDate) {
-            val lastByType = LinkedHashMap<Int, Fit.Message>()
+            val byType = LinkedHashMap<Int, MonitoringTotals>()
             for (message in messagesForDay) {
                 val type = int(message, "activity_type") ?: 0
-                lastByType[type] = message
-            }
-            val totals = MonitoringTotals()
-            for (message in lastByType.values) {
-                totals.steps += int(message, "steps")
+                val totals = byType.getOrPut(type) { MonitoringTotals() }
+
+                val steps = int(message, "steps")
                     ?: int(message, "cycles_16")?.times(2)
                     ?: double(message, "cycles")?.times(2)?.roundToInt()
-                    ?: 0
-                totals.distance += double(message, "distance") ?: 0.0
-                totals.activeCalories += int(message, "active_calories")
-                    ?: int(message, "calories")
-                    ?: 0
-                totals.activeSeconds += double(message, "active_time")?.roundToInt() ?: 0
+                if (steps != null) totals.steps = steps
+
+                double(message, "distance")?.let { totals.distance = it }
+                (int(message, "active_calories") ?: int(message, "calories"))
+                    ?.let { totals.activeCalories = it }
+                double(message, "active_time")?.let { totals.activeSeconds = it.roundToInt() }
+            }
+            val totals = MonitoringTotals()
+            byType.values.forEach { typeTotals ->
+                totals.steps += typeTotals.steps
+                totals.distance += typeTotals.distance
+                totals.activeCalories += typeTotals.activeCalories
+                totals.activeSeconds += typeTotals.activeSeconds
             }
             monitoringTotals[date] = totals
         }
