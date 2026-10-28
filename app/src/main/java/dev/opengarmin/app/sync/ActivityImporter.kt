@@ -14,6 +14,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+sealed interface FitImportResult {
+    data class Imported(val activity: ActivityEntity) : FitImportResult
+
+    data object AlreadyImported : FitImportResult
+
+    data class Failed(val message: String) : FitImportResult
+}
+
 /**
  * Imports FIT activity and wellness files into the local database and reports
  * progress through [SyncUiState].
@@ -133,31 +141,45 @@ class ActivityImporter(
             }
             val name = uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
                 ?: "imported.fit"
-            // Keep the selected FIT file in app storage so Export → FIT can
-            // return the original watch file later. The timestamp prevents
-            // two imports with the same display name from colliding.
-            val stored = withContext(Dispatchers.IO) {
-                runCatching {
-                    File(context.filesDir, "import-${System.currentTimeMillis()}-${safeFitName(name)}")
-                        .also { it.writeBytes(bytes) }
-                }.getOrNull()
+            importFitBytes(name, bytes)
+        }
+    }
+
+    /**
+     * Imports a FIT payload that did not come from a document picker (currently
+     * a Garmin Connect download). The bytes are kept in app storage so the
+     * original watch/cloud file remains exportable.
+     */
+    suspend fun importFitBytes(name: String, bytes: ByteArray): FitImportResult {
+        // Keep the selected FIT file in app storage so Export → FIT can
+        // return the original file later. The timestamp prevents two imports
+        // with the same display name from colliding.
+        val stored = withContext(Dispatchers.IO) {
+            runCatching {
+                File(context.filesDir, "import-${System.currentTimeMillis()}-${safeFitName(name)}")
+                    .also { it.writeBytes(bytes) }
+            }.getOrNull()
+        }
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                repository.importFit(stored?.name ?: safeFitName(name), bytes, itemUid = "")
             }
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    repository.importFit(stored?.name ?: name, bytes, itemUid = "")
-                }
-            }
-            result.onSuccess { entity ->
+        }
+        return result.fold(
+            onSuccess = { entity ->
                 if (entity == null) {
                     stored?.delete()
                     ui.log("FIT import: no session found or activity already exists")
+                    FitImportResult.AlreadyImported
                 } else {
                     ui.importedThisSync++
                     ui.lastImportedLabel = importedLabel(entity)
                     ui.log("IMPORTED from file: ${entity.fileName}")
                     onActivityImported?.invoke(entity)
+                    FitImportResult.Imported(entity)
                 }
-            }.onFailure { e ->
+            },
+            onFailure = { e ->
                 stored?.delete()
                 Diagnostics.record(
                     area = Diagnostics.AREA_IMPORT,
@@ -167,8 +189,9 @@ class ActivityImporter(
                     context = mapOf("file" to name),
                 )
                 ui.log("FIT import failed: ${e.message}")
-            }
-        }
+                FitImportResult.Failed(e.message ?: "FIT import failed")
+            },
+        )
     }
 
     private fun safeFitName(name: String): String {

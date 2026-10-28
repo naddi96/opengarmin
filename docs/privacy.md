@@ -1,8 +1,9 @@
 # Privacy and safety
 
 Pulse is local-first. Health data from the watch is stored in the app's Room
-database on the phone; there is no Garmin account, backend, telemetry, or
-analytics.
+database on the phone; there is no OpenGarmin/Pulse account, backend,
+telemetry, or analytics. The optional **Garmin Connect** recovery feature does
+contact Garmin's servers when you choose to sign in and download an activity.
 
 ## What leaves the device
 
@@ -31,6 +32,20 @@ sent to OpenGarmin/Pulse servers, and no data is sent anywhere if no provider is
 configured. Automatic analysis can be turned off without affecting the coach or
 manual generation.
 
+### Optional Garmin Connect cloud import
+
+When you sign in under **Settings → Garmin Connect**:
+
+- The email and password are sent over HTTPS to Garmin's SSO service to obtain
+  an OAuth token. The password is not stored after sign-in.
+- The OAuth access and refresh tokens are stored encrypted on this device with
+  an Android Keystore key.
+- Loading the activity list sends the token to
+  `connectapi.garmin.com`; importing sends the activity id and downloads the
+  original FIT. No watch, health, or Pulse data is uploaded.
+- **Sign out** removes the stored tokens. This is the only feature that talks to
+  Garmin's servers.
+
 A local model (Ollama, LM Studio, vLLM) keeps the data on your device or LAN.
 The provider screen recommends this and warns when plain HTTP is used.
 
@@ -44,6 +59,9 @@ The provider screen recommends this and warns when plain HTTP is used.
   or crash reports.
 - Deleting the key removes the ciphertext. Removing the provider removes its
   configuration and key.
+- Garmin Connect OAuth tokens use a separate Android Keystore key and are
+  removed by **Settings → Garmin Connect → Sign out**. The Garmin password is
+  never stored.
 
 Build-time environment keys are embedded in `BuildConfig` and can be extracted
 from the APK; use them only for managed/local deployments.
@@ -141,6 +159,8 @@ screen unless the user changes the system notification privacy setting.
   messages; use the History list to delete them individually with confirmation.
 - **Remove provider configuration** removes the endpoint, models, and stored
   key.
+- **Settings → Garmin Connect → Sign out** removes the stored Garmin OAuth
+  tokens. The saved Garmin email remains until app data is cleared.
 - Clearing app data or uninstalling removes the Room database, FIT files,
   conversations, and settings. There is no cloud copy.
 - Exported backup files are outside the app's storage; delete them separately.

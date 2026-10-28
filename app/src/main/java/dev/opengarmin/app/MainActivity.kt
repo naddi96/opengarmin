@@ -51,6 +51,7 @@ import java.util.Locale
 import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivityImporter
+import dev.opengarmin.app.sync.FitImportResult
 import dev.opengarmin.app.sync.SyncScheduler
 import dev.opengarmin.app.sync.SyncSessionController
 import dev.opengarmin.app.sync.SyncUiState
@@ -287,6 +288,15 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onImportFit = { uri -> importer.importFitFromUri(uri) },
+                    onImportGarminFit = { name, bytes ->
+                        if (syncController.isSyncingOrImporting()) {
+                            FitImportResult.Failed(
+                                "Wait for the current watch sync to finish and try again.",
+                            )
+                        } else {
+                            importer.importFitBytes(name, bytes)
+                        }
+                    },
                     onAuditWatchFiles = { syncController.auditWatchDirectory() },
                     onSaveWorkout = { workout -> saveWorkout(workout) },
                     onDeleteWorkout = { id -> deleteWorkout(id) },

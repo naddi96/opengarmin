@@ -56,6 +56,13 @@ Audit watch file list** runs a read-only `DIRECTORY_FILTER = 0` scan and logs
 every entry (type, flags, size) without downloading or archiving, so we can
 tell whether an archived activity is still reachable on this firmware.
 
+### Cloud fallback
+
+**Settings → Garmin Connect** signs in to the unofficial Garmin mobile API,
+lists recent activities, downloads the original FIT, and imports it through the
+same local pipeline as a watch download. This covers runs that the watch queue
+no longer offers. Details: `docs/garmin-connect-cloud-import.md`.
+
 ### How to continue
 
 1. Install the v0.9.2 release APK (or `app/build/outputs/apk/debug/app-debug.apk`).

@@ -37,6 +37,7 @@ import dev.opengarmin.app.llm.ProviderConfig
 import dev.opengarmin.app.llm.ProviderPresets
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivitySyncProgress
+import dev.opengarmin.app.sync.FitImportResult
 import dev.opengarmin.app.sync.SyncPhase
 import dev.opengarmin.app.sync.SyncPolicy
 import dev.opengarmin.app.ui.components.IconButtonRound
@@ -66,6 +67,7 @@ fun SettingsScreen(
     onDisconnect: () -> Unit,
     onShowLog: () -> Unit,
     onImportFit: (Uri) -> Unit,
+    onImportGarminFit: suspend (String, ByteArray) -> FitImportResult,
     onAuditWatchFiles: () -> Unit,
     backupStatus: String?,
     backupBusy: Boolean,
@@ -441,6 +443,9 @@ fun SettingsScreen(
                 PrimaryButton("Audit watch file list", onAuditWatchFiles)
             }
         }
+
+        SectionLabel("Garmin Connect")
+        GarminConnectCard(onImportFit = onImportGarminFit)
 
         SectionLabel("Background sync")
         PulseCard(modifier = Modifier.fillMaxWidth()) {
