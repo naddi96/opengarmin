@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,11 +27,16 @@ import dev.opengarmin.app.garmin.GarminConnectClient
 import dev.opengarmin.app.garmin.GarminCredentialStore
 import dev.opengarmin.app.garmin.GarminException
 import dev.opengarmin.app.garmin.GarminLoginResult
+import dev.opengarmin.app.garmin.garminActivityUid
 import dev.opengarmin.app.sync.FitImportResult
 import dev.opengarmin.app.ui.components.PrimaryButton
 import dev.opengarmin.app.ui.components.PulseCard
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 /**
@@ -39,7 +46,8 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun GarminConnectCard(
-    onImportFit: suspend (String, ByteArray) -> FitImportResult,
+    onImportFit: suspend (String, ByteArray, String) -> FitImportResult,
+    isActivityKnown: (String) -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -59,6 +67,9 @@ fun GarminConnectCard(
     var activitiesLoaded by remember { mutableStateOf(false) }
     var importingId by remember { mutableStateOf<String?>(null) }
     var importedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var bulkRunning by remember { mutableStateOf(false) }
+    var bulkJob by remember { mutableStateOf<Job?>(null) }
+    var confirmBulkImport by remember { mutableStateOf(false) }
 
     fun fail(error: Throwable) {
         val garminError = error as? GarminException
@@ -151,7 +162,11 @@ fun GarminConnectCard(
         scope.launch {
             try {
                 val bytes = client.downloadOriginalFit(activity.id)
-                when (val result = onImportFit("garmin-${activity.id}.fit", bytes)) {
+                when (val result = onImportFit(
+                    "garmin-${activity.id}.fit",
+                    bytes,
+                    garminActivityUid(activity.id),
+                )) {
                     is FitImportResult.Imported -> {
                         importedIds = importedIds + activity.id
                         status = "Imported ${activity.displayTitle}."
@@ -171,6 +186,90 @@ fun GarminConnectCard(
                 fail(error)
             } finally {
                 importingId = null
+            }
+        }
+    }
+
+    fun startImportAll() {
+        if (bulkRunning) return
+        confirmBulkImport = false
+        bulkRunning = true
+        status = "Checking the Garmin activity count…"
+        statusIsError = false
+        var imported = 0
+        var skipped = 0
+        var failed = 0
+        bulkJob = scope.launch {
+            try {
+                val total = client.activityCount()
+                if (total <= 0) {
+                    status = "Garmin returned no activities to import."
+                    statusIsError = false
+                    return@launch
+                }
+                val pageSize = 50
+                var start = 0
+                while (start < total) {
+                    currentCoroutineContext().ensureActive()
+                    val page = client.activities(start = start, limit = pageSize)
+                    if (page.isEmpty()) break
+                    for ((index, activity) in page.withIndex()) {
+                        currentCoroutineContext().ensureActive()
+                        val ordinal = (start + index + 1).coerceAtMost(total)
+                        status = "Importing $ordinal of $total: ${activity.displayTitle}"
+                        val uid = garminActivityUid(activity.id)
+                        if (activity.id in importedIds || isActivityKnown(activity.id)) {
+                            skipped++
+                            importedIds = importedIds + activity.id
+                            continue
+                        }
+                        try {
+                            val bytes = client.downloadOriginalFit(activity.id)
+                            when (onImportFit(
+                                "garmin-${activity.id}.fit",
+                                bytes,
+                                uid,
+                            )) {
+                                is FitImportResult.Imported -> {
+                                    imported++
+                                    importedIds = importedIds + activity.id
+                                }
+                                FitImportResult.AlreadyImported -> {
+                                    skipped++
+                                    importedIds = importedIds + activity.id
+                                }
+                                is FitImportResult.Failed -> failed++
+                            }
+                        } catch (error: GarminException) {
+                            // A malformed file is specific to one activity; keep
+                            // going. Auth, network, server and rate limits stop
+                            // the whole batch.
+                            if (error.kind != GarminException.Kind.Malformed) throw error
+                            failed++
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Throwable) {
+                            failed++
+                        }
+                    }
+                    start += page.size
+                }
+                status = buildString {
+                    append("Import finished: $imported imported")
+                    if (skipped > 0) append(", $skipped already present")
+                    if (failed > 0) append(", $failed failed")
+                    append(".")
+                }
+                statusIsError = failed > 0
+            } catch (cancelled: CancellationException) {
+                status = "Import stopped. $imported imported so far."
+                statusIsError = false
+                throw cancelled
+            } catch (error: Throwable) {
+                fail(error)
+            } finally {
+                bulkRunning = false
+                bulkJob = null
             }
         }
     }
@@ -260,7 +359,7 @@ fun GarminConnectCard(
                     PrimaryButton(
                         if (busy) "Loading…" else "Load recent activities",
                         onClick = {
-                            if (!busy) {
+                            if (!busy && !bulkRunning) {
                                 busy = true
                                 status = null
                                 statusIsError = false
@@ -281,27 +380,52 @@ fun GarminConnectCard(
                                 }
                             }
                         },
-                        enabled = !busy,
+                        enabled = !busy && !bulkRunning,
                     )
-                    PrimaryButton("Sign out", onClick = {
-                        store.signOut()
-                        signedIn = false
-                        activities = emptyList()
-                        activitiesLoaded = false
-                        importedIds = emptySet()
-                        mfaMethod = null
-                        status = "Signed out of Garmin Connect."
-                        statusIsError = false
-                    })
+                    PrimaryButton(
+                        "Sign out",
+                        onClick = {
+                            store.signOut()
+                            signedIn = false
+                            activities = emptyList()
+                            activitiesLoaded = false
+                            importedIds = emptySet()
+                            mfaMethod = null
+                            status = "Signed out of Garmin Connect."
+                            statusIsError = false
+                        },
+                        enabled = !busy && !bulkRunning && importingId == null,
+                    )
                 }
+                PrimaryButton(
+                    if (bulkRunning) "Stop import" else "Import all activities",
+                    onClick = {
+                        when {
+                            bulkRunning -> {
+                                status = "Stopping after the current download…"
+                                statusIsError = false
+                                bulkJob?.cancel()
+                            }
+                            !busy && importingId == null -> confirmBulkImport = true
+                        }
+                    },
+                    enabled = bulkRunning || (!busy && importingId == null),
+                )
+                Text(
+                    "Bulk import downloads every activity in your Garmin account, " +
+                        "newest first. Existing activities are skipped.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                )
 
                 if (activities.isNotEmpty()) {
                     activities.forEach { activity ->
                         GarminActivityRow(
                             activity = activity,
-                            busy = importingId != null,
+                            busy = importingId != null || bulkRunning,
                             importing = importingId == activity.id,
-                            imported = activity.id in importedIds,
+                            imported = activity.id in importedIds ||
+                                isActivityKnown(activity.id),
                             onImport = { importActivity(activity) },
                         )
                     }
@@ -331,6 +455,27 @@ fun GarminConnectCard(
                 color = PulseColors.TextMuted,
             )
         }
+    }
+
+    if (confirmBulkImport) {
+        AlertDialog(
+            onDismissRequest = { confirmBulkImport = false },
+            title = { Text("Import all Garmin activities?") },
+            text = {
+                Text(
+                    "Pulse downloads every original FIT from Garmin Connect, newest first, " +
+                        "with a randomized wait between files to avoid rate limits. A large " +
+                        "history can take a long time. Activities already in Pulse are skipped. " +
+                        "If automatic analysis is on, recent activities may be queued for analysis.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = ::startImportAll) { Text("Start import") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmBulkImport = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 

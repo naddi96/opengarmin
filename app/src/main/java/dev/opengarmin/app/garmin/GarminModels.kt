@@ -1,5 +1,8 @@
 package dev.opengarmin.app.garmin
 
+/** Stable local UID for an activity imported from Garmin Connect. */
+fun garminActivityUid(activityId: String): String = "garmin:$activityId"
+
 /**
  * One activity row from the Garmin Connect activity list.
  *

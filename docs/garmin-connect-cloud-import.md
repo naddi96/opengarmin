@@ -14,6 +14,9 @@ and feeds it to the normal local importer.
 3. If the account uses MFA, enter the emailed/SMS code in the field that
    appears.
 4. Tap **Load recent activities**, then **Import** next to the missing run.
+   Alternatively, tap **Import all activities** to page through the whole Garmin
+   history (newest first), skipping activities already in Pulse. Bulk import can
+   be stopped; it stops cleanly after the current file.
 
 Imported files go through `ActivityImporter.importFitBytes`, so they get the
 same parsing, duplicate detection, local storage, sync log entry, and automatic
@@ -37,12 +40,19 @@ Endpoints used:
 
 | Purpose | Endpoint |
 | --- | --- |
-| Activity list | `GET /activitylist-service/activities/search/activities?start=0&limit=20` |
+| Activity count | `GET /activitylist-service/activities/count` |
+| Activity list | `GET /activitylist-service/activities/search/activities?start=0&limit=50` |
 | Original FIT | `GET /download-service/files/activity/{activityId}` |
 
+Bulk import requests 50 activities per page, downloads originals one at a
+time, and uses the local Garmin activity id as the activity UID so a re-run
+skips files already imported. The activity count endpoint supplies the progress
+total and upper bound; an empty page also stops the loop.
+
 The original download is a ZIP; the client extracts the `.fit` entry. A bare
-FIT response is also accepted. Downloads are serialised and spaced 1.2 s apart
-to stay under Garmin's undocumented rate limit.
+FIT response is also accepted. Downloads are serialised and spaced by a random
+1.5–3.5 s interval to avoid a fixed, bot-like cadence and stay under Garmin's
+undocumented rate limit.
 
 ## What is stored
 

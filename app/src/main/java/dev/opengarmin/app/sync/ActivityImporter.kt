@@ -150,7 +150,11 @@ class ActivityImporter(
      * a Garmin Connect download). The bytes are kept in app storage so the
      * original watch/cloud file remains exportable.
      */
-    suspend fun importFitBytes(name: String, bytes: ByteArray): FitImportResult {
+    suspend fun importFitBytes(
+        name: String,
+        bytes: ByteArray,
+        itemUid: String = "",
+    ): FitImportResult {
         // Keep the selected FIT file in app storage so Export → FIT can
         // return the original file later. The timestamp prevents two imports
         // with the same display name from colliding.
@@ -162,16 +166,18 @@ class ActivityImporter(
         }
         val result = withContext(Dispatchers.IO) {
             runCatching {
-                repository.importFit(stored?.name ?: safeFitName(name), bytes, itemUid = "")
+                repository.importFit(stored?.name ?: safeFitName(name), bytes, itemUid = itemUid)
             }
         }
         return result.fold(
             onSuccess = { entity ->
                 if (entity == null) {
                     stored?.delete()
+                    if (itemUid.isNotEmpty()) knownActivityUids = knownActivityUids + itemUid
                     ui.log("FIT import: no session found or activity already exists")
                     FitImportResult.AlreadyImported
                 } else {
+                    if (itemUid.isNotEmpty()) knownActivityUids = knownActivityUids + itemUid
                     ui.importedThisSync++
                     ui.lastImportedLabel = importedLabel(entity)
                     ui.log("IMPORTED from file: ${entity.fileName}")

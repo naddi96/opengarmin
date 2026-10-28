@@ -39,7 +39,8 @@ class GarminConnectClientTest {
         tokenUrl = server.url("/token").toString(),
         serviceUrl = "https://mobile.integration.garmin.com/gcm/ios",
         loginPageDelayMillis = 0,
-        downloadDelayMillis = 0,
+        downloadDelayMinMillis = 0,
+        downloadDelayMaxMillis = 0,
         okHttpClient = OkHttpClient.Builder()
             .connectTimeout(2, TimeUnit.SECONDS)
             .readTimeout(2, TimeUnit.SECONDS)
@@ -218,6 +219,52 @@ class GarminConnectClientTest {
         server.takeRequest()
         val list = server.takeRequest()
         assertEquals("Bearer fresh", list.getHeader("Authorization"))
+    }
+
+    @Test
+    fun `activity pages use the requested offset and count comes from Garmin`() = runBlocking {
+        tokens.tokens = GarminTokens(
+            accessToken = "access-token",
+            refreshToken = null,
+            clientId = "client",
+            expiresAtMillis = Long.MAX_VALUE,
+        )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"totalCount":42}"""),
+        )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    JSONArray()
+                        .put(
+                            JSONObject().apply {
+                                put("activityId", 111L)
+                                put("activityName", "Older run")
+                                put("startTimeLocal", "2025-01-02T08:00:00.0")
+                                put("activityType", JSONObject().put("typeKey", "running"))
+                                put("distance", 5000.0)
+                                put("duration", 1500.0)
+                            },
+                        )
+                        .toString(),
+                ),
+        )
+
+        val client = client()
+        assertEquals(42, client.activityCount())
+        val page = client.activities(start = 20, limit = 10)
+        assertEquals("111", page.single().id)
+
+        val countRequest = server.takeRequest()
+        assertEquals("/api/activitylist-service/activities/count", countRequest.path)
+        val pageRequest = server.takeRequest()
+        assertEquals(
+            "/api/activitylist-service/activities/search/activities?start=20&limit=10",
+            pageRequest.path,
+        )
     }
 
     private class FakeTokenStore(var tokens: GarminTokens? = null) : GarminTokenStore {

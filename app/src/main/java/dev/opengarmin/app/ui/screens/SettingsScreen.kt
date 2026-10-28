@@ -67,7 +67,8 @@ fun SettingsScreen(
     onDisconnect: () -> Unit,
     onShowLog: () -> Unit,
     onImportFit: (Uri) -> Unit,
-    onImportGarminFit: suspend (String, ByteArray) -> FitImportResult,
+    onImportGarminFit: suspend (String, ByteArray, String) -> FitImportResult,
+    isGarminActivityKnown: (String) -> Boolean,
     onAuditWatchFiles: () -> Unit,
     backupStatus: String?,
     backupBusy: Boolean,
@@ -445,7 +446,10 @@ fun SettingsScreen(
         }
 
         SectionLabel("Garmin Connect")
-        GarminConnectCard(onImportFit = onImportGarminFit)
+        GarminConnectCard(
+            onImportFit = onImportGarminFit,
+            isActivityKnown = isGarminActivityKnown,
+        )
 
         SectionLabel("Background sync")
         PulseCard(modifier = Modifier.fillMaxWidth()) {

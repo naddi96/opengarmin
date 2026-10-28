@@ -5,6 +5,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.random.Random
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.FormBody
@@ -43,7 +44,9 @@ class GarminConnectClient(
     serviceUrl: String = DEFAULT_SERVICE_URL,
     private val clientIds: List<String> = DEFAULT_CLIENT_IDS,
     private val loginPageDelayMillis: Long = 2_000,
-    private val downloadDelayMillis: Long = 1_200,
+    private val downloadDelayMinMillis: Long = 1_500,
+    private val downloadDelayMaxMillis: Long = 3_500,
+    private val random: Random = Random.Default,
     private val okHttpClient: OkHttpClient = defaultHttpClient(),
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
@@ -156,11 +159,12 @@ class GarminConnectClient(
         return exchangeServiceTicket(ticket)
     }
 
-    /** Newest-first activity list from Garmin Connect. */
-    suspend fun recentActivities(limit: Int = 20): List<GarminActivity> {
+    /** One page of the newest-first Garmin Connect activity list. */
+    suspend fun activities(start: Int = 0, limit: Int = 20): List<GarminActivity> {
+        val safeStart = start.coerceAtLeast(0)
         val safeLimit = limit.coerceIn(1, 100)
         val url = "$apiBase/activitylist-service/activities/search/activities".toHttpUrl().newBuilder()
-            .addQueryParameter("start", "0")
+            .addQueryParameter("start", safeStart.toString())
             .addQueryParameter("limit", safeLimit.toString())
             .build()
         val payload = authorizedGet(url)
@@ -193,6 +197,20 @@ class GarminConnectClient(
         }
         return activities
     }
+
+    /** Total number of activities in the Garmin Connect account. */
+    suspend fun activityCount(): Int {
+        val url = "$apiBase/activitylist-service/activities/count".toHttpUrl()
+        val payload = authorizedGet(url)
+        val json = parseJson(payload) ?: throw GarminException(
+            GarminException.Kind.Malformed,
+            "Garmin returned an unexpected activity count.",
+        )
+        return json.optInt("totalCount", 0).coerceAtLeast(0)
+    }
+
+    suspend fun recentActivities(limit: Int = 20): List<GarminActivity> =
+        activities(start = 0, limit = limit)
 
     /**
      * Download the original activity file and return the FIT payload.
@@ -421,9 +439,16 @@ class GarminConnectClient(
 
     private suspend fun throttleDownloads() {
         downloadMutex.withLock {
+            val min = downloadDelayMinMillis.coerceAtLeast(0)
+            val max = downloadDelayMaxMillis.coerceAtLeast(min)
+            val targetDelay = when {
+                max <= 0L -> 0L
+                max <= min -> min
+                else -> random.nextLong(min, max)
+            }
             val sinceLast = clock() - lastDownloadAtMillis
-            if (lastDownloadAtMillis > 0L && sinceLast < downloadDelayMillis) {
-                delay(downloadDelayMillis - sinceLast)
+            if (lastDownloadAtMillis > 0L && sinceLast < targetDelay) {
+                delay(targetDelay - sinceLast)
             }
             lastDownloadAtMillis = clock()
         }

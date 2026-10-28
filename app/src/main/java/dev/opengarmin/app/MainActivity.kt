@@ -45,6 +45,7 @@ import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.diagnostics.AppEvent
 import dev.opengarmin.app.diagnostics.Diagnostics
 import dev.opengarmin.app.diagnostics.SyncLogExport
+import dev.opengarmin.app.garmin.garminActivityUid
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -288,14 +289,17 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onImportFit = { uri -> importer.importFitFromUri(uri) },
-                    onImportGarminFit = { name, bytes ->
+                    onImportGarminFit = { name, bytes, itemUid ->
                         if (syncController.isSyncingOrImporting()) {
                             FitImportResult.Failed(
                                 "Wait for the current watch sync to finish and try again.",
                             )
                         } else {
-                            importer.importFitBytes(name, bytes)
+                            importer.importFitBytes(name, bytes, itemUid)
                         }
+                    },
+                    isGarminActivityKnown = { id ->
+                        importer.isKnownActivityUid(garminActivityUid(id))
                     },
                     onAuditWatchFiles = { syncController.auditWatchDirectory() },
                     onSaveWorkout = { workout -> saveWorkout(workout) },

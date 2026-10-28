@@ -60,8 +60,10 @@ tell whether an archived activity is still reachable on this firmware.
 
 **Settings → Garmin Connect** signs in to the unofficial Garmin mobile API,
 lists recent activities, downloads the original FIT, and imports it through the
-same local pipeline as a watch download. This covers runs that the watch queue
-no longer offers. Details: `docs/garmin-connect-cloud-import.md`.
+same local pipeline as a watch download. **Import all activities** pages through
+the whole history, skips files already stored, and can be stopped. This covers
+runs that the watch queue no longer offers. Details:
+`docs/garmin-connect-cloud-import.md`.
 
 ### How to continue
 
