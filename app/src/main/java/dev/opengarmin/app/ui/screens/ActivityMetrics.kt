@@ -1,6 +1,8 @@
 package dev.opengarmin.app.ui.screens
 
+import androidx.compose.runtime.Composable
 import dev.opengarmin.app.data.ActivityEntity
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.data.ActivityZoneSet
 import dev.opengarmin.app.data.HeartRateZoneSample
 import dev.opengarmin.app.data.HeartRateZones
@@ -32,25 +34,29 @@ fun zoneSummary(records: List<RecordEntity>, maxHeartRate: Int?): ZoneSummary? =
         )
     }
 
+@Composable
 fun activityPaceLabel(activity: ActivityEntity): String = when (
     categoryForSport(activity.sport, activity.subSport)
 ) {
     SportCategory.Ride -> {
         if (activity.durationSeconds > 0 && activity.distanceMeters > 0) {
-            "Avg speed %.1f km/h".format(activity.distanceMeters / activity.durationSeconds * 3.6)
+            tr(
+                "Avg speed %s km/h",
+                "%.1f".format(activity.distanceMeters / activity.durationSeconds * 3.6),
+            )
         } else {
-            "Recorded on watch"
+            tr("Recorded on watch")
         }
     }
-    SportCategory.Cardio -> "Cardio session"
-    SportCategory.Strength -> "Strength session"
+    SportCategory.Cardio -> tr("Cardio session")
+    SportCategory.Strength -> tr("Strength session")
     SportCategory.Walk, SportCategory.Run ->
         if (activity.distanceMeters > 0) {
-            "Avg pace ${formatPaceWithUnit(activity.durationSeconds, activity.distanceMeters)}"
+            tr("Avg pace %s", formatPaceWithUnit(activity.durationSeconds, activity.distanceMeters))
         } else {
-            "Recorded on watch"
+            tr("Recorded on watch")
         }
-    else -> "Recorded on watch"
+    else -> tr("Recorded on watch")
 }
 
 fun activityTitle(activity: ActivityEntity): String = when (

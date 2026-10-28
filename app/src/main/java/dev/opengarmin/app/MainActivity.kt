@@ -10,6 +10,7 @@ import android.provider.DocumentsContract
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +47,7 @@ import dev.opengarmin.app.diagnostics.AppEvent
 import dev.opengarmin.app.diagnostics.Diagnostics
 import dev.opengarmin.app.diagnostics.SyncLogExport
 import dev.opengarmin.app.garmin.garminActivityUid
+import dev.opengarmin.app.i18n.LocalAppLanguage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -219,124 +221,126 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            PulseTheme {
-                val progress = syncController.activityProgress
-                val syncLabel = syncStatusLabel(syncController.phase, progress, settings)
-                val syncColor = syncStatusColor(syncController.phase, progress, settings)
-                PulseApp(
-                    activities = activities,
-                    wellnessDays = wellnessDays,
-                    hrSamples = latestHrSamples,
-                    sleepStages = sleepStageRows,
-                    loadWellnessSamples = { date -> repository.wellnessSamplesForDate(date) },
-                    trainingSummary = trainingSummary,
-                    plannedWorkouts = plannedWorkouts,
-                    workoutSendStatus = syncController.workoutSendStatus,
-                    pacePlans = pacePlans,
-                    pacePlanSendStatus = syncController.pacePlanSendStatus,
-                    selectedActivity = selectedActivity,
-                    selectedRecords = selectedRecords,
-                    selectedLaps = selectedLaps,
-                    selectedInsights = selectedInsights,
-                    selectedDynamics = selectedDynamics,
-                    selectedGps = selectedGps,
-                    selectedAnalysis = selectedActivity?.let { analyses[it.id] },
-                    openActivityId = pendingOpenActivityId,
-                    onOpenActivityHandled = { pendingOpenActivityId = null },
-                    selectedFitExportAvailable = selectedActivity?.let {
-                        File(filesDir, it.fileName).isFile
-                    } == true,
-                    exportStatus = exportStatus,
-                    exportBusy = exportBusy,
-                    dataActivity = dataActivity,
-                    dataMessages = dataMessages,
-                    dataLoading = dataLoading,
-                    settings = settings,
-                    providerStore = providerStore,
-                    coachController = coachController,
-                    syncLabel = syncLabel,
-                    syncColor = syncColor,
-                    activitySyncProgress = progress,
-                    lastImportedLabel = syncController.lastImportedLabel,
-                    logs = syncController.logs,
-                    deviceInfo = { syncController.deviceInfo() },
-                    syncLogExportStatus = syncLogExportStatus,
-                    onExportSyncLog = { uri -> exportSyncLog(uri) },
-                    onSync = { syncController.syncNow(trigger = "manual") },
-                    onScan = { startScan() },
-                    onStop = { syncController.stopScan() },
-                    onDisconnect = { syncController.disconnectWatch() },
-                    onSelectActivity = { selectActivity(it) },
-                    onClearSelection = {
-                        selectedActivity = null
-                        selectedRecords = emptyList()
-                        selectedLaps = emptyList()
-                        selectedInsights = null
-                        selectedDynamics = null
-                        selectedGps = null
-                        exportStatus = null
-                    },
-                    onExploreData = { openDataExplorer(it) },
-                    onCloseData = { closeDataExplorer() },
-                    onExportActivity = { activity, format, uri -> exportActivity(activity, format, uri) },
-                    onGenerateAnalysis = { activity ->
-                        ensureNotificationPermission()
-                        lifecycleScope.launch {
-                            val queued = runCatching {
-                                analysisScheduler.enqueue(activity.id, force = true)
-                            }.getOrDefault(false)
-                            if (!queued) log("ANALYSIS not queued: configure an AI provider first")
-                        }
-                    },
-                    onImportFit = { uri -> importer.importFitFromUri(uri) },
-                    onImportGarminFit = { name, bytes, itemUid ->
-                        if (syncController.isSyncingOrImporting()) {
-                            FitImportResult.Failed(
-                                "Wait for the current watch sync to finish and try again.",
-                            )
-                        } else {
-                            importer.importFitBytes(name, bytes, itemUid)
-                        }
-                    },
-                    isGarminActivityKnown = { id ->
-                        importer.isKnownActivityUid(garminActivityUid(id))
-                    },
-                    onAuditWatchFiles = { syncController.auditWatchDirectory() },
-                    onSaveWorkout = { workout -> saveWorkout(workout) },
-                    onDeleteWorkout = { id -> deleteWorkout(id) },
-                    onSendWorkout = { workout -> syncController.sendWorkout(workout) },
-                    onSendPacePlan = { plan -> syncController.sendPacePlan(plan) },
-                    onDeletePacePlan = { id -> deletePacePlan(id) },
-                    loadPaceCourse = { id ->
-                        withContext(Dispatchers.IO) { repository.paceCourse(id) }
-                    },
-                    backupStatus = backupStatus,
-                    backupBusy = backupBusy,
-                    onExportBackup = { uri -> exportBackup(uri) },
-                    onImportBackup = { uri -> importBackup(uri) },
-                    diagnosticEvents = diagnosticEvents,
-                    diagnosticsLoading = diagnosticsLoading,
-                    diagnosticsStatus = diagnosticsStatus,
-                    onLoadDiagnostics = { loadDiagnostics() },
-                    onClearDiagnostics = { clearDiagnostics() },
-                    onExportDiagnostics = { uri -> exportDiagnostics(uri) },
-                    onBackgroundSyncChanged = {
-                        runCatching {
-                            SyncScheduler.apply(this, settings, replaceSchedule = true)
-                        }
-                    },
-                    onRunBackgroundSyncNow = {
-                        // Drop the visible-app BLE lease so the worker can own
-                        // the watch, then run the exact same background path.
-                        // A short pause lets the watch close the old GATT
-                        // session before the worker reconnects.
-                        lifecycleScope.launch {
-                            syncController.disconnectWatch()
-                            delay(1_500)
-                            runCatching { SyncScheduler.runOnce(this@MainActivity) }
-                        }
-                    },
-                )
+            CompositionLocalProvider(LocalAppLanguage provides settings.appLanguage) {
+                PulseTheme {
+                    val progress = syncController.activityProgress
+                    val syncLabel = syncStatusLabel(syncController.phase, progress, settings)
+                    val syncColor = syncStatusColor(syncController.phase, progress, settings)
+                    PulseApp(
+                        activities = activities,
+                        wellnessDays = wellnessDays,
+                        hrSamples = latestHrSamples,
+                        sleepStages = sleepStageRows,
+                        loadWellnessSamples = { date -> repository.wellnessSamplesForDate(date) },
+                        trainingSummary = trainingSummary,
+                        plannedWorkouts = plannedWorkouts,
+                        workoutSendStatus = syncController.workoutSendStatus,
+                        pacePlans = pacePlans,
+                        pacePlanSendStatus = syncController.pacePlanSendStatus,
+                        selectedActivity = selectedActivity,
+                        selectedRecords = selectedRecords,
+                        selectedLaps = selectedLaps,
+                        selectedInsights = selectedInsights,
+                        selectedDynamics = selectedDynamics,
+                        selectedGps = selectedGps,
+                        selectedAnalysis = selectedActivity?.let { analyses[it.id] },
+                        openActivityId = pendingOpenActivityId,
+                        onOpenActivityHandled = { pendingOpenActivityId = null },
+                        selectedFitExportAvailable = selectedActivity?.let {
+                            File(filesDir, it.fileName).isFile
+                        } == true,
+                        exportStatus = exportStatus,
+                        exportBusy = exportBusy,
+                        dataActivity = dataActivity,
+                        dataMessages = dataMessages,
+                        dataLoading = dataLoading,
+                        settings = settings,
+                        providerStore = providerStore,
+                        coachController = coachController,
+                        syncLabel = syncLabel,
+                        syncColor = syncColor,
+                        activitySyncProgress = progress,
+                        lastImportedLabel = syncController.lastImportedLabel,
+                        logs = syncController.logs,
+                        deviceInfo = { syncController.deviceInfo() },
+                        syncLogExportStatus = syncLogExportStatus,
+                        onExportSyncLog = { uri -> exportSyncLog(uri) },
+                        onSync = { syncController.syncNow(trigger = "manual") },
+                        onScan = { startScan() },
+                        onStop = { syncController.stopScan() },
+                        onDisconnect = { syncController.disconnectWatch() },
+                        onSelectActivity = { selectActivity(it) },
+                        onClearSelection = {
+                            selectedActivity = null
+                            selectedRecords = emptyList()
+                            selectedLaps = emptyList()
+                            selectedInsights = null
+                            selectedDynamics = null
+                            selectedGps = null
+                            exportStatus = null
+                        },
+                        onExploreData = { openDataExplorer(it) },
+                        onCloseData = { closeDataExplorer() },
+                        onExportActivity = { activity, format, uri -> exportActivity(activity, format, uri) },
+                        onGenerateAnalysis = { activity ->
+                            ensureNotificationPermission()
+                            lifecycleScope.launch {
+                                val queued = runCatching {
+                                    analysisScheduler.enqueue(activity.id, force = true)
+                                }.getOrDefault(false)
+                                if (!queued) log("ANALYSIS not queued: configure an AI provider first")
+                            }
+                        },
+                        onImportFit = { uri -> importer.importFitFromUri(uri) },
+                        onImportGarminFit = { name, bytes, itemUid ->
+                            if (syncController.isSyncingOrImporting()) {
+                                FitImportResult.Failed(
+                                    settings.localized("Wait for the current watch sync to finish and try again."),
+                                )
+                            } else {
+                                importer.importFitBytes(name, bytes, itemUid)
+                            }
+                        },
+                        isGarminActivityKnown = { id ->
+                            importer.isKnownActivityUid(garminActivityUid(id))
+                        },
+                        onAuditWatchFiles = { syncController.auditWatchDirectory() },
+                        onSaveWorkout = { workout -> saveWorkout(workout) },
+                        onDeleteWorkout = { id -> deleteWorkout(id) },
+                        onSendWorkout = { workout -> syncController.sendWorkout(workout) },
+                        onSendPacePlan = { plan -> syncController.sendPacePlan(plan) },
+                        onDeletePacePlan = { id -> deletePacePlan(id) },
+                        loadPaceCourse = { id ->
+                            withContext(Dispatchers.IO) { repository.paceCourse(id) }
+                        },
+                        backupStatus = backupStatus,
+                        backupBusy = backupBusy,
+                        onExportBackup = { uri -> exportBackup(uri) },
+                        onImportBackup = { uri -> importBackup(uri) },
+                        diagnosticEvents = diagnosticEvents,
+                        diagnosticsLoading = diagnosticsLoading,
+                        diagnosticsStatus = diagnosticsStatus,
+                        onLoadDiagnostics = { loadDiagnostics() },
+                        onClearDiagnostics = { clearDiagnostics() },
+                        onExportDiagnostics = { uri -> exportDiagnostics(uri) },
+                        onBackgroundSyncChanged = {
+                            runCatching {
+                                SyncScheduler.apply(this, settings, replaceSchedule = true)
+                            }
+                        },
+                        onRunBackgroundSyncNow = {
+                            // Drop the visible-app BLE lease so the worker can own
+                            // the watch, then run the exact same background path.
+                            // A short pause lets the watch close the old GATT
+                            // session before the worker reconnects.
+                            lifecycleScope.launch {
+                                syncController.disconnectWatch()
+                                delay(1_500)
+                                runCatching { SyncScheduler.runOnce(this@MainActivity) }
+                            }
+                        },
+                    )
+                }
             }
         }
     }
@@ -418,7 +422,7 @@ class MainActivity : ComponentActivity() {
     ) {
         if (exportBusy) return
         exportBusy = true
-        exportStatus = "Exporting ${format.name}…"
+        exportStatus = settings.localized("Exporting %s…", format.name)
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
@@ -441,7 +445,7 @@ class MainActivity : ComponentActivity() {
             }
             exportBusy = false
             exportStatus = result.fold(
-                onSuccess = { name -> "Exported $name. Nothing was uploaded." },
+                onSuccess = { name -> settings.localized("Exported %s. Nothing was uploaded.", name) },
                 onFailure = { error ->
                     Diagnostics.record(
                         area = Diagnostics.AREA_EXPORT,
@@ -458,7 +462,7 @@ class MainActivity : ComponentActivity() {
                     // leave a misleading artifact behind.
                     runCatching { DocumentsContract.deleteDocument(contentResolver, uri) }
                         .recoverCatching { contentResolver.delete(uri, null, null) }
-                    "Could not export: ${error.message ?: "unknown error"}"
+                    settings.localized("Could not export: %s", error.message ?: "unknown error")
                 },
             )
         }
@@ -467,15 +471,15 @@ class MainActivity : ComponentActivity() {
     private fun exportBackup(uri: Uri) {
         if (backupBusy) return
         backupBusy = true
-        backupStatus = "Creating backup…"
+        backupStatus = settings.localized("Creating backup…")
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching { BackupManager.export(this@MainActivity, uri, chatStore) }
             }
             backupBusy = false
             backupStatus = result.fold(
-                onSuccess = { "Backup saved. It contains the database and coach conversations." },
-                onFailure = { it.message ?: "Could not create the backup." },
+                onSuccess = { settings.localized("Backup saved. It contains the database and coach conversations.") },
+                onFailure = { it.message ?: settings.localized("Could not create the backup.") },
             )
             result.onFailure { error ->
                 Diagnostics.record(
@@ -492,11 +496,11 @@ class MainActivity : ComponentActivity() {
     private fun importBackup(uri: Uri) {
         if (backupBusy) return
         if (syncController.isSyncingOrImporting()) {
-            backupStatus = "Wait for the current sync to finish before restoring."
+            backupStatus = settings.localized("Wait for the current sync to finish before restoring.")
             return
         }
         backupBusy = true
-        backupStatus = "Restoring backup…"
+        backupStatus = settings.localized("Restoring backup…")
         dataJobs.forEach { it.cancel() }
         dataJobs.clear()
         lifecycleScope.launch {
@@ -526,14 +530,14 @@ class MainActivity : ComponentActivity() {
                 observeDatabase()
                 coachController.reloadAfterRestore()
                 backupStatus = if (imported.chatRestored) {
-                    "Backup restored. Activities, wellness data and conversations were replaced."
+                    settings.localized("Backup restored. Activities, wellness data and conversations were replaced.")
                 } else {
-                    "Database restored. Conversations were left unchanged (the backup has none)."
+                    settings.localized("Database restored. Conversations were left unchanged (the backup has none).")
                 }
                 log("BACKUP restore: ok")
             }.onFailure { error ->
                 observeDatabase()
-                backupStatus = error.message ?: "Could not restore the backup."
+                backupStatus = error.message ?: settings.localized("Could not restore the backup.")
                 Diagnostics.record(
                     area = Diagnostics.AREA_BACKUP,
                     code = "BACKUP_IMPORT_FAILED",
@@ -657,16 +661,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun clearDiagnostics() {
-        diagnosticsStatus = "Clearing…"
+        diagnosticsStatus = settings.localized("Clearing…")
         lifecycleScope.launch {
             withContext(Dispatchers.IO) { Diagnostics.clear() }
             loadDiagnostics()
-            diagnosticsStatus = "Diagnostics cleared."
+            diagnosticsStatus = settings.localized("Diagnostics cleared.")
         }
     }
 
     private fun exportDiagnostics(uri: Uri) {
-        diagnosticsStatus = "Exporting…"
+        diagnosticsStatus = settings.localized("Exporting…")
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
@@ -678,7 +682,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             diagnosticsStatus = result.fold(
-                onSuccess = { "Diagnostics exported. Nothing was uploaded." },
+                onSuccess = { settings.localized("Diagnostics exported. Nothing was uploaded.") },
                 onFailure = { error ->
                     runCatching { DocumentsContract.deleteDocument(contentResolver, uri) }
                         .recoverCatching { contentResolver.delete(uri, null, null) }
@@ -688,14 +692,14 @@ class MainActivity : ComponentActivity() {
                         message = error.message ?: "Diagnostics export failed.",
                         throwable = error,
                     )
-                    "Could not export: ${error.message ?: "unknown error"}"
+                    settings.localized("Could not export: %s", error.message ?: "unknown error")
                 },
             )
         }
     }
 
     private fun exportSyncLog(uri: Uri) {
-        syncLogExportStatus = "Exporting…"
+        syncLogExportStatus = settings.localized("Exporting…")
         val label = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
         val payload = SyncLogExport.text(
             deviceInfo = syncController.deviceInfo(),
@@ -711,7 +715,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             syncLogExportStatus = result.fold(
-                onSuccess = { "Sync log exported. MAC addresses were redacted." },
+                onSuccess = { settings.localized("Sync log exported. MAC addresses were redacted.") },
                 onFailure = { error ->
                     runCatching { DocumentsContract.deleteDocument(contentResolver, uri) }
                         .recoverCatching { contentResolver.delete(uri, null, null) }
@@ -721,7 +725,7 @@ class MainActivity : ComponentActivity() {
                         message = error.message ?: "Sync log export failed.",
                         throwable = error,
                     )
-                    "Could not export: ${error.message ?: "unknown error"}"
+                    settings.localized("Could not export: %s", error.message ?: "unknown error")
                 },
             )
         }

@@ -29,7 +29,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,6 +52,7 @@ import dev.opengarmin.app.data.WorkoutPlanCodec
 import dev.opengarmin.app.data.WorkoutSendStatus
 import dev.opengarmin.app.data.WorkoutSport
 import dev.opengarmin.app.data.newStepId
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.components.IconButtonRound
 import dev.opengarmin.app.ui.components.PrimaryButton
 import dev.opengarmin.app.ui.components.PulseCard
@@ -121,7 +122,14 @@ fun PlanScreen(
         AlertDialog(
             onDismissRequest = { deleting = null },
             title = { Text("Delete workout?") },
-            text = { Text("\"${workout.name}\" will be removed from this phone. A copy already on the watch is not changed.") },
+            text = {
+                Text(
+                    tr(
+                        "%s will be removed from this phone. A copy already on the watch is not changed.",
+                        workout.name,
+                    ),
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     onDelete(workout.id)
@@ -268,6 +276,7 @@ private fun ScheduledRow(workout: PlannedWorkoutEntity, showDivider: Boolean, on
                 color = PulseColors.Text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                translate = false,
             )
             Text(
                 workout.summary(),
@@ -308,12 +317,17 @@ private fun WorkoutRow(workout: PlannedWorkoutEntity, onClick: () -> Unit, onDel
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
+                        translate = false,
                     )
                     Spacer(Modifier.width(PulseSpacing.sm))
                     SentPill(workout.lastSentAt != null)
                 }
                 Text(
-                    "${WorkoutSport.from(workout.sport, workout.subSport).label} · ${workout.summary()}",
+                    tr(
+                        "%s · %s",
+                        tr(WorkoutSport.from(workout.sport, workout.subSport).label),
+                        workout.summary(),
+                    ),
                     style = MaterialTheme.typography.labelMedium,
                     color = PulseColors.TextMuted,
                 )
@@ -334,7 +348,7 @@ private fun WorkoutRow(workout: PlannedWorkoutEntity, onClick: () -> Unit, onDel
                     }
                 }
             }
-            IconButtonRound(Icons.Outlined.DeleteOutline, "Delete ${workout.name}", onDelete)
+            IconButtonRound(Icons.Outlined.DeleteOutline, tr("Delete %s", workout.name), onDelete)
         }
     }
 }
@@ -607,8 +621,12 @@ private fun WorkoutEditor(
                     )
                 }
                 Text(
-                    status?.let { it.message ?: if (it.sending) "Sending…" else "" }
-                        ?: if (initial?.lastSentAt != null) "Last sent ${formatSent(initial.lastSentAt)}" else "Not sent yet",
+                    status?.let { it.message ?: if (it.sending) tr("Sending…") else "" }
+                        ?: if (initial?.lastSentAt != null) {
+                            tr("Last sent %s", formatSent(initial.lastSentAt))
+                        } else {
+                            tr("Not sent yet")
+                        },
                     style = MaterialTheme.typography.labelMedium,
                     color = when {
                         status?.sending == true -> PulseColors.Yellow
@@ -777,7 +795,7 @@ private fun RepeatCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             SmallRoundButton("−", onClick = { onCount(-1) })
             Text(
-                " ${repeat.count} Times ",
+                tr(" %s Times ", repeat.count),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
                 color = PulseColors.Text,
@@ -898,7 +916,11 @@ private fun StepEditorDialog(
                 Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
                     PlannedDurationType.entries.forEach { option ->
                         SelectChip(
-                            label = option.label,
+                            label = if (option == PlannedDurationType.OPEN) {
+                                tr("Open-ended")
+                            } else {
+                                tr(option.label)
+                            },
                             selected = durationType == option,
                             onClick = { durationType = option },
                         )

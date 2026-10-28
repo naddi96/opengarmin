@@ -20,7 +20,7 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DirectionsRun
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,6 +42,7 @@ import dev.opengarmin.app.util.formatHoursMinutes
 import dev.opengarmin.app.util.formatDate
 import dev.opengarmin.app.util.formatDistanceKm
 import dev.opengarmin.app.util.formatElapsedTime
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.components.ActivityTrace
 import dev.opengarmin.app.ui.components.CompactCard
 import dev.opengarmin.app.ui.components.EmptyState
@@ -154,8 +155,8 @@ fun ActivitiesScreen(
         } else {
             item {
                 EmptyState(
-                    title = "No $filter activities",
-                    message = "Try another filter. Other recorded sports remain available under All.",
+                    title = tr("No %s activities", tr(filter)),
+                    message = tr("Try another filter. Other recorded sports remain available under All."),
                 )
             }
         }
@@ -204,7 +205,7 @@ private fun FeaturedActivity(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "${formatDate(activity.startTime)} · ${activityPaceLabel(activity)}",
+                        tr("%s · %s", formatDate(activity.startTime), activityPaceLabel(activity)),
                         style = MaterialTheme.typography.labelMedium,
                         color = PulseColors.TextMuted,
                     )

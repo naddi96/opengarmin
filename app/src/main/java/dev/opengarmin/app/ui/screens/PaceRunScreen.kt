@@ -35,7 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -63,6 +63,7 @@ import androidx.core.content.ContextCompat
 import dev.opengarmin.app.data.PacePlanCalculator
 import dev.opengarmin.app.data.PacePlanEntity
 import dev.opengarmin.app.data.PacePlanSplit
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.components.IconButtonRound
 import dev.opengarmin.app.ui.components.PulseCard
 import dev.opengarmin.app.ui.theme.PulseColors
@@ -224,9 +225,17 @@ fun PaceRunScreen(
                 })
                 Spacer(Modifier.width(PulseSpacing.sm))
                 Column(Modifier.weight(1f)) {
-                    Text("PacePro · ${plan.courseName}", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
                     Text(
-                        "Target ${PacePlanCalculator.formatClock(plan.goalSeconds)} · ${"%.2f".format(plan.distanceMeters / 1000.0)} km",
+                        tr("PacePro · %s", plan.courseName),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                    )
+                    Text(
+                        tr(
+                            "Target %s · %s km",
+                            PacePlanCalculator.formatClock(plan.goalSeconds),
+                            "%.2f".format(plan.distanceMeters / 1000.0),
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = PulseColors.TextMuted,
                     )
@@ -255,12 +264,12 @@ fun PaceRunScreen(
                 ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(
-                            "Split ${currentIndex + 1} · current pace",
+                            tr("Split %s · current pace", currentIndex + 1),
                             style = MaterialTheme.typography.bodySmall,
                             color = PulseColors.TextMuted,
                         )
                         Text(
-                            "Target ${PacePlanCalculator.formatPace(targetPace)} /km",
+                            tr("Target %s /km", PacePlanCalculator.formatPace(targetPace)),
                             style = MaterialTheme.typography.bodySmall,
                             color = PulseColors.TextMuted,
                         )
@@ -293,7 +302,11 @@ fun PaceRunScreen(
                             color = if (ahead) PulseColors.Accent else PulseColors.Coral,
                         )
                         Text(
-                            "${if (ahead) "Ahead" else "Behind"} by ${PacePlanCalculator.formatClock(abs(splitDiff))} on this split",
+                            tr(
+                                "%s by %s on this split",
+                                tr(if (ahead) "Ahead" else "Behind"),
+                                PacePlanCalculator.formatClock(abs(splitDiff)),
+                            ),
                             style = MaterialTheme.typography.labelLarge,
                             color = if (ahead) PulseColors.Accent else PulseColors.Coral,
                         )
@@ -311,7 +324,7 @@ fun PaceRunScreen(
                         Text(
                             currentSplit?.let {
                                 val left = (it.cumulativeDistanceMeters - distanceMeters).coerceAtLeast(0.0)
-                                "%.2f km left".format(left / 1000.0)
+                                tr("%s km left", "%.2f".format(left / 1000.0))
                             } ?: "",
                             style = MaterialTheme.typography.bodySmall,
                             color = PulseColors.TextMuted,
@@ -347,7 +360,11 @@ fun PaceRunScreen(
                     Column(Modifier.weight(1f)) {
                         Text("Overall", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
                         Text(
-                            "${if (overallDiff <= 0) "Ahead" else "Behind"} ${PacePlanCalculator.formatClock(abs(overallDiff))}",
+                            tr(
+                                "%s %s",
+                                tr(if (overallDiff <= 0) "Ahead" else "Behind"),
+                                PacePlanCalculator.formatClock(abs(overallDiff)),
+                            ),
                             style = MaterialTheme.typography.titleLarge,
                             color = if (overallDiff <= 0) PulseColors.Accent else PulseColors.Coral,
                         )
@@ -412,7 +429,11 @@ fun PaceRunScreen(
             )
             if (manualLaps > 0) {
                 Text(
-                    "$manualLaps manual ${if (manualLaps == 1) "lap" else "laps"} recorded.",
+                    if (manualLaps == 1) {
+                        tr("%s manual lap recorded.", manualLaps)
+                    } else {
+                        tr("%s manual laps recorded.", manualLaps)
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     color = PulseColors.TextMuted,
                 )
@@ -627,8 +648,9 @@ private fun expectedSecondsAt(splits: List<PacePlanSplit>, distance: Double): In
     return splits.last().cumulativeSeconds
 }
 
+@Composable
 private fun nextClimbLabel(splits: List<PacePlanSplit>, currentIndex: Int): String {
     val next = splits.drop(currentIndex + 1).firstOrNull { it.gainMeters >= 5.0 }
-        ?: return "No climbs ahead"
-    return "Next climb: +${next.gainMeters.roundToInt()} m at split ${next.index + 1}"
+        ?: return tr("No climbs ahead")
+    return tr("Next climb: +%s m at split %s", next.gainMeters.roundToInt(), next.index + 1)
 }

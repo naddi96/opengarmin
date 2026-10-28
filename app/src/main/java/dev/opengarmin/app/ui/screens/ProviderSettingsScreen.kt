@@ -21,7 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -41,6 +41,7 @@ import dev.opengarmin.app.llm.OpenAiClient
 import dev.opengarmin.app.llm.ProviderConfig
 import dev.opengarmin.app.llm.ProviderPresets
 import dev.opengarmin.app.llm.ProviderStore
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.components.CompactCard
 import dev.opengarmin.app.ui.components.IconButtonRound
 import dev.opengarmin.app.ui.components.PillChip
@@ -189,7 +190,9 @@ fun ProviderSettingsScreen(
                     onValueChange = { keyInput = it },
                     label = { Text("API key") },
                     placeholder = {
-                        Text(if (hasStoredKey) "Saved ($keyHint)" else "Optional for local endpoints")
+                        Text(
+                            if (hasStoredKey) tr("Saved (%s)", keyHint) else tr("Optional for local endpoints"),
+                        )
                     },
                     supportingText = {
                         Text("Stored encrypted with Android Keystore. Never shown again or logged.")
@@ -200,7 +203,7 @@ fun ProviderSettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (hasStoredKey) {
-                    Text("Saved key: $keyHint", style = MaterialTheme.typography.labelMedium, color = PulseColors.Teal)
+                    Text(tr("Saved key: %s", keyHint), style = MaterialTheme.typography.labelMedium, color = PulseColors.Teal)
                     PrimaryButton("Delete stored key", onClick = {
                         val next = store.deleteKey()
                         hasStoredKey = next.hasStoredKey
@@ -242,23 +245,34 @@ fun ProviderSettingsScreen(
                         onClick = { defaultModelId = model.id },
                     )
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(model.name, style = MaterialTheme.typography.bodyLarge, color = PulseColors.Text)
                         Text(
-                            buildString {
-                                append("temperature ")
-                                append(model.temperature?.toString() ?: "default")
-                                append(" · max tokens ")
-                                append(model.maxTokens?.toString() ?: "default")
-                                if (model.id == defaultModelId) append(" · default")
+                            model.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = PulseColors.Text,
+                            translate = false,
+                        )
+                        Text(
+                            if (model.id == defaultModelId) {
+                                tr(
+                                    "temperature %s · max tokens %s · default",
+                                    model.temperature?.toString() ?: tr("default"),
+                                    model.maxTokens?.toString() ?: tr("default"),
+                                )
+                            } else {
+                                tr(
+                                    "temperature %s · max tokens %s",
+                                    model.temperature?.toString() ?: tr("default"),
+                                    model.maxTokens?.toString() ?: tr("default"),
+                                )
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = PulseColors.TextMuted,
                         )
                     }
-                    IconButtonRound(Icons.Outlined.Edit, "Edit ${model.name}", {
+                    IconButtonRound(Icons.Outlined.Edit, tr("Edit %s", model.name), {
                         editingModel = model
                     }, background = PulseColors.Surface, size = 40.dp)
-                    IconButtonRound(Icons.Outlined.Delete, "Delete ${model.name}", {
+                    IconButtonRound(Icons.Outlined.Delete, tr("Delete %s", model.name), {
                         models = models.filterNot { it.id == model.id }
                         if (defaultModelId == model.id) defaultModelId = models.firstOrNull()?.id
                     }, background = PulseColors.Surface, size = 40.dp, tint = PulseColors.Coral)

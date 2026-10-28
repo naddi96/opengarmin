@@ -9,7 +9,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -28,6 +28,9 @@ import dev.opengarmin.app.garmin.GarminCredentialStore
 import dev.opengarmin.app.garmin.GarminException
 import dev.opengarmin.app.garmin.GarminLoginResult
 import dev.opengarmin.app.garmin.garminActivityUid
+import dev.opengarmin.app.i18n.AppStrings
+import dev.opengarmin.app.i18n.LocalAppLanguage
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.sync.FitImportResult
 import dev.opengarmin.app.ui.components.PrimaryButton
 import dev.opengarmin.app.ui.components.PulseCard
@@ -51,6 +54,8 @@ fun GarminConnectCard(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val language = LocalAppLanguage.current
+    fun l(text: String, vararg args: Any?): String = AppStrings.format(text, language, *args)
     val store = remember(context) { GarminCredentialStore(context) }
     val client = remember(store) { GarminConnectClient(store) }
     val scope = rememberCoroutineScope()
@@ -81,7 +86,7 @@ fun GarminConnectCard(
         }
         status = garminError?.message
             ?: error.message
-            ?: "The Garmin request failed."
+            ?: l("The Garmin request failed.")
         statusIsError = true
     }
 
@@ -103,8 +108,10 @@ fun GarminConnectCard(
                     is GarminLoginResult.NeedsMfa -> {
                         mfaMethod = result.method
                         mfaCode = ""
-                        status = "Garmin sent a verification code via ${mfaLabel(result.method)}. " +
-                            "Enter it below to finish signing in."
+                        status = l(
+                            "Garmin sent a verification code via %s. Enter it below to finish signing in.",
+                            l(mfaLabel(result.method)),
+                        )
                         statusIsError = false
                     }
                     is GarminLoginResult.Success -> {
@@ -115,9 +122,9 @@ fun GarminConnectCard(
                         signedIn = true
                         loadActivities()
                         status = if (activities.isEmpty()) {
-                            "Signed in. Garmin returned no activities."
+                            l("Signed in. Garmin returned no activities.")
                         } else {
-                            "Signed in. Choose an activity to import."
+                            l("Signed in. Choose an activity to import.")
                         }
                         statusIsError = false
                     }
@@ -157,7 +164,7 @@ fun GarminConnectCard(
     fun importActivity(activity: GarminActivity) {
         if (importingId != null) return
         importingId = activity.id
-        status = "Downloading ${activity.displayTitle} from Garmin Connect…"
+        status = l("Downloading %s from Garmin Connect…", activity.displayTitle)
         statusIsError = false
         scope.launch {
             try {
@@ -169,16 +176,19 @@ fun GarminConnectCard(
                 )) {
                     is FitImportResult.Imported -> {
                         importedIds = importedIds + activity.id
-                        status = "Imported ${activity.displayTitle}."
+                        status = l("Imported %s.", activity.displayTitle)
                         statusIsError = false
                     }
                     FitImportResult.AlreadyImported -> {
                         importedIds = importedIds + activity.id
-                        status = "${activity.displayTitle} is already in Pulse."
+                        status = l("%s is already in Pulse.", activity.displayTitle)
                         statusIsError = false
                     }
                     is FitImportResult.Failed -> {
-                        status = "Downloaded the file, but the import failed: ${result.message}"
+                        status = l(
+                            "Downloaded the file, but the import failed: %s",
+                            result.message,
+                        )
                         statusIsError = true
                     }
                 }
@@ -194,7 +204,7 @@ fun GarminConnectCard(
         if (bulkRunning) return
         confirmBulkImport = false
         bulkRunning = true
-        status = "Checking the Garmin activity count…"
+        status = l("Checking the Garmin activity count…")
         statusIsError = false
         var imported = 0
         var skipped = 0
@@ -203,7 +213,7 @@ fun GarminConnectCard(
             try {
                 val total = client.activityCount()
                 if (total <= 0) {
-                    status = "Garmin returned no activities to import."
+                    status = l("Garmin returned no activities to import.")
                     statusIsError = false
                     return@launch
                 }
@@ -216,7 +226,7 @@ fun GarminConnectCard(
                     for ((index, activity) in page.withIndex()) {
                         currentCoroutineContext().ensureActive()
                         val ordinal = (start + index + 1).coerceAtMost(total)
-                        status = "Importing $ordinal of $total: ${activity.displayTitle}"
+                        status = l("Importing %s of %s: %s", ordinal, total, activity.displayTitle)
                         val uid = garminActivityUid(activity.id)
                         if (activity.id in importedIds || isActivityKnown(activity.id)) {
                             skipped++
@@ -255,14 +265,14 @@ fun GarminConnectCard(
                     start += page.size
                 }
                 status = buildString {
-                    append("Import finished: $imported imported")
-                    if (skipped > 0) append(", $skipped already present")
-                    if (failed > 0) append(", $failed failed")
+                    append(l("Import finished: %s imported", imported))
+                    if (skipped > 0) append(l(", %s already present", skipped))
+                    if (failed > 0) append(l(", %s failed", failed))
                     append(".")
                 }
                 statusIsError = failed > 0
             } catch (cancelled: CancellationException) {
-                status = "Import stopped. $imported imported so far."
+                status = l("Import stopped. %s imported so far.", imported)
                 statusIsError = false
                 throw cancelled
             } catch (error: Throwable) {
@@ -317,7 +327,7 @@ fun GarminConnectCard(
                         onValueChange = { mfaCode = it.filter(Char::isLetterOrDigit).take(12) },
                         label = { Text("Garmin verification code") },
                         supportingText = {
-                            Text("Sent via ${mfaLabel(mfaMethod.orEmpty())}. It expires quickly.")
+                            Text(tr("Sent via %s. It expires quickly.", tr(mfaLabel(mfaMethod.orEmpty()))))
                         },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -347,7 +357,10 @@ fun GarminConnectCard(
                 }
             } else {
                 Text(
-                    "Signed in as ${store.username().ifBlank { username.ifBlank { "Garmin account" } }}",
+                    tr(
+                        "Signed in as %s",
+                        store.username().ifBlank { username.ifBlank { tr("Garmin account") } },
+                    ),
                     style = MaterialTheme.typography.titleSmall,
                     color = PulseColors.Text,
                 )
@@ -497,6 +510,7 @@ private fun GarminActivityRow(
                 activity.displayTitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = PulseColors.Text,
+                translate = false,
             )
             Text(
                 listOf(activity.displayDate, activity.displayDistance, activity.displayDuration)

@@ -12,6 +12,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dev.opengarmin.app.MainActivity
 import dev.opengarmin.app.R
+import dev.opengarmin.app.i18n.localized
 
 /** One updated-in-place notification for the watch sync and activity import. */
 object SyncNotifications {
@@ -24,10 +25,10 @@ object SyncNotifications {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            CHANNEL_NAME,
+            context.localized(CHANNEL_NAME),
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Watch sync and activity import progress"
+            description = context.localized("Watch sync and activity import progress")
             setShowBadge(false)
             enableVibration(false)
             setSound(null, null)
@@ -105,8 +106,8 @@ object SyncNotifications {
         )
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_sync_notification)
-            .setContentTitle(title)
-            .setContentText(status)
+            .setContentTitle(context.localized(title))
+            .setContentText(context.localized(status))
             .setContentIntent(openApp)
             .setOngoing(ongoing)
             .setAutoCancel(!ongoing)
@@ -119,11 +120,11 @@ object SyncNotifications {
             builder.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         }
         if (detail != null) {
-            builder.setStyle(NotificationCompat.BigTextStyle().bigText(detail))
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(context.localized(detail)))
         }
         if (progress != null && progress.total > 0) {
             builder.setProgress(progress.total, progress.done, false)
-            builder.setSubText("${progress.done} of ${progress.total}")
+            builder.setSubText(context.localized("%s of %s", progress.done, progress.total))
         } else if (ongoing) {
             builder.setProgress(0, 0, true)
         }

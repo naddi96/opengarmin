@@ -1,6 +1,7 @@
 package dev.opengarmin.app.analysis
 
 import dev.opengarmin.app.data.ActivityEntity
+import dev.opengarmin.app.i18n.AppLanguage
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -56,5 +57,28 @@ class ActivityAnalysisPromptTest {
         assertTrue(prompt.contains("\"weight_kg\": 72.5"))
         assertFalse(prompt.contains("latitude"))
         assertFalse(prompt.contains("longitude"))
+        assertTrue(prompt.contains("Analyze this activity."))
+    }
+
+    @Test
+    fun `italian system prompt asks for italian output and labels`() {
+        val prompt = ActivityAnalysisPrompt.system(AppLanguage.ITALIAN)
+
+        assertTrue(prompt.contains("Italian (italiano)"))
+        assertTrue(prompt.contains("**Passo**"))
+        assertTrue(prompt.contains("**Frequenza cardiaca**"))
+        assertTrue(prompt.contains("**Carico**"))
+        assertTrue(prompt.contains("**Prossimo:**"))
+    }
+
+    @Test
+    fun `italian user prompt asks in italian`() {
+        val prompt = ActivityAnalysisPrompt.user(
+            activity = activity,
+            insights = null,
+            language = AppLanguage.ITALIAN,
+        )
+
+        assertTrue(prompt.contains("Analizza questa attività."))
     }
 }

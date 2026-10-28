@@ -41,6 +41,7 @@ class ActivityAnalysisGenerator(
                 biologicalSex = settings.biologicalSex,
                 weightKg = settings.weightKg,
             ),
+            language = settings.appLanguage,
         )
         val client = OpenAiClient(
             baseUrl = config.baseUrl,
@@ -50,7 +51,7 @@ class ActivityAnalysisGenerator(
         )
         val completion = client.complete(
             messages = listOf(
-                LlmMessage("system", ActivityAnalysisPrompt.SYSTEM),
+                LlmMessage("system", ActivityAnalysisPrompt.system(settings.appLanguage)),
                 LlmMessage("user", prompt),
             ),
             temperature = model.temperature ?: 0.3,

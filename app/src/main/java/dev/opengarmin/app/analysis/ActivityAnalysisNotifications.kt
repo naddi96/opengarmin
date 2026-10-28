@@ -11,6 +11,7 @@ import dev.opengarmin.app.MainActivity
 import dev.opengarmin.app.R
 import dev.opengarmin.app.coach.sportLabel
 import dev.opengarmin.app.data.ActivityEntity
+import dev.opengarmin.app.i18n.localized
 import dev.opengarmin.app.util.formatDate
 import dev.opengarmin.app.util.formatDistanceKm
 
@@ -25,10 +26,10 @@ object ActivityAnalysisNotifications {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            CHANNEL_NAME,
+            context.localized(CHANNEL_NAME),
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
-            description = "Tells you when an AI activity analysis is ready"
+            description = context.localized("Tells you when an AI activity analysis is ready")
             setShowBadge(true)
         }
         manager.createNotificationChannel(channel)
@@ -47,7 +48,7 @@ object ActivityAnalysisNotifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val summary = listOf(
-            sportLabel(activity.sport),
+            context.localized(sportLabel(activity.sport)),
             formatDistanceKm(activity.distanceMeters),
             formatDate(activity.startTime),
         ).joinToString(" · ")
@@ -57,7 +58,7 @@ object ActivityAnalysisNotifications {
             .trim()
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_analysis_notification)
-            .setContentTitle("AI analysis ready")
+            .setContentTitle(context.localized("AI analysis ready"))
             .setContentText(summary)
             .setStyle(NotificationCompat.BigTextStyle().bigText(plain))
             .setContentIntent(openApp)

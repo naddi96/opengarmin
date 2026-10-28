@@ -18,6 +18,7 @@ import dev.opengarmin.app.data.PacePlanSendStatus
 import dev.opengarmin.app.data.PlannedWorkoutEntity
 import dev.opengarmin.app.data.WorkoutSendStatus
 import dev.opengarmin.app.diagnostics.Diagnostics
+import dev.opengarmin.app.i18n.localized
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.util.formatFileSize
 import dev.opengarmin.protocol.FitPaceBand
@@ -631,25 +632,30 @@ class SyncSessionController(
 
     private fun syncFailureReason(): String =
         if (coordinator?.stalledBeforeCapabilities() == true) {
-            "The watch accepted the connection but did not open its GDI session. " +
-                "Garmin Connect can hold that single session — close/force-stop it and try again."
+            context.localized(
+                "The watch accepted the connection but did not open its GDI session. " +
+                    "Garmin Connect can hold that single session — close/force-stop it and try again.",
+            )
         } else {
-            "Could not finish syncing. Keep the watch nearby and try again."
+            context.localized("Could not finish syncing. Keep the watch nearby and try again.")
         }
 
     private fun importedSummary(): String =
         if (ui.importedThisSync > 0) {
-            "Imported ${ui.importedThisSync} " +
-                (if (ui.importedThisSync == 1) "activity" else "activities")
+            if (ui.importedThisSync == 1) {
+                context.localized("Imported %s activity", ui.importedThisSync)
+            } else {
+                context.localized("Imported %s activities", ui.importedThisSync)
+            }
         } else {
-            "Everything up to date"
+            context.localized("Everything up to date")
         }
 
     private fun syncProgressText(progress: ActivitySyncProgress): String {
         val current = (progress.done + 1).coerceAtMost(progress.total)
         return progress.currentSize?.let {
-            "Activity $current of ${progress.total} · ${formatFileSize(it)}"
-        } ?: "${progress.done} of ${progress.total} imported"
+            context.localized("Activity %s of %s · %s", current, progress.total, formatFileSize(it))
+        } ?: context.localized("%s of %s imported", progress.done, progress.total)
     }
 
     private fun updateSyncNotification(
@@ -658,9 +664,10 @@ class SyncSessionController(
     ) {
         SyncNotifications.show(
             context = context,
-            title = "Syncing watch",
-            status = status ?: progress?.let { syncProgressText(it) } ?: "Waiting for the watch…",
-            detail = ui.lastImportedLabel?.let { "Last imported: $it" },
+            title = context.localized("Syncing watch"),
+            status = status ?: progress?.let { syncProgressText(it) }
+                ?: context.localized("Waiting for the watch…"),
+            detail = ui.lastImportedLabel?.let { context.localized("Last imported: %s", it) },
             progress = progress,
             ongoing = true,
         )
@@ -670,9 +677,9 @@ class SyncSessionController(
         ui.log("SYNC notification: $title — $status")
         SyncNotifications.finish(
             context = context,
-            title = title,
-            status = status,
-            detail = ui.lastImportedLabel?.let { "Last imported: $it" },
+            title = context.localized(title),
+            status = context.localized(status),
+            detail = ui.lastImportedLabel?.let { context.localized("Last imported: %s", it) },
         )
         ui.importedThisSync = 0
         syncNotificationActive = false

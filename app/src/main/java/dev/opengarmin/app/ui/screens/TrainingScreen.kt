@@ -25,7 +25,7 @@ import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +42,7 @@ import dev.opengarmin.app.util.formatDate
 import dev.opengarmin.app.util.formatPacePerKm
 import dev.opengarmin.app.util.formatElapsedTime
 import dev.opengarmin.app.util.formatWellnessDate
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.components.CoachInsightCard
 import dev.opengarmin.app.ui.components.LineChart
 import dev.opengarmin.app.ui.components.PrimaryButton
@@ -170,8 +171,11 @@ fun TrainingScreen(
                 iconColor = PulseColors.Accent,
                 modifier = Modifier.weight(1f).clickable(onClick = onOpenVo2Max),
                 footnote = summary.vo2Change?.let { change ->
-                    "${if (change >= 0) "+" else ""}${"%.1f".format(change)} in 6 weeks"
-                } ?: "Running estimate",
+                    tr(
+                        "%s in 6 weeks",
+                        "${if (change >= 0) "+" else ""}${"%.1f".format(change)}",
+                    )
+                } ?: tr("Running estimate"),
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
@@ -182,7 +186,7 @@ fun TrainingScreen(
                 icon = Icons.Outlined.MonitorHeart,
                 iconColor = PulseColors.Coral,
                 modifier = Modifier.weight(1f),
-                footnote = summary.ltPaceSecondsPerKm?.let { "LTHR · ${formatPacePerKm(it)} /km" } ?: "Watch estimate",
+                footnote = summary.ltPaceSecondsPerKm?.let { tr("LTHR · %s /km", formatPacePerKm(it)) } ?: tr("Watch estimate"),
             )
             StatTile(
                 label = "Performance",
@@ -212,7 +216,11 @@ fun TrainingScreen(
                     }
                     summary.vo2Change?.let { change ->
                         Text(
-                            "${if (change >= 0) "+" else ""}${"%.1f".format(change)} since ${sixWeeksAgoLabel()}",
+                            tr(
+                                "%s since %s",
+                                "${if (change >= 0) "+" else ""}${"%.1f".format(change)}",
+                                sixWeeksAgoLabel(),
+                            ),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (change >= 0) PulseColors.Accent else PulseColors.Coral,
@@ -251,13 +259,16 @@ fun TrainingScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Latest training effect · ${sportLabel(latest)}",
+                            tr("Latest training effect · %s", tr(sportLabel(latest))),
                             style = MaterialTheme.typography.bodySmall,
                             color = PulseColors.TextMuted,
                         )
                         Text(
-                            "Aerobic ${metrics.aerobicEffect?.let { "%.1f".format(it) } ?: "—"} · " +
-                                "Anaerobic ${metrics.anaerobicEffect?.let { "%.1f".format(it) } ?: "—"}",
+                            tr(
+                                "Aerobic %s · Anaerobic %s",
+                                metrics.aerobicEffect?.let { "%.1f".format(it) } ?: "—",
+                                metrics.anaerobicEffect?.let { "%.1f".format(it) } ?: "—",
+                            ),
                             style = MaterialTheme.typography.titleSmall,
                             color = PulseColors.Text,
                         )
@@ -551,27 +562,37 @@ private fun trendLabels(timestamps: List<Long>): List<String> {
 private fun sixWeeksAgoLabel(): String =
     java.time.LocalDate.now().minusWeeks(6).format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()))
 
+@Composable
 private fun trainingInsight(summary: TrainingSummary): String {
     val parts = ArrayList<String>()
     summary.acuteLoad?.let { load ->
-        parts.add("Your 7-day training load is %.0f.".format(load))
+        parts.add(tr("Your 7-day training load is %s.", "%.0f".format(load)))
         summary.loadRatio?.let { ratio ->
-            parts.add("That is ${loadLabel(ratio).lowercase(Locale.getDefault())} against your 4-week weekly average.")
+            parts.add(
+                tr(
+                    "That is %s against your 4-week weekly average.",
+                    tr(loadLabel(ratio)).lowercase(Locale.getDefault()),
+                ),
+            )
         }
     }
     summary.recoveryRemainingMinutes?.let { minutes ->
-        parts.add("You still have ${formatRecovery(minutes)} of recovery from the last hard session.")
+        parts.add(tr("You still have %s of recovery from the last hard session.", formatRecovery(minutes)))
     } ?: run {
-        if (summary.latestMetrics != null) parts.add("Your last session's recovery window has elapsed.")
+        if (summary.latestMetrics != null) parts.add(tr("Your last session's recovery window has elapsed."))
     }
     summary.vo2Change?.let { change ->
         parts.add(
-            "VO₂ max is ${if (change >= 0) "up" else "down"} ${"%.1f".format(abs(change))} over six weeks.",
+            tr(
+                "VO₂ max is %s %s over six weeks.",
+                if (change >= 0) tr("up") else tr("down"),
+                "%.1f".format(abs(change)),
+            ),
         )
     }
     summary.latestMetrics?.aerobicEffect?.let { effect ->
-        parts.add("The latest aerobic training effect is ${"%.1f".format(effect)}.")
+        parts.add(tr("The latest aerobic training effect is %s.", "%.1f".format(effect)))
     }
-    if (parts.isEmpty()) parts.add("Import an activity to see load, recovery and VO₂ max insights.")
+    if (parts.isEmpty()) parts.add(tr("Import an activity to see load, recovery and VO₂ max insights."))
     return parts.joinToString(" ")
 }

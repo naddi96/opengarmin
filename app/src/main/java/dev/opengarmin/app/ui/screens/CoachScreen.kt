@@ -26,7 +26,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.coach.CoachController
 import dev.opengarmin.app.coach.ConversationSummary
 import dev.opengarmin.app.coach.MessageStatus
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.components.ChatBubble
 import dev.opengarmin.app.ui.components.ChatRole
 import dev.opengarmin.app.ui.components.ChatComposer
@@ -215,10 +216,10 @@ fun CoachScreen(
                 horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md),
             ) {
                 listOf(
-                    "How was my week?",
-                    "Why is my resting HR changing?",
-                    "Plan tomorrow's workout",
-                    "How are my workouts trending?",
+                    tr("How was my week?"),
+                    tr("Why is my resting HR changing?"),
+                    tr("Plan tomorrow's workout"),
+                    tr("How are my workouts trending?"),
                 ).forEach { suggestion ->
                     SuggestionChip(label = suggestion, onClick = { controller.send(suggestion) })
                 }
@@ -270,7 +271,7 @@ private fun ConversationHistoryDialog(
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
             title = { Text("Delete conversation?") },
-            text = { Text("\"${deleteTarget.title}\" and its messages will be removed from this device.") },
+            text = { Text(tr("%s and its messages will be removed from this device.", deleteTarget.title)) },
             confirmButton = {
                 TextButton(onClick = {
                     pendingDelete = null
@@ -324,6 +325,7 @@ private fun ConversationHistoryDialog(
                                     color = if (current) PulseColors.Accent else PulseColors.Text,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
+                                    translate = false,
                                 )
                                 Text(
                                     text = conversationSubtitle(conversation),
@@ -352,23 +354,29 @@ private fun ConversationHistoryDialog(
     )
 }
 
+@Composable
 private fun conversationSubtitle(conversation: ConversationSummary): String {
     val whenText = conversationTime(conversation.updatedAt)
     val messages = conversation.messageCount
     return if (messages > 0) {
-        "$whenText · $messages message${if (messages == 1) "" else "s"}"
+        if (messages == 1) {
+            tr("%s · %s message", whenText, messages)
+        } else {
+            tr("%s · %s messages", whenText, messages)
+        }
     } else {
         whenText
     }
 }
 
+@Composable
 private fun conversationTime(epochMillis: Long): String {
     val zone = ZoneId.systemDefault()
     val date = Instant.ofEpochMilli(epochMillis).atZone(zone).toLocalDate()
     val today = LocalDate.now(zone)
     return when {
         date == today -> SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(epochMillis))
-        date == today.minusDays(1) -> "Yesterday"
+        date == today.minusDays(1) -> tr("Yesterday")
         date.year == today.year -> SimpleDateFormat("d MMM", Locale.getDefault()).format(Date(epochMillis))
         else -> SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(epochMillis))
     }

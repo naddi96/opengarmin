@@ -14,7 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +31,7 @@ import dev.opengarmin.app.data.TrainingPoint
 import dev.opengarmin.app.data.TrainingSummary
 import dev.opengarmin.app.data.Vo2Band
 import dev.opengarmin.app.data.Vo2Window
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
 import java.time.Instant
@@ -237,23 +238,28 @@ private fun vo2ChangeLabel(history: List<TrainingPoint>): String {
     return if (change >= 0) "+%.1f".format(change) else "−%.1f".format(abs(change))
 }
 
+@Composable
 private fun vo2WindowDescription(window: Vo2Window): String = when (window) {
-    Vo2Window.NOW -> "Latest reading"
-    Vo2Window.FOUR_WEEKS -> "4 weeks"
-    Vo2Window.TWELVE_WEEKS -> "12 weeks"
-    Vo2Window.SIX_MONTHS -> "6 months"
+    Vo2Window.NOW -> tr("Latest reading")
+    Vo2Window.FOUR_WEEKS -> tr("4 weeks")
+    Vo2Window.TWELVE_WEEKS -> tr("12 weeks")
+    Vo2Window.SIX_MONTHS -> tr("6 months")
 }
 
+@Composable
 private fun vo2RangeLabel(history: List<TrainingPoint>, window: Vo2Window): String {
     if (window == Vo2Window.NOW || history.size < 2) {
-        return history.lastOrNull()?.let { "Latest reading · ${dateLabel(it.startTime)}" } ?: "No reading yet"
+        return history.lastOrNull()?.let {
+            tr("Latest reading · %s", dateLabel(it.startTime))
+        } ?: tr("No reading yet")
     }
     return "${dateLabel(history.first().startTime)} – ${dateLabel(history.last().startTime)}"
 }
 
+@Composable
 private fun vo2Subtitle(history: List<TrainingPoint>): String {
-    val latest = history.lastOrNull() ?: return "Fitness level"
-    return "Fitness level · ${dateLabel(latest.startTime)}"
+    val latest = history.lastOrNull() ?: return tr("Fitness level")
+    return tr("Fitness level · %s", dateLabel(latest.startTime))
 }
 
 private fun dateLabel(unixSeconds: Long): String {

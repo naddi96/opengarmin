@@ -309,6 +309,7 @@ details.
 | [`docs/providers.md`](docs/providers.md) | Provider setup, presets, environment config, keys, streaming and troubleshooting. |
 | [`docs/tools.md`](docs/tools.md) | Coach tools, limits, evidence, conversation history, safety and how to add a tool. |
 | [`docs/export.md`](docs/export.md) | FIT/GPX/TCX/CSV export rules, filenames and CSV columns. |
+| [`docs/localization.md`](docs/localization.md) | English/Italian UI, language switching, translation catalogs and adding a language. |
 | [`docs/background-sync.md`](docs/background-sync.md) | Periodic sync settings, constraints, single-flight, retries and Android lifecycle. |
 | [`docs/privacy.md`](docs/privacy.md) | What leaves the device, key/log handling, backups, exports and deletion. |
 | [`docs/testing.md`](docs/testing.md) | Test commands and the manual device matrix. |

@@ -22,7 +22,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +41,7 @@ import dev.opengarmin.app.data.FitMessageEntity
 import dev.opengarmin.app.util.formatDate
 import dev.opengarmin.app.util.formatElapsedTime
 import dev.opengarmin.app.sportName
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.components.InteractiveChart
 import dev.opengarmin.app.ui.components.InteractiveChartStyle
 import dev.opengarmin.app.ui.components.InteractiveSeries
@@ -95,7 +96,7 @@ internal fun DataExplorer(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("All data", style = MaterialTheme.typography.titleLarge, color = PulseColors.Text)
                     Text(
-                        "${sportName(activity.sport)} · ${formatDate(activity.startTime)}",
+                        tr("%s · %s", tr(sportName(activity.sport)), formatDate(activity.startTime)),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -146,7 +147,7 @@ internal fun DataExplorer(
                     Text("Raw messages", style = MaterialTheme.typography.titleMedium, color = PulseColors.Text)
                     Spacer(modifier = Modifier.weight(1f))
                     Text(
-                        "showing ${minOf(selected.size, 200)} of ${selected.size}",
+                        tr("showing %s of %s", minOf(selected.size, 200), selected.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -426,7 +427,7 @@ private fun FieldDropdown(
     var expanded by remember { mutableStateOf(false) }
     Box {
         OutlinedButton(onClick = { expanded = true }) {
-            Text("$label: $selected", style = MaterialTheme.typography.bodySmall)
+            Text(tr("%s: %s", label, selected), style = MaterialTheme.typography.bodySmall)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { option ->
@@ -469,7 +470,7 @@ private fun MessageCard(message: FitMessageEntity) {
                 val unit = units.optString(key).takeIf { it.isNotEmpty() }
                 "$key=$value" + (unit?.let { " $it" } ?: "")
             }
-            Text(text, style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
+            Text(text, style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted, translate = false)
         }
     }
 }

@@ -22,7 +22,7 @@ import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +44,7 @@ import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.ui.components.PillChip
 import dev.opengarmin.app.ui.components.PrimaryButton
 import dev.opengarmin.app.ui.components.PulseCard
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
 import dev.opengarmin.app.util.formatHoursMinutes
@@ -140,9 +141,9 @@ fun HealthScreen(
                 value = day.stressAvg?.toString() ?: "—",
                 unit = "avg",
                 status = when {
-                    day.stressAvg == null -> "Not synced"
-                    restPercent != null -> "Rest $restPercent% of day"
-                    else -> stressLabel(day.stressAvg)
+                    day.stressAvg == null -> tr("Not synced")
+                    restPercent != null -> tr("Rest %s%% of day", restPercent)
+                    else -> tr(stressLabel(day.stressAvg))
                 },
                 statusColor = if (restPercent != null && restPercent >= 50) PulseColors.Blue else PulseColors.Yellow,
                 sparkline = HealthMetrics.stressDays(days, HealthMetrics.parseDate(day.date) ?: LocalDate.now(), 7)
@@ -169,8 +170,8 @@ fun HealthScreen(
 
         CoachInsightLine(
             text = buildAnnotatedString {
-                append("Open a metric for the day timeline, history and what moved it. ")
-                append("All values are read from your watch; nothing is estimated.")
+                append(tr("Open a metric for the day timeline, history and what moved it. "))
+                append(tr("All values are read from your watch; nothing is estimated."))
             },
             onAskCoach = onAskCoach,
         )
@@ -192,7 +193,7 @@ private fun HealthHeader(
         Column(modifier = Modifier.weight(1f)) {
             Text("Health", style = MaterialTheme.typography.headlineLarge, color = PulseColors.Text)
             Text(
-                "$dateLabel · $syncLabel",
+                tr("%s · %s", dateLabel, syncLabel),
                 style = MaterialTheme.typography.bodySmall,
                 color = PulseColors.TextMuted,
             )
@@ -234,7 +235,7 @@ private fun TonightCard(
     val text = when {
         last?.asleepSeconds == null || usualWake == null -> {
             buildAnnotatedString {
-                append("Sync after waking to get a sleep need for tonight. The target uses an age-based recommendation, not a Garmin value.")
+                append(tr("Sync after waking to get a sleep need for tonight. The target uses an age-based recommendation, not a Garmin value."))
             }
         }
         else -> {
@@ -245,21 +246,21 @@ private fun TonightCard(
             val wake = HealthMetrics.labelFromNoonMinutes(usualWake)
             buildAnnotatedString {
                 if (short > 0) {
-                    append("Last night was short (")
+                    append(tr("Last night was short ("))
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(formatHoursMinutes(asleep.toLong())) }
-                    append("). Lights out around ")
+                    append(tr("). Lights out around "))
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(lightsOut) }
-                    append(" gives you ${"%.0f".format(needHours)} h before your usual ")
+                    append(tr(" gives you %s h before your usual ", "%.0f".format(needHours)))
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(wake) }
-                    append(" wake-up.")
+                    append(tr(" wake-up."))
                 } else {
-                    append("Last night covered your ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("%.0f h".format(needHours)) }
-                    append(" need. Keep lights out around ")
+                    append(tr("Last night covered your "))
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(tr("%.0f h", needHours)) }
+                    append(tr(" need. Keep lights out around "))
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(lightsOut) }
-                    append(" to stay on your usual ")
+                    append(tr(" to stay on your usual "))
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(wake) }
-                    append(" wake-up.")
+                    append(tr(" wake-up."))
                 }
             }
         }
@@ -303,9 +304,13 @@ private fun BodyBatteryHubCard(
                 Spacer(Modifier.weight(1f))
                 Text(
                     when {
-                        peak != null -> "Peak ${peak.value.roundToInt()} at ${sampleTime(peak.timestamp)}"
-                        peakValue != null -> "Peak $peakValue"
-                        else -> "No peak"
+                        peak != null -> tr(
+                            "Peak %s at %s",
+                            peak.value.roundToInt(),
+                            sampleTime(peak.timestamp),
+                        )
+                        peakValue != null -> tr("Peak %s", peakValue)
+                        else -> tr("No peak")
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = PulseColors.TextMuted,
@@ -318,7 +323,7 @@ private fun BodyBatteryHubCard(
                     color = PulseColors.Teal,
                 )
                 Text(
-                    " / 100 · ${bodyBatteryLabel(current)}",
+                    tr(" / 100 · %s", tr(bodyBatteryLabel(current))),
                     style = MaterialTheme.typography.bodySmall,
                     color = PulseColors.TextMuted,
                     modifier = Modifier.padding(bottom = 6.dp),
@@ -498,10 +503,11 @@ private fun CoachInsightLine(
     }
 }
 
+@Composable
 private fun sleepStatus(day: WellnessDayEntity): String {
-    val quality = day.sleepQuality ?: "Not synced"
+    val quality = day.sleepQuality?.let { tr(it) } ?: tr("Not synced")
     val duration = WellnessMetrics.sleepSeconds(day)?.let { formatHoursMinutes(it.toLong()) }
-    return if (duration != null) "$quality · $duration" else quality
+    return if (duration != null) tr("%s · %s", quality, duration) else quality
 }
 
 private fun stressLabel(value: Int): String = when {

@@ -32,7 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +65,7 @@ import dev.opengarmin.app.data.PacePlanEntity
 import dev.opengarmin.app.data.PacePlanSendStatus
 import dev.opengarmin.app.data.PacePlanSplit
 import dev.opengarmin.app.data.PaceRace
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.components.IconButtonRound
 import dev.opengarmin.app.ui.components.PrimaryButton
 import dev.opengarmin.app.ui.components.PulseCard
@@ -375,7 +376,14 @@ fun PaceStrategyScreen(
         AlertDialog(
             onDismissRequest = { deletingPlan = null },
             title = { Text("Delete strategy?") },
-            text = { Text("\"${plan.name}\" will be removed from this phone. A copy already on the watch is not changed.") },
+            text = {
+                Text(
+                    tr(
+                        "%s will be removed from this phone. A copy already on the watch is not changed.",
+                        plan.name,
+                    ),
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     onDelete(plan.id)
@@ -466,7 +474,12 @@ private fun GoalStep(
                             )
                             Spacer(Modifier.width(PulseSpacing.md))
                             Column(Modifier.weight(1f)) {
-                                Text(plan.name, style = MaterialTheme.typography.titleSmall, color = PulseColors.Text)
+                                Text(
+                                    plan.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = PulseColors.Text,
+                                    translate = false,
+                                )
                                 Text(
                                     plan.summary(),
                                     style = MaterialTheme.typography.labelMedium,
@@ -475,11 +488,11 @@ private fun GoalStep(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            Text("Open", style = MaterialTheme.typography.labelLarge, color = PulseColors.Accent)
+                            Text(tr("Open strategy"), style = MaterialTheme.typography.labelLarge, color = PulseColors.Accent)
                             Spacer(Modifier.width(PulseSpacing.sm))
                             Icon(
                                 Icons.Outlined.DeleteOutline,
-                                contentDescription = "Delete ${plan.name}",
+                                contentDescription = tr("Delete %s", plan.name),
                                 tint = PulseColors.TextMuted,
                                 modifier = Modifier
                                     .size(PulseSpacing.touchTarget)
@@ -521,8 +534,9 @@ private fun GoalStep(
                                     color = PulseColors.Text,
                                 )
                                 Text(
-                                    predicted?.let { PacePlanCalculator.formatClock(it) + " · predicted" }
-                                        ?: "No recent run",
+                                    predicted?.let {
+                                        tr("%s · predicted", PacePlanCalculator.formatClock(it))
+                                    } ?: tr("No recent run"),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = PulseColors.TextMuted,
                                 )
@@ -594,11 +608,14 @@ private fun GoalStep(
                         distanceMeters <= 0.0 -> "Enter a distance to build splits."
                         goalSeconds <= 0 -> "No recent run to estimate from. Set a goal time to continue."
                         customMode && estimatedGoal == goalSeconds ->
-                            "From your race predictor, scaled to %.2f km".format(distanceMeters / 1_000.0)
+                            tr(
+                                "From your race predictor, scaled to %s km",
+                                "%.2f".format(distanceMeters / 1_000.0),
+                            )
                         !customMode && predictions[race] == goalSeconds ->
-                            "From your ${race.label} race predictor"
-                        customMode -> "Custom distance goal"
-                        else -> "Custom goal"
+                            tr("From your %s race predictor", race.label)
+                        customMode -> tr("Custom distance goal")
+                        else -> tr("Custom goal")
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = PulseColors.TextMuted,
@@ -641,10 +658,10 @@ private fun CourseStep(
         )
         recentRuns.forEach { activity ->
             val distance = "%.1f".format(activity.distanceMeters / 1000.0)
-            val climb = activity.ascentMeters?.let { " · $it m climb" } ?: ""
+            val climb = activity.ascentMeters?.let { tr(" · %s m climb", it) } ?: ""
             CourseRow(
-                name = "Run · ${formatDate(activity.startTime)}",
-                sub = "$distance km$climb",
+                name = tr("Run · %s", formatDate(activity.startTime)),
+                sub = tr("%s km%s", distance, climb),
                 selected = activityCourseId == activity.id,
                 onClick = { onActivity(activity) },
             )
@@ -818,19 +835,28 @@ private fun PreviewStep(
             ) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(
-                        "$raceLabel · %.2f km · ${course?.name ?: "Flat, no course"}".format(distanceMeters / 1_000.0),
+                        tr(
+                            "%s · %s km · %s",
+                            raceLabel,
+                            "%.2f".format(distanceMeters / 1_000.0),
+                            course?.name ?: tr("Flat, no course"),
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = PulseColors.TextMuted,
                         modifier = Modifier.weight(1f),
                     )
                     Text(
-                        "Climb ${splits.sumOf { it.gainMeters }.roundToInt()} m",
+                        tr("Climb %s m", splits.sumOf { it.gainMeters }.roundToInt()),
                         style = MaterialTheme.typography.labelMedium,
                         color = PulseColors.TextMuted,
                     )
                 }
                 Text(
-                    "${PacePlanCalculator.formatClock(goalSeconds)} finish · avg ${PacePlanCalculator.formatPace(avgPace)} /km",
+                    tr(
+                        "%s finish · avg %s /km",
+                        PacePlanCalculator.formatClock(goalSeconds),
+                        PacePlanCalculator.formatPace(avgPace),
+                    ),
                     style = MaterialTheme.typography.titleLarge,
                     color = PulseColors.Text,
                 )
@@ -895,9 +921,12 @@ private fun PreviewStep(
         }
 
         Text(
-            "Alerts: ${alert.label.lowercase()}. ${PacePlanCalculator.splitSliderLabel(splitSlider)} · " +
-                "hill effort ${PacePlanCalculator.hillSliderLabel(hillSlider).lowercase()}. " +
-                "Targets assume you run this course; a different route will throw off guidance on the watch.",
+            tr(
+                "Alerts: %s. %s · hill effort %s. Targets assume you run this course; a different route will throw off guidance on the watch.",
+                tr(alert.label).lowercase(),
+                PacePlanCalculator.splitSliderLabel(splitSlider),
+                PacePlanCalculator.hillSliderLabel(hillSlider).lowercase(),
+            ),
             style = MaterialTheme.typography.labelMedium,
             color = PulseColors.TextMuted,
         )

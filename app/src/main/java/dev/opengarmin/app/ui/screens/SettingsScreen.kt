@@ -15,7 +15,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
@@ -33,6 +34,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import android.net.Uri
 import dev.opengarmin.app.BuildConfig
+import dev.opengarmin.app.i18n.AppLanguage
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.llm.ProviderConfig
 import dev.opengarmin.app.llm.ProviderPresets
 import dev.opengarmin.app.settings.PulseSettings
@@ -234,7 +237,7 @@ fun SettingsScreen(
                             color = PulseColors.TextMuted,
                         )
                         Text(
-                            settings.importedRestingHeartRate?.let { "$it bpm" } ?: "Not imported yet",
+                            settings.importedRestingHeartRate?.let { tr("%s bpm", it) } ?: tr("Not imported yet"),
                             style = MaterialTheme.typography.titleSmall,
                             color = PulseColors.Text,
                         )
@@ -310,6 +313,37 @@ fun SettingsScreen(
             }
         }
 
+        SectionLabel("Language")
+        PulseCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(PulseSpacing.xl),
+                verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+            ) {
+                Text(
+                    "App language",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = PulseColors.Text,
+                )
+                Text(
+                    "Choose the language used across the app. System default follows Android.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PulseColors.TextMuted,
+                )
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+                ) {
+                    AppLanguage.entries.forEach { language ->
+                        PillChip(
+                            label = language.nativeName,
+                            selected = settings.appLanguage == language,
+                            onClick = { settings.updateAppLanguage(language) },
+                        )
+                    }
+                }
+            }
+        }
+
         SectionLabel("AI provider")
         PulseCard(modifier = Modifier.fillMaxWidth()) {
             Column(
@@ -329,12 +363,18 @@ fun SettingsScreen(
                         color = PulseColors.TextMuted,
                     )
                     Text(
-                        "Default model: ${provider.defaultModel?.name ?: "—"}",
+                        tr("Default model: %s", provider.defaultModel?.name ?: "—"),
                         style = MaterialTheme.typography.bodySmall,
                         color = PulseColors.TextMuted,
                     )
                     Text(
-                        if (provider.hasStoredKey) "API key: ${provider.keyHint}" else if (provider.fromBuildConfig) "API key: from build configuration" else "API key: not set",
+                        if (provider.hasStoredKey) {
+                            tr("API key: %s", provider.keyHint)
+                        } else if (provider.fromBuildConfig) {
+                            tr("API key: from build configuration")
+                        } else {
+                            tr("API key: not set")
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = PulseColors.TextMuted,
                     )
@@ -385,32 +425,40 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
             ) {
                 Text(
-                    settings.watchName.ifBlank { "No watch name recorded" },
+                    settings.watchName.ifBlank { tr("No watch name recorded") },
                     style = MaterialTheme.typography.titleSmall,
                     color = PulseColors.Text,
+                    translate = false,
                 )
                 Text(syncLabel, style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
                 activitySyncProgress?.let { progress ->
                     val current = (progress.done + 1).coerceAtMost(progress.total)
                     Text(
-                        buildString {
-                            append("Downloading activity $current of ${progress.total}")
-                            progress.currentSize?.let { append(" · ${formatFileSize(it)}") }
-                        },
+                        progress.currentSize?.let { size ->
+                            tr(
+                                "Downloading activity %s of %s · %s",
+                                current,
+                                progress.total,
+                                formatFileSize(size),
+                            )
+                        } ?: tr("Downloading activity %s of %s", current, progress.total),
                         style = MaterialTheme.typography.bodySmall,
                         color = PulseColors.Accent,
                     )
                 }
                 lastImportedLabel?.let {
                     Text(
-                        "Last imported: $it",
+                        tr("Last imported: %s", it),
                         style = MaterialTheme.typography.bodySmall,
                         color = PulseColors.TextMuted,
                     )
                 }
                 settings.lastSyncAt?.let {
                     Text(
-                        "Last success: ${SimpleDateFormat("EEE d MMM, HH:mm", Locale.getDefault()).format(Date(it))}",
+                        tr(
+                            "Last success: %s",
+                            SimpleDateFormat("EEE d MMM, HH:mm", Locale.getDefault()).format(Date(it)),
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = PulseColors.TextMuted,
                     )
@@ -510,9 +558,12 @@ fun SettingsScreen(
                         )
                     }
                     Text(
-                        "Scheduled by Android: every ${SyncPolicy.intervalLabel(settings.periodicSyncIntervalMinutes)}, " +
-                            "battery not low" +
-                            if (settings.periodicSyncChargingOnly) ", charging required." else ", charging optional.",
+                        tr(
+                            "Scheduled by Android: every %s, %s%s",
+                            SyncPolicy.intervalLabel(settings.periodicSyncIntervalMinutes),
+                            tr("battery not low"),
+                            if (settings.periodicSyncChargingOnly) tr(", charging required.") else tr(", charging optional."),
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = PulseColors.TextMuted,
                     )
@@ -531,22 +582,31 @@ fun SettingsScreen(
                 )
                 settings.lastSyncAttemptAt?.let {
                     Text(
-                        "Last attempt: ${SimpleDateFormat("EEE d MMM, HH:mm", Locale.getDefault()).format(Date(it))}",
+                        tr(
+                            "Last attempt: %s",
+                            SimpleDateFormat("EEE d MMM, HH:mm", Locale.getDefault()).format(Date(it)),
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = PulseColors.TextMuted,
                     )
                 }
                 settings.lastSyncAt?.let {
                     Text(
-                        "Last success: ${SimpleDateFormat("EEE d MMM, HH:mm", Locale.getDefault()).format(Date(it))}",
+                        tr(
+                            "Last success: %s",
+                            SimpleDateFormat("EEE d MMM, HH:mm", Locale.getDefault()).format(Date(it)),
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = PulseColors.TextMuted,
                     )
                 }
                 Text(
-                    "Duration: ${SyncPolicy.formatDuration(settings.lastSyncDurationMs)} · " +
-                        "Trigger: ${SyncPolicy.triggerLabel(settings.lastSyncTrigger)} · " +
-                        "Result: ${syncResultLabel(settings.lastSyncKind, settings.lastSyncStatus)}",
+                    tr(
+                        "Duration: %s · Trigger: %s · Result: %s",
+                        SyncPolicy.formatDuration(settings.lastSyncDurationMs),
+                        tr(SyncPolicy.triggerLabel(settings.lastSyncTrigger)),
+                        syncResultLabel(settings.lastSyncKind, settings.lastSyncStatus),
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = PulseColors.TextMuted,
                 )
@@ -668,17 +728,18 @@ fun SettingsScreen(
     }
 }
 
+@Composable
 private fun syncResultLabel(kind: String, status: String): String {
     val phase = SyncPhase.fromStored(status)
     return when {
-        phase == SyncPhase.Syncing -> "Syncing"
-        kind == "success" -> "Success"
-        kind == "permanent" -> "Needs setup"
-        kind == "busy" -> "Busy"
-        kind == "cancelled" -> "Stopped"
-        kind == "transient" -> "Temporary failure"
-        phase == SyncPhase.UpToDate -> "Success"
-        phase == SyncPhase.Failed -> "Failed"
-        else -> "Not recorded"
+        phase == SyncPhase.Syncing -> tr("Syncing")
+        kind == "success" -> tr("Success")
+        kind == "permanent" -> tr("Needs setup")
+        kind == "busy" -> tr("Busy")
+        kind == "cancelled" -> tr("Stopped")
+        kind == "transient" -> tr("Temporary failure")
+        phase == SyncPhase.UpToDate -> tr("Success")
+        phase == SyncPhase.Failed -> tr("Failed")
+        else -> tr("Not recorded")
     }
 }

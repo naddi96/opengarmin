@@ -8,6 +8,9 @@ import dev.opengarmin.app.data.ActivitySessionMetrics
 import dev.opengarmin.app.data.ActivityZoneSet
 import dev.opengarmin.app.data.LapInsights
 import dev.opengarmin.app.data.RunWalkSplit
+import dev.opengarmin.app.i18n.AppLanguage
+import dev.opengarmin.app.i18n.analysisLanguageInstruction
+import dev.opengarmin.app.i18n.analysisRequest
 import dev.opengarmin.app.util.formatDate
 import org.json.JSONArray
 import org.json.JSONObject
@@ -51,12 +54,17 @@ object ActivityAnalysisPrompt {
         Do not use headings, tables, code fences, charts, links, or medical claims.
     """.trimIndent()
 
+    /** System prompt with the output language selected in Settings. */
+    fun system(language: AppLanguage): String =
+        SYSTEM + "\n\n" + language.analysisLanguageInstruction()
+
     fun user(
         activity: ActivityEntity,
         insights: ActivityInsights?,
         profile: ActivityAnalysisProfile = ActivityAnalysisProfile(),
+        language: AppLanguage = AppLanguage.ENGLISH,
     ): String = buildString {
-        appendLine("Analyze this activity.")
+        appendLine(language.analysisRequest())
         appendLine("<untrusted_data>")
         appendLine(activityJson(activity, insights).toString(2))
         appendLine("</untrusted_data>")

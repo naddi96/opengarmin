@@ -26,7 +26,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +55,7 @@ import dev.opengarmin.app.ui.components.LineChart
 import dev.opengarmin.app.ui.components.PillChip
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.util.formatHoursMinutes
 import dev.opengarmin.app.util.formatWellnessDate
 import java.time.LocalDate
@@ -195,9 +196,10 @@ private fun DaySleep(
                         color = PulseColors.Text,
                     )
                     Text(
-                        buildString {
-                            append("asleep")
-                            if (inBed != null) append(" · ${formatHoursMinutes(inBed.toLong())} in bed")
+                        if (inBed != null) {
+                            tr("%s · %s in bed", tr("asleep"), formatHoursMinutes(inBed.toLong()))
+                        } else {
+                            tr("asleep")
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = PulseColors.TextMuted,
@@ -218,10 +220,20 @@ private fun DaySleep(
                         )
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Need ${"%.0f".format(needHours)}h", style = MaterialTheme.typography.labelSmall, color = PulseColors.TextMuted)
+                        Text(
+                            tr("Need %s h", "%.0f".format(needHours)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = PulseColors.TextMuted,
+                        )
                         val short = if (asleep != null) (needSeconds - asleep).coerceAtLeast(0) else null
                         Text(
-                            if (short == null) "—" else if (short == 0) "Need met" else "${formatHoursMinutes(short.toLong())} short",
+                            if (short == null) {
+                                "—"
+                            } else if (short == 0) {
+                                tr("Need met")
+                            } else {
+                                tr("%s short", formatHoursMinutes(short.toLong()))
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = if (short == 0) PulseColors.Green else PulseColors.Orange,
                             fontWeight = FontWeight.Bold,
@@ -247,8 +259,14 @@ private fun DaySleep(
     val overlayHint = when {
         overlayPoints.size >= 2 -> null
         overlayKind == "hrv" && day.hrvLastNight != null ->
-            "No intraday HRV samples · overnight HRV ${day.hrvLastNight.roundToInt()} ms"
-        else -> "No ${overlayLabel.lowercase()} samples in this sleep window."
+            tr(
+                "No intraday HRV samples · overnight HRV %s ms",
+                day.hrvLastNight.roundToInt(),
+            )
+        else -> tr(
+            "No %s samples in this sleep window.",
+            tr(overlayLabel).lowercase(),
+        )
     }
     MetricCard {
         Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
@@ -373,8 +391,14 @@ private fun SleepStagesFullscreenDialog(
     val hint = when {
         overlay.size >= 2 -> null
         overlayKind == "hrv" && day.hrvLastNight != null ->
-            "No intraday HRV samples · overnight HRV ${day.hrvLastNight.roundToInt()} ms"
-        else -> "No ${overlayLabel.lowercase()} samples in this sleep window."
+            tr(
+                "No intraday HRV samples · overnight HRV %s ms",
+                day.hrvLastNight.roundToInt(),
+            )
+        else -> tr(
+            "No %s samples in this sleep window.",
+            tr(overlayLabel).lowercase(),
+        )
     }
     Dialog(
         onDismissRequest = onDismiss,
@@ -491,19 +515,19 @@ private fun SleepWindowFallback(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    "${formatHoursMinutes(asleep.toLong())} asleep",
+                    tr("%s asleep", formatHoursMinutes(asleep.toLong())),
                     style = MaterialTheme.typography.labelSmall,
                     color = PulseColors.TextMuted,
                 )
                 if (awake != null && awake > 0) {
                     Text(
-                        "${formatHoursMinutes(awake.toLong())} awake",
+                        tr("%s awake", formatHoursMinutes(awake.toLong())),
                         style = MaterialTheme.typography.labelSmall,
                         color = PulseColors.TextMuted,
                     )
                 }
                 Text(
-                    "${formatHoursMinutes(inBed.toLong())} in bed",
+                    tr("%s in bed", formatHoursMinutes(inBed.toLong())),
                     style = MaterialTheme.typography.labelSmall,
                     color = PulseColors.TextMuted,
                 )
@@ -520,7 +544,7 @@ private fun SleepWindowFallback(
         }
         if (overlay.size >= 2) {
             Text(
-                "$overlayLabel across the sleep window",
+                tr("%s across the sleep window", tr(overlayLabel)),
                 style = MaterialTheme.typography.labelSmall,
                 color = PulseColors.TextMuted,
             )
@@ -670,17 +694,19 @@ private fun SleepHistory(
             InsightLine(
                 text = buildAnnotatedString {
                     if (bedDeviation != null && wakeDeviation != null && wakeDeviation < bedDeviation) {
-                        append("Wake-up is steady; ")
-                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("bedtime is what moves") }
-                        append(" from night to night.")
+                        append(tr("Wake-up is steady; "))
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                            append(tr("bedtime is what moves"))
+                        }
+                        append(tr(" from night to night."))
                     } else if (avgWake != null) {
-                        append("Your average wake-up in this range is ")
+                        append(tr("Your average wake-up in this range is "))
                         withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
                             append(HealthMetrics.labelFromNoonMinutes(avgWake))
                         }
-                        append(". Keep bedtime consistent to protect it.")
+                        append(tr(". Keep bedtime consistent to protect it."))
                     } else {
-                        append("Bedtime was not recorded for enough nights to compare.")
+                        append(tr("Bedtime was not recorded for enough nights to compare."))
                     }
                 },
             )
@@ -688,6 +714,7 @@ private fun SleepHistory(
     }
 }
 
+@Composable
 private fun sleepSubtitle(
     day: WellnessDayEntity?,
     anchor: LocalDate,
@@ -706,12 +733,18 @@ private fun sleepSubtitle(
         return "$date$windowText"
     }
     val start = HealthMetrics.rangeStart(anchor, window.days)
-    return "${if (window == HealthWindow.WEEK) "7 days" else if (window == HealthWindow.YEAR) "12 months" else "4 weeks"} · ${HealthMetrics.formatRange(start, anchor)}"
+    val windowLabel = when (window) {
+        HealthWindow.WEEK -> tr("7 days")
+        HealthWindow.YEAR -> tr("12 months")
+        else -> tr("4 weeks")
+    }
+    return "$windowLabel · ${HealthMetrics.formatRange(start, anchor)}"
 }
 
+@Composable
 private fun sleepNavigatorLabel(anchor: LocalDate, latestDate: LocalDate, window: HealthWindow): String {
     if (window == HealthWindow.DAY) {
-        return if (anchor == latestDate) "Today" else HealthMetrics.formatRange(anchor, anchor)
+        return if (anchor == latestDate) tr("Today") else HealthMetrics.formatRange(anchor, anchor)
     }
     return HealthMetrics.formatRange(HealthMetrics.rangeStart(anchor, window.days), anchor)
 }

@@ -16,7 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +40,7 @@ import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
 import dev.opengarmin.app.util.formatHoursMinutes
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.util.formatWellnessDate
 import java.time.Instant
 import java.time.LocalDate
@@ -159,21 +160,29 @@ private fun StressDay(
             InsightLine(
                 text = buildAnnotatedString {
                     if (breakdown == null) {
-                        append("The watch only stored an average for this day; its detailed stress timeline is not available.")
+                        append(tr("The watch only stored an average for this day; its detailed stress timeline is not available."))
                         return@buildAnnotatedString
                     }
                     val rest = breakdown.percentFor(StressLevel.REST) + breakdown.percentFor(StressLevel.LOW)
-                    append("Rest or low stress covered ")
+                    append(tr("Rest or low stress covered "))
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("$rest%") }
-                    append(" of the day. ")
+                    append(tr(" of the day. "))
                     val peak = stress.maxByOrNull { it.value }
                     val activity = peak?.let { point -> activities.firstOrNull { point.timestamp in it.startTime..(it.startTime + it.durationSeconds.roundToInt()) } }
                     if (activity != null) {
-                        append("The highest reading came during your ")
-                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(sportLabel(activity.sport).lowercase()) }
-                        append(".")
+                        append(tr("The highest reading came during your "))
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                            append(tr(sportLabel(activity.sport)).lowercase())
+                        }
+                        append(tr("."))
                     } else if (peak != null) {
-                        append("The highest reading was ${peak.value.roundToInt()} at ${sampleTime(peak.timestamp)}.")
+                        append(
+                            tr(
+                                "The highest reading was %s at %s.",
+                                peak.value.roundToInt(),
+                                sampleTime(peak.timestamp),
+                            ),
+                        )
                     }
                 },
             )
@@ -291,9 +300,14 @@ private fun StressHistory(
             if (recent != null) {
                 InsightLine(
                     text = buildAnnotatedString {
-                        append("The last 7 days average ")
+                        append(tr("The last 7 days average "))
                         withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("$recent") }
-                        append(" against $average for the whole range.")
+                        append(
+                            tr(
+                                " against %s for the whole range.",
+                                average,
+                            ),
+                        )
                     },
                 )
             }
@@ -333,19 +347,21 @@ private fun stressMarkers(day: WellnessDayEntity, activities: List<ActivityEntit
     return markers
 }
 
+@Composable
 private fun stressSubtitle(anchor: LocalDate, window: HealthWindow): String {
     if (window == HealthWindow.DAY) return formatWellnessDate(anchor.toString())
     val label = when (window) {
-        HealthWindow.WEEK -> "7 days"
-        HealthWindow.FOUR_WEEKS -> "4 weeks"
-        else -> "12 months"
+        HealthWindow.WEEK -> tr("7 days")
+        HealthWindow.FOUR_WEEKS -> tr("4 weeks")
+        else -> tr("12 months")
     }
     return "$label · ${HealthMetrics.formatRange(HealthMetrics.rangeStart(anchor, window.days), anchor)}"
 }
 
+@Composable
 private fun stressNavigatorLabel(anchor: LocalDate, latestDate: LocalDate, window: HealthWindow): String {
     if (window == HealthWindow.DAY) {
-        return if (anchor == latestDate) "Today" else HealthMetrics.formatRange(anchor, anchor)
+        return if (anchor == latestDate) tr("Today") else HealthMetrics.formatRange(anchor, anchor)
     }
     return HealthMetrics.formatRange(HealthMetrics.rangeStart(anchor, window.days), anchor)
 }

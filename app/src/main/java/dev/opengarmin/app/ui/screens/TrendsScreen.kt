@@ -20,7 +20,7 @@ import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SelectableDates
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
@@ -41,6 +41,7 @@ import dev.opengarmin.app.data.WellnessHistory
 import dev.opengarmin.app.data.WellnessMetrics
 import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.settings.PulseSettings
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.components.BarChart
 import dev.opengarmin.app.ui.components.CoachInsightCard
 import dev.opengarmin.app.ui.components.LineChart
@@ -252,7 +253,7 @@ fun TrendsScreen(
                     Text(metric.label, style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
                     Spacer(Modifier.weight(1f))
                     Text(
-                        "$granularityLabel average",
+                        tr("%s average", tr(granularityLabel)),
                         style = MaterialTheme.typography.labelMedium,
                         color = PulseColors.TextMuted,
                     )
@@ -297,21 +298,28 @@ fun TrendsScreen(
                     )
                 } else {
                     Text(
-                        "No ${metric.label.lowercase(Locale.getDefault())} data in this period.",
+                        tr(
+                            "No %s data in this period.",
+                            tr(metric.label).lowercase(Locale.getDefault()),
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = PulseColors.TextMuted,
                     )
                 }
                 if (metric == TrendMetric.Steps && settings.stepGoal > 0) {
                     Text(
-                        "Dashed line: goal ${"%,d".format(settings.stepGoal)}",
+                        tr("Dashed line: goal %s", "%,d".format(settings.stepGoal)),
                         style = MaterialTheme.typography.labelSmall,
                         color = PulseColors.TextMuted,
                     )
                 }
                 if (daysWithMetric < inRange.size) {
                     Text(
-                        "$daysWithMetric of ${inRange.size} days with data. Missing values are not zero-filled.",
+                        tr(
+                            "%s of %s days with data. Missing values are not zero-filled.",
+                            daysWithMetric,
+                            inRange.size,
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = PulseColors.TextMuted,
                     )
@@ -339,13 +347,13 @@ fun TrendsScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "$granularityLabel history",
+                            tr("%s history", tr(granularityLabel)),
                             style = MaterialTheme.typography.bodySmall,
                             color = PulseColors.TextMuted,
                         )
                         Spacer(Modifier.weight(1f))
                         Text(
-                            "${buckets.size} buckets",
+                            tr("%s buckets", buckets.size),
                             style = MaterialTheme.typography.labelSmall,
                             color = PulseColors.TextMuted,
                         )
@@ -369,7 +377,11 @@ fun TrendsScreen(
                             )
                         }
                         Text(
-                            "${bucket.daysWithData} ${if (bucket.daysWithData == 1) "day" else "days"} with data",
+                            if (bucket.daysWithData == 1) {
+                                tr("%s day with data", bucket.daysWithData)
+                            } else {
+                                tr("%s days with data", bucket.daysWithData)
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = PulseColors.TextMuted,
                         )
@@ -471,6 +483,7 @@ private fun metricValue(
         ?.toDouble()
 }
 
+@Composable
 private fun selectedMetricSubtitle(
     metric: TrendMetric,
     average: Double?,
@@ -479,14 +492,31 @@ private fun selectedMetricSubtitle(
     daysRequested: Int,
 ): String {
     if (average == null) {
-        return "No ${metric.label.lowercase(Locale.getDefault())} recorded in this period."
+        return tr(
+            "No %s recorded in this period.",
+            tr(metric.label).lowercase(Locale.getDefault()),
+        )
     }
-    val coverage = "$daysWithMetric of $daysRequested days with data"
+    val coverage = tr("%s of %s days with data", daysWithMetric, daysRequested)
     return when (metric) {
-        TrendMetric.Steps -> "%,d total steps · %s".format(total?.roundToInt() ?: 0, coverage)
-        TrendMetric.Sleep -> "Average per night across $daysWithMetric ${if (daysWithMetric == 1) "day" else "days"} · $coverage"
-        TrendMetric.Hrv -> "Average overnight HRV · $coverage"
-        else -> "Average per day across $daysWithMetric ${if (daysWithMetric == 1) "day" else "days"} · $coverage"
+        TrendMetric.Steps -> tr(
+            "%s total steps · %s",
+            "%,d".format(total?.roundToInt() ?: 0),
+            coverage,
+        )
+        TrendMetric.Sleep -> tr(
+            "Average per night across %s %s · %s",
+            daysWithMetric,
+            if (daysWithMetric == 1) tr("day") else tr("days"),
+            coverage,
+        )
+        TrendMetric.Hrv -> tr("Average overnight HRV · %s", coverage)
+        else -> tr(
+            "Average per day across %s %s · %s",
+            daysWithMetric,
+            if (daysWithMetric == 1) tr("day") else tr("days"),
+            coverage,
+        )
     }
 }
 
@@ -515,13 +545,20 @@ private fun formatBucketLabel(bucket: HistoryBucket, granularity: HistoryGranula
     }
 }
 
+@Composable
 private fun formatRange(range: DateRange, today: LocalDate): String {
     val includeYear = range.start.year != range.end.year || range.start.year != today.year
     val formatter = DateTimeFormatter.ofPattern(if (includeYear) "d MMM yyyy" else "d MMM", Locale.getDefault())
-    return "${range.start.format(formatter)} – ${range.end.format(formatter)} · ${range.days} " +
-        if (range.days == 1L) "day" else "days"
+    return tr(
+        "%s – %s · %s %s",
+        range.start.format(formatter),
+        range.end.format(formatter),
+        range.days,
+        if (range.days == 1L) tr("day") else tr("days"),
+    )
 }
 
+@Composable
 private fun trendInsight(
     days: List<WellnessDayEntity>,
     average: Double?,
@@ -530,22 +567,29 @@ private fun trendInsight(
     stepGoal: Int,
 ): String {
     if (days.isEmpty()) {
-        return "No wellness data in this range. Sync your watch to build a trend."
+        return tr("No wellness data in this range. Sync your watch to build a trend.")
     }
     val goalDays = days.count { it.steps >= stepGoal.coerceAtLeast(1) }
     val sleep = WellnessHistory.average(days) { WellnessMetrics.sleepSeconds(it)?.toDouble() }
     val hrv = WellnessHistory.average(days) { it.hrvLastNight?.takeIf { value -> value > 0.0 } }
     val parts = ArrayList<String>()
     parts.add(
-        "Steps averaged ${"%,d".format(WellnessHistory.average(days) { it.steps.toDouble() }?.roundToInt() ?: 0)} a day " +
-            "and reached the ${"%,d".format(stepGoal.coerceAtLeast(1))} goal on $goalDays of ${days.size} days with data.",
+        tr(
+            "Steps averaged %s a day and reached the %s goal on %s of %s days with data.",
+            "%,d".format(WellnessHistory.average(days) { it.steps.toDouble() }?.roundToInt() ?: 0),
+            "%,d".format(stepGoal.coerceAtLeast(1)),
+            goalDays,
+            days.size,
+        ),
     )
-    sleep?.let { parts.add("Sleep averaged ${WellnessMetrics.formatSleepDuration(it.roundToInt())}.") }
-    hrv?.let { parts.add("Overnight HRV averaged ${"%.0f".format(it)} ms.") }
+    sleep?.let {
+        parts.add(tr("Sleep averaged %s.", WellnessMetrics.formatSleepDuration(it.roundToInt())))
+    }
+    hrv?.let { parts.add(tr("Overnight HRV averaged %s ms.", "%.0f".format(it))) }
     if (average == null) {
-        parts.add("No values for the selected metric in this period.")
+        parts.add(tr("No values for the selected metric in this period."))
     } else if (total != null && daysWithMetric > 0) {
-        parts.add("The selected metric is based on $daysWithMetric days and is never zero-filled.")
+        parts.add(tr("The selected metric is based on %s days and is never zero-filled.", daysWithMetric))
     }
     return parts.joinToString(" ")
 }

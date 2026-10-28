@@ -15,7 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +55,7 @@ import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.sync.ActivitySyncProgress
 import dev.opengarmin.app.sync.SyncPhase
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.components.EmptyState
 import dev.opengarmin.app.ui.components.IconButtonRound
 import dev.opengarmin.app.ui.components.PrimaryButton
@@ -209,14 +210,14 @@ fun PulseApp(
     }
 
     val planSummary = if (plannedWorkouts.isEmpty()) {
-        "Build a session and send it to the watch"
+        tr("Build a session and send it to the watch")
     } else {
         val scheduled = plannedWorkouts.count { it.scheduledDate != null }
-        "${plannedWorkouts.size} saved · $scheduled scheduled"
+        tr("%s saved · %s scheduled", plannedWorkouts.size, scheduled)
     }
     val pacePlan = pacePlans.firstOrNull()
     val paceSummary = pacePlan?.let { "${it.name} · ${it.summary()}" }
-        ?: "Build a split-by-split racing plan"
+        ?: tr("Build a split-by-split racing plan")
     val racePredictions = PacePlanCalculator.predictions(activities)
 
     BackHandler(enabled = route != AppRoute.Tabs) {
@@ -387,9 +388,9 @@ fun PulseApp(
                     )
                 } else {
                     EmptyState(
-                        title = "No pace plan selected",
-                        message = "Build a PacePro strategy before starting a run.",
-                        actionLabel = "Back",
+                        title = tr("No pace plan selected"),
+                        message = tr("Build a PacePro strategy before starting a run."),
+                        actionLabel = tr("Back"),
                         onAction = { routeName = AppRoute.Tabs.name },
                         modifier = Modifier.padding(PulseSpacing.xxl),
                     )
@@ -435,9 +436,9 @@ fun PulseApp(
                     )
                 } else {
                     EmptyState(
-                        title = "Activity unavailable",
-                        message = "This activity is no longer in the local database.",
-                        actionLabel = "Back",
+                        title = tr("Activity unavailable"),
+                        message = tr("This activity is no longer in the local database."),
+                        actionLabel = tr("Back"),
                         onAction = { routeName = AppRoute.Tabs.name },
                         modifier = Modifier.padding(PulseSpacing.xxl),
                     )
@@ -503,9 +504,9 @@ fun PulseApp(
                     }
                 } else {
                     EmptyState(
-                        title = "No activity selected",
-                        message = "Open an activity before exploring its FIT fields.",
-                        actionLabel = "Back",
+                        title = tr("No activity selected"),
+                        message = tr("Open an activity before exploring its FIT fields."),
+                        actionLabel = tr("Back"),
                         onAction = { routeName = AppRoute.Tabs.name },
                         modifier = Modifier.padding(PulseSpacing.xxl),
                     )
@@ -598,7 +599,11 @@ private fun LogScreen(
             Text(
                 it,
                 style = MaterialTheme.typography.labelMedium,
-                color = if (it.startsWith("Could not")) PulseColors.Coral else PulseColors.Teal,
+                color = if (it.startsWith("Could not") || it.startsWith("Impossibile")) {
+                    PulseColors.Coral
+                } else {
+                    PulseColors.Teal
+                },
             )
         }
     }

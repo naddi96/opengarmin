@@ -20,7 +20,7 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +41,7 @@ import dev.opengarmin.app.ui.components.ProgressRing
 import dev.opengarmin.app.ui.components.PulseCard
 import dev.opengarmin.app.ui.components.StatTile
 import dev.opengarmin.app.ui.components.StatusPill
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
 import java.time.Instant
@@ -130,7 +131,7 @@ fun TodayScreen(
                     verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
                 ) {
                     Text(
-                        "Sync needs attention",
+                        tr("Sync needs attention"),
                         style = MaterialTheme.typography.titleSmall,
                         color = PulseColors.Coral,
                     )
@@ -190,14 +191,22 @@ fun TodayScreen(
                     contentDescription = "Steps: ${day.steps} of $goal, ${(progress * 100).roundToInt()} percent",
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.xs)) {
-                    Text("Steps $dayLabel", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
+                    Text(
+                        tr("Steps %s", dayLabel),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                    )
                     Text(
                         "%,d".format(day.steps),
                         style = MaterialTheme.typography.displayLarge,
                         color = PulseColors.Accent,
                     )
                     Text(
-                        if (remaining > 0) "%,d to reach %,d".format(remaining, goal) else "Goal reached",
+                        if (remaining > 0) {
+                            tr("%s to reach %s", "%,d".format(remaining), "%,d".format(goal))
+                        } else {
+                            tr("Goal reached")
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = PulseColors.TextMuted,
                     )
@@ -251,7 +260,7 @@ fun TodayScreen(
                                 color = PulseColors.Text,
                             )
                             Text(
-                                if (isToday) " bpm now" else " bpm last",
+                                if (isToday) tr(" bpm now") else tr(" bpm last"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = PulseColors.TextMuted,
                                 modifier = Modifier.padding(bottom = 6.dp),
@@ -260,12 +269,12 @@ fun TodayScreen(
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            "Resting ${restingHr ?: "—"}",
+                            tr("Resting %s", restingHr?.toString() ?: "—"),
                             style = MaterialTheme.typography.bodySmall,
                             color = PulseColors.TextMuted,
                         )
                         Text(
-                            "Range ${minHr ?: "—"}–${maxHr ?: "—"}",
+                            tr("Range %s–%s", minHr?.toString() ?: "—", maxHr?.toString() ?: "—"),
                             style = MaterialTheme.typography.bodySmall,
                             color = PulseColors.TextMuted,
                         )
@@ -365,17 +374,21 @@ private fun ActivitySyncCard(progress: ActivitySyncProgress, lastImported: Strin
             )
             Text(
                 if (progress.currentSize != null) {
-                    "Downloading activity $current of ${progress.total} · " +
-                        formatFileSize(progress.currentSize)
+                    tr(
+                        "Downloading activity %s of %s · %s",
+                        current,
+                        progress.total,
+                        formatFileSize(progress.currentSize),
+                    )
                 } else {
-                    "Finishing activity imports…"
+                    tr("Finishing activity imports…")
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = PulseColors.TextMuted,
             )
             lastImported?.let {
                 Text(
-                    "Last imported: $it",
+                    tr("Last imported: %s", it),
                     style = MaterialTheme.typography.labelSmall,
                     color = PulseColors.TextMuted,
                 )
@@ -397,13 +410,14 @@ internal fun chartTimeLabels(samples: List<WellnessSampleEntity>, isToday: Boole
     )
 }
 
+@Composable
 private fun localInsight(
     days: List<WellnessDayEntity>,
     samples: List<WellnessSampleEntity>,
     goal: Int,
     isToday: Boolean,
 ): String {
-    val today = WellnessMetrics.latestDay(days) ?: return "Sync your watch to see an evidence-based summary."
+    val today = WellnessMetrics.latestDay(days) ?: return tr("Sync your watch to see an evidence-based summary.")
     val previousDays = days.sortedByDescending { it.date }.filter { it.date < today.date }
     val todayResting = today.restingHeartRate?.takeIf { it in 1..250 }
     val previous = previousDays.take(7).mapNotNull { it.restingHeartRate?.takeIf { value -> value in 1..250 } }
@@ -414,10 +428,24 @@ private fun localInsight(
     }
     return when {
         restingDelta != null && restingDelta <= -2 ->
-            "Your resting heart rate is $restingDelta bpm vs your recent average, while you logged ${"%,d".format(today.steps)} steps today. Keep the easy sessions easy and re-check the trend over the next week."
+            tr(
+                "Your resting heart rate is %s bpm vs your recent average, while you logged %s steps today. Keep the easy sessions easy and re-check the trend over the next week.",
+                restingDelta,
+                "%,d".format(today.steps),
+            )
         today.steps < goal ->
-            "You're ${"%,d".format(goal - today.steps)} steps from your ${"%,d".format(goal)} goal. Your last recorded heart rate was ${samples.lastOrNull()?.value?.roundToInt() ?: "not available"} bpm."
+            tr(
+                "You're %s steps from your %s goal. Your last recorded heart rate was %s bpm.",
+                "%,d".format(goal - today.steps),
+                "%,d".format(goal),
+                samples.lastOrNull()?.value?.roundToInt() ?: tr("not available"),
+            )
         else ->
-            "You reached ${"%,d".format(today.steps)} steps ${if (isToday) "today" else "on the latest recorded day"} and logged ${today.activeSeconds / 60} active minutes. The values above come from your watch's wellness records."
+            tr(
+                "You reached %s steps %s and logged %s active minutes. The values above come from your watch's wellness records.",
+                "%,d".format(today.steps),
+                if (isToday) tr("today") else tr("on the latest recorded day"),
+                today.activeSeconds / 60,
+            )
     }
 }

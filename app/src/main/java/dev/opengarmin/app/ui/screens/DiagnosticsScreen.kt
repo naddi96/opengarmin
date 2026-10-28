@@ -16,7 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.diagnostics.AppEvent
 import dev.opengarmin.app.diagnostics.Diagnostics
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.components.Badge
 import dev.opengarmin.app.ui.components.EmptyState
 import dev.opengarmin.app.ui.components.IconButtonRound
@@ -88,7 +89,7 @@ fun DiagnosticsScreen(
                         color = PulseColors.Text,
                     )
                     Text(
-                        "${events.size} grouped · $totalOccurrences total",
+                        tr("%s grouped · %s total", events.size, totalOccurrences),
                         style = MaterialTheme.typography.labelSmall,
                         color = PulseColors.TextMuted,
                     )
@@ -118,7 +119,7 @@ fun DiagnosticsScreen(
                     items(areas) { name ->
                         val count = events.count { it.area == name }
                         PillChip(
-                            label = "$name ($count)",
+                            label = tr("%s (%s)", name, count),
                             selected = area == name,
                             onClick = { area = if (area == name) null else name },
                         )
@@ -168,7 +169,11 @@ fun DiagnosticsScreen(
                 Text(
                     it,
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (it.startsWith("Could not")) PulseColors.Coral else PulseColors.Teal,
+                    color = if (it.startsWith("Could not") || it.startsWith("Impossibile")) {
+                        PulseColors.Coral
+                    } else {
+                        PulseColors.Teal
+                    },
                 )
             }
         }
@@ -238,9 +243,10 @@ private fun EventRow(
                 event.message,
                 style = MaterialTheme.typography.bodySmall,
                 color = PulseColors.Text,
+                translate = false,
             )
             Text(
-                "$time · session ${event.sessionId}",
+                tr("%s · session %s", time, event.sessionId),
                 style = MaterialTheme.typography.labelSmall,
                 color = PulseColors.TextMuted,
             )
@@ -250,6 +256,7 @@ private fun EventRow(
                         trace,
                         style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
                         color = PulseColors.TextMuted,
+                        translate = false,
                     )
                 }
                 if (event.contextJson.isNotBlank() && event.contextJson != "{}") {

@@ -7,6 +7,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.opengarmin.app.diagnostics.Diagnostics
+import dev.opengarmin.app.i18n.AppLanguage
+import dev.opengarmin.app.i18n.AppStrings
+import dev.opengarmin.app.i18n.applyAppLocale
 import java.time.Year
 
 /**
@@ -14,7 +17,7 @@ import java.time.Year
  * profile values the mockups need (goal, zone reference) and sync metadata.
  */
 class PulseSettings(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences("pulse_settings", Context.MODE_PRIVATE)
+    private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     var stepGoal by mutableIntStateOf(prefs.getInt(KEY_STEP_GOAL, DEFAULT_STEP_GOAL))
         private set
@@ -87,6 +90,11 @@ class PulseSettings(context: Context) {
     /** Set after seven taps on the About version row; reveals the diagnostics screen. */
     var diagnosticsUnlocked by mutableStateOf(prefs.getBoolean(KEY_DIAGNOSTICS_UNLOCKED, false))
         private set
+    /** UI language. [AppLanguage.SYSTEM] follows the Android locale. */
+    var appLanguage by mutableStateOf(
+        AppLanguage.fromTag(prefs.getString(KEY_APP_LANGUAGE, AppLanguage.SYSTEM.tag)),
+    )
+        private set
 
     private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         applyPersistedValue(key)
@@ -97,6 +105,7 @@ class PulseSettings(context: Context) {
         // process. Listening to prefs keeps the visible activity in sync with
         // background attempts, results, duration and schedule changes.
         prefs.registerOnSharedPreferenceChangeListener(preferenceListener)
+        applyAppLocale(appLanguage)
     }
 
     private fun applyPersistedValue(key: String?) {
@@ -126,8 +135,24 @@ class PulseSettings(context: Context) {
             )
             KEY_PERIODIC_CHARGING_ONLY -> periodicSyncChargingOnly = prefs.getBoolean(KEY_PERIODIC_CHARGING_ONLY, false)
             KEY_DIAGNOSTICS_UNLOCKED -> diagnosticsUnlocked = prefs.getBoolean(KEY_DIAGNOSTICS_UNLOCKED, false)
+            KEY_APP_LANGUAGE -> {
+                appLanguage = AppLanguage.fromTag(prefs.getString(KEY_APP_LANGUAGE, AppLanguage.SYSTEM.tag))
+                applyAppLocale(appLanguage)
+            }
         }
     }
+
+    fun updateAppLanguage(value: AppLanguage) {
+        appLanguage = value
+        prefs.edit().putString(KEY_APP_LANGUAGE, value.tag).apply()
+        applyAppLocale(value)
+    }
+
+    /** Translate a string with this instance's selected language. */
+    fun localized(text: String): String = AppStrings.translate(text, appLanguage)
+
+    fun localized(text: String, vararg args: Any?): String =
+        AppStrings.format(text, appLanguage, *args)
 
     fun updateAutoActivityAnalysisEnabled(value: Boolean) {
         autoActivityAnalysisEnabled = value
@@ -312,6 +337,8 @@ class PulseSettings(context: Context) {
     }
 
     companion object {
+        internal const val PREFS_NAME = "pulse_settings"
+        internal const val KEY_APP_LANGUAGE = "app_language"
         const val DEFAULT_STEP_GOAL = 10_000
         private const val KEY_STEP_GOAL = "step_goal"
         private const val KEY_MAX_HR = "max_heart_rate"

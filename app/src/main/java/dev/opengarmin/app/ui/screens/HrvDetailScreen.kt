@@ -19,7 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +42,7 @@ import dev.opengarmin.app.data.WellnessDayEntity
 import dev.opengarmin.app.data.WellnessSampleEntity
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.util.formatWellnessDate
 import java.time.LocalDate
 import kotlin.math.roundToInt
@@ -131,10 +132,14 @@ private fun HrvDay(
     val peak = samples.maxByOrNull { it.value }
     val baselineText = when {
         low != null && high != null && estimated ->
-            "Estimated baseline range is ${"%.0f".format(low)}–${"%.0f".format(high)} ms, from the last three weeks of overnight HRV."
+            tr(
+                "Estimated baseline range is %s–%s ms, from the last three weeks of overnight HRV.",
+                "%.0f".format(low),
+                "%.0f".format(high),
+            )
         low != null && high != null ->
-            "Baseline range is ${"%.0f".format(low)}–${"%.0f".format(high)} ms."
-        else -> "No baseline range reported by the watch."
+            tr("Baseline range is %s–%s ms.", "%.0f".format(low), "%.0f".format(high))
+        else -> tr("No baseline range reported by the watch.")
     }
 
     MetricCard {
@@ -176,7 +181,7 @@ private fun HrvDay(
                 }
             }
             Text(
-                "Training load and recovery are reflected in overnight HRV. $baselineText",
+                tr("Training load and recovery are reflected in overnight HRV. %s", baselineText),
                 style = MaterialTheme.typography.bodySmall,
                 color = PulseColors.TextMuted,
                 modifier = Modifier.padding(horizontal = PulseSpacing.md),
@@ -190,7 +195,10 @@ private fun HrvDay(
                     lastNight?.let { "%.0f ms".format(it) } ?: "—",
                     delta?.let {
                         val sign = if (it >= 0) "+" else "−"
-                        "$sign${"%.0f".format(kotlin.math.abs(it))} vs avg"
+                        tr(
+                            "%s vs avg",
+                            "$sign${"%.0f".format(kotlin.math.abs(it))}",
+                        )
                     },
                     if (delta != null && delta >= 0) PulseColors.Green else PulseColors.Coral,
                     Modifier.weight(1f),
@@ -264,7 +272,7 @@ private fun HrvHistory(
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text("$inRange", style = MaterialTheme.typography.displaySmall, color = PulseColors.Text)
                         Text(
-                            " of ${nights.size} days",
+                            tr(" of %s days", nights.size),
                             style = MaterialTheme.typography.bodySmall,
                             color = PulseColors.TextMuted,
                             modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
@@ -278,7 +286,12 @@ private fun HrvHistory(
                             .background(hrvStatusColor(status).copy(alpha = 0.16f))
                             .padding(horizontal = PulseSpacing.md, vertical = 5.dp),
                     ) {
-                        Text("● $status", style = MaterialTheme.typography.labelSmall, color = hrvStatusColor(status), fontWeight = FontWeight.Bold)
+                        Text(
+                            tr("● %s", tr(status)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = hrvStatusColor(status),
+                            fontWeight = FontWeight.Bold,
+                        )
                     }
                 }
             }
@@ -305,9 +318,17 @@ private fun HrvHistory(
                 }
                 InsightLine(
                     text = buildAnnotatedString {
-                        append("You have been in your baseline range for ")
-                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("$streak days") }
-                        append(" in a row, $inRange of ${nights.size} recorded days in this range.")
+                        append(tr("You have been in your baseline range for "))
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                            append(tr("%s days", streak))
+                        }
+                        append(
+                            tr(
+                                " in a row, %s of %s recorded days in this range.",
+                                inRange,
+                                nights.size,
+                            ),
+                        )
                     },
                 )
             }
@@ -372,6 +393,7 @@ private fun HrvCell(label: String, value: String, sub: String?, color: Color, mo
     }
 }
 
+@Composable
 private fun hrvSubtitle(
     anchor: LocalDate,
     latestDate: LocalDate,
@@ -379,14 +401,15 @@ private fun hrvSubtitle(
 ): String {
     if (window == HealthWindow.DAY) {
         val date = formatWellnessDate(anchor.toString())
-        return if (anchor == latestDate) "$date · overnight" else date
+        return if (anchor == latestDate) tr("%s · overnight", date) else date
     }
-    return "${if (window == HealthWindow.WEEK) "7 days" else "4 weeks"} · ${HealthMetrics.formatRange(HealthMetrics.rangeStart(anchor, window.days), anchor)}"
+    return "${if (window == HealthWindow.WEEK) tr("7 days") else tr("4 weeks")} · ${HealthMetrics.formatRange(HealthMetrics.rangeStart(anchor, window.days), anchor)}"
 }
 
+@Composable
 private fun hrvNavigatorLabel(anchor: LocalDate, latestDate: LocalDate, window: HealthWindow): String {
     if (window == HealthWindow.DAY) {
-        return if (anchor == latestDate) "Today" else HealthMetrics.formatRange(anchor, anchor)
+        return if (anchor == latestDate) tr("Today") else HealthMetrics.formatRange(anchor, anchor)
     }
     return HealthMetrics.formatRange(HealthMetrics.rangeStart(anchor, window.days), anchor)
 }

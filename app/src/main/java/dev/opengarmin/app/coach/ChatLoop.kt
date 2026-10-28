@@ -1,6 +1,8 @@
 package dev.opengarmin.app.coach
 
 import dev.opengarmin.app.coach.tools.ToolRegistry
+import dev.opengarmin.app.i18n.AppLanguage
+import dev.opengarmin.app.i18n.AppStrings
 import dev.opengarmin.app.llm.LlmException
 import dev.opengarmin.app.llm.LlmMessage
 import dev.opengarmin.app.llm.LlmToolCall
@@ -28,6 +30,7 @@ class ChatLoop(
     private val trainingLimitations: String? = null,
     private val maxRounds: Int = 4,
     private val maxToolCalls: Int = 8,
+    private val language: AppLanguage = AppLanguage.ENGLISH,
 ) {
     data class Result(
         val text: String,
@@ -95,7 +98,7 @@ class ChatLoop(
                 onEvidence = onEvidence,
                 onCharts = onCharts,
             )
-            onStatus("Thinking…")
+            onStatus(AppStrings.translate("Thinking…", language))
         }
         return Result(conversation.lastOrNull { it.role == "assistant" }?.content.orEmpty(), evidence.toList(), charts.toList())
     }
@@ -212,7 +215,13 @@ class ChatLoop(
                 continue
             }
             used++
-            onStatus("Checking your ${toolLabel(call.name)}…")
+            onStatus(
+                AppStrings.format(
+                    "Checking your %s…",
+                    language,
+                    AppStrings.translate(toolLabel(call.name), language),
+                ),
+            )
             onText("")
             val result = runCatching {
                 withTimeout(5_000) {

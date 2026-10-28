@@ -14,7 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -125,6 +125,7 @@ private fun MarkdownText(
             modifier = modifier,
             style = style,
             color = color,
+            translate = false,
         )
     }
 }
@@ -144,6 +145,7 @@ private fun CodeBlock(code: String) {
             text = code,
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
             color = PulseColors.Text,
+            translate = false,
         )
     }
 }

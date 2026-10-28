@@ -15,7 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +42,7 @@ import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
 import dev.opengarmin.app.util.formatElapsedTime
 import dev.opengarmin.app.util.formatHoursMinutes
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.util.formatWellnessDate
 import java.time.Instant
 import java.time.LocalDate
@@ -123,7 +124,7 @@ internal fun BodyBatteryDetailScreen(
                             progress = (current ?: 0) / 100f,
                             value = current?.toString() ?: "—",
                             unit = "",
-                            caption = "of 100 · ${bodyBatteryLabel(current)}",
+                            caption = tr("of 100 · %s", tr(bodyBatteryLabel(current))),
                             color = PulseColors.Teal,
                             size = 140.dp,
                         )
@@ -148,7 +149,7 @@ internal fun BodyBatteryDetailScreen(
                     CardTitle(
                         title = "Daily timeline",
                         aux = HealthMetrics.peakBodyBattery(battery)?.let {
-                            "Peak ${it.value.roundToInt()} at ${sampleTime(it.timestamp)}"
+                            tr("Peak %s at %s", it.value.roundToInt(), sampleTime(it.timestamp))
                         },
                     )
                     if (hasTimeline) {
@@ -217,16 +218,16 @@ internal fun BodyBatteryDetailScreen(
                             listOf(
                                 "Avg high" to (avgHigh?.roundToInt()?.toString() ?: "—"),
                                 "Avg low" to (avgLow?.roundToInt()?.toString() ?: "—"),
-                                "Best day" to (best?.high?.let { "$it ${dayLabel(best.date)}" } ?: "—"),
+                                "Best day" to (best?.high?.let { tr("%s %s", it, dayLabel(best.date)) } ?: "—"),
                             ),
                             columns = 3,
                         )
                         val recharged = history.count { (it.high ?: 0) >= 80 }
                         InsightLine(
                             text = buildAnnotatedString {
-                                append("You reached ")
+                                append(tr("You reached "))
                                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("80+") }
-                                append(" on $recharged of ${history.size} recorded days.")
+                                append(tr(" on %s of %s recorded days.", recharged, history.size))
                             },
                         )
                     }
@@ -337,6 +338,7 @@ private fun BatteryTotal(label: String, value: String, color: Color) {
     }
 }
 
+@Composable
 private fun bodyBatteryInsight(
     current: Int?,
     activities: List<ActivityEntity>,
@@ -345,30 +347,30 @@ private fun bodyBatteryInsight(
 ): AnnotatedString = buildAnnotatedString {
     when {
         activities.isNotEmpty() -> {
-            append("Training day. ")
-            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(sportLabel(activities.first().sport)) }
-            append(" plus rest is good for body and mind. Now wind down and aim for a good night's sleep.")
+            append(tr("Training day. "))
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(tr(sportLabel(activities.first().sport))) }
+            append(tr(" plus rest is good for body and mind. Now wind down and aim for a good night's sleep."))
         }
         current != null && current >= 60 -> {
-            append("Energy is in a good place at ")
+            append(tr("Energy is in a good place at "))
             withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("$current") }
-            append(". Keep the rest of the day easy if you want to stay here.")
+            append(tr(". Keep the rest of the day easy if you want to stay here."))
         }
         current != null -> {
-            append("Energy is low at ")
+            append(tr("Energy is low at "))
             withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("$current") }
-            append(". Rest and an early night will recharge it.")
+            append(tr(". Rest and an early night will recharge it."))
         }
-        else -> append("No Body Battery reading for this day.")
+        else -> append(tr("No Body Battery reading for this day."))
     }
     if (hasTimeline && stress.isNotEmpty()) {
         val breakdown = HealthMetrics.stressBreakdown(stress)
         if (breakdown != null) {
-            append(" Stress was rest or low for ")
+            append(tr(" Stress was rest or low for "))
             withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
                 append("${breakdown.percentFor(StressLevel.REST) + breakdown.percentFor(StressLevel.LOW)}%")
             }
-            append(" of the day.")
+            append(tr(" of the day."))
         }
     }
 }
@@ -390,6 +392,7 @@ private fun timelineMarkers(day: WellnessDayEntity, activities: List<ActivityEnt
     return markers
 }
 
+@Composable
 private fun subtitleFor(
     anchor: LocalDate,
     latestDate: LocalDate,
@@ -398,16 +401,21 @@ private fun subtitleFor(
 ): String {
     if (window == HealthWindow.DAY) {
         val date = formatWellnessDate(anchor.toString())
-        val updated = if (anchor == latestDate && updatedAt != null) " · updated ${sampleTime(updatedAt)}" else ""
+        val updated = if (anchor == latestDate && updatedAt != null) {
+            tr(" · updated %s", sampleTime(updatedAt))
+        } else {
+            ""
+        }
         return "$date$updated"
     }
     val start = HealthMetrics.rangeStart(anchor, window.days)
-    return "${if (window == HealthWindow.WEEK) "7 days" else "4 weeks"} · ${HealthMetrics.formatRange(start, anchor)}"
+    return "${if (window == HealthWindow.WEEK) tr("7 days") else tr("4 weeks")} · ${HealthMetrics.formatRange(start, anchor)}"
 }
 
+@Composable
 private fun navigatorLabel(anchor: LocalDate, latestDate: LocalDate, window: HealthWindow): String {
     if (window == HealthWindow.DAY) {
-        return if (anchor == latestDate) "Today" else HealthMetrics.formatRange(anchor, anchor)
+        return if (anchor == latestDate) tr("Today") else HealthMetrics.formatRange(anchor, anchor)
     }
     return HealthMetrics.formatRange(HealthMetrics.rangeStart(anchor, window.days), anchor)
 }

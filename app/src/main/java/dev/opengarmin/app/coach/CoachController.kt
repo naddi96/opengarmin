@@ -12,6 +12,7 @@ import dev.opengarmin.app.llm.LlmToolDefinition
 import dev.opengarmin.app.llm.OpenAiClient
 import dev.opengarmin.app.llm.ProviderConfig
 import dev.opengarmin.app.llm.ProviderStore
+import dev.opengarmin.app.i18n.coachLanguageInstruction
 import dev.opengarmin.app.settings.PulseSettings
 import dev.opengarmin.app.ui.components.ChatRole
 import kotlinx.coroutines.CancellationException
@@ -147,7 +148,7 @@ class CoachController(
         if (trimmed.isEmpty() || isStreaming) return
         val config = providerStore.load()
         if (!config.isConfigured) {
-            lastError = "Configure an OpenAI-compatible provider first."
+            lastError = settings.localized("Configure an OpenAI-compatible provider first.")
             providerConfigured = false
             return
         }
@@ -181,7 +182,7 @@ class CoachController(
     private suspend fun runTurn(config: ProviderConfig, assistantId: Long, turnGeneration: Int) {
         val model = config.defaultModel
         if (model == null) {
-            if (turnGeneration == generation) markError(assistantId, "No model configured.")
+            if (turnGeneration == generation) markError(assistantId, settings.localized("No model configured."))
             return
         }
         val key = providerStore.apiKeyFor(config)
@@ -197,7 +198,8 @@ class CoachController(
             .map { LlmMessage(if (it.role == ChatRole.User) "user" else "assistant", it.text) }
         val loop = ChatLoop(
             tools = tools,
-            systemPrompt = SYSTEM_PROMPT,
+            systemPrompt = SYSTEM_PROMPT + "\n\n" + settings.appLanguage.coachLanguageInstruction(),
+            language = settings.appLanguage,
             maxHeartRate = settings.maxHeartRate,
             heightCm = settings.heightCm,
             weightKg = settings.weightKg,
@@ -230,7 +232,9 @@ class CoachController(
             if (turnGeneration != generation) return
             updateAssistant(assistantId) {
                 it.copy(
-                    text = result.text.ifBlank { "I couldn't produce an answer from the available data." },
+                    text = result.text.ifBlank {
+                        settings.localized("I couldn't produce an answer from the available data.")
+                    },
                     evidence = result.evidence,
                     charts = result.charts,
                     status = MessageStatus.Complete,
@@ -258,8 +262,9 @@ class CoachController(
                 context = mapOf("statusCode" to (e.statusCode?.toString() ?: "none")),
             )
             if (turnGeneration == generation) {
-                markError(assistantId, e.userMessage())
-                lastError = e.userMessage()
+                val message = settings.localized(e.userMessage())
+                markError(assistantId, message)
+                lastError = message
             }
         } catch (e: Exception) {
             Diagnostics.record(
@@ -269,8 +274,9 @@ class CoachController(
                 throwable = e,
             )
             if (turnGeneration == generation) {
-                markError(assistantId, "Something went wrong while answering. Try again.")
-                lastError = "Something went wrong while answering. Try again."
+                val message = settings.localized("Something went wrong while answering. Try again.")
+                markError(assistantId, message)
+                lastError = message
             }
         } finally {
             if (turnGeneration == generation && messages.none { it.status == MessageStatus.Streaming }) {
@@ -327,9 +333,13 @@ class CoachController(
     private fun welcomeMessage(): CoachUiMessage {
         val config = providerStore.load()
         val text = if (config.isConfigured) {
-            "Hi, I'm your coach. I can read the health data stored on this device and create workout plans. Ask me about your steps, heart rate, or workouts, or tell me to plan a session."
+            settings.localized(
+                "Hi, I'm your coach. I can read the health data stored on this device and create workout plans. Ask me about your steps, heart rate, or workouts, or tell me to plan a session.",
+            )
         } else {
-            "Hi, I'm your coach. Add an OpenAI-compatible provider in Manage, then ask me about the health data stored on this device or ask me to plan a workout."
+            settings.localized(
+                "Hi, I'm your coach. Add an OpenAI-compatible provider in Manage, then ask me about the health data stored on this device or ask me to plan a workout.",
+            )
         }
         return CoachUiMessage(nextId(), ChatRole.Assistant, text)
     }

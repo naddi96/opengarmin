@@ -36,7 +36,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -81,6 +81,7 @@ import dev.opengarmin.app.util.formatPacePerKm
 import dev.opengarmin.app.util.formatDate
 import dev.opengarmin.app.util.formatDistanceKm
 import dev.opengarmin.app.util.formatElapsedTime
+import dev.opengarmin.app.i18n.tr
 import dev.opengarmin.app.ui.components.AssistantMarkdown
 import dev.opengarmin.app.ui.components.Badge
 import dev.opengarmin.app.ui.components.DividerLine
@@ -277,7 +278,11 @@ private fun ActivityHeader(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "${formatDate(activity.startTime)} · ${categoryForSport(activity.sport, activity.subSport).label}",
+                tr(
+                    "%s · %s",
+                    formatDate(activity.startTime),
+                    tr(categoryForSport(activity.sport, activity.subSport).label),
+                ),
                 style = MaterialTheme.typography.labelSmall,
                 color = PulseColors.TextMuted,
                 maxLines = 1,
@@ -504,7 +509,10 @@ private fun ActivityAiAnalysisCard(
                         horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md),
                     ) {
                         Text(
-                            "Generated ${analysis.generatedAt?.let { formatDate(it) } ?: "just now"} · not medical advice",
+                            tr(
+                                "Generated %s · not medical advice",
+                                analysis.generatedAt?.let { formatDate(it) } ?: tr("just now"),
+                            ),
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.labelSmall,
                             color = PulseColors.TextMuted,
@@ -760,7 +768,11 @@ private fun ActivityExportCard(
                     Text(
                         status,
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (status.startsWith("Could not")) PulseColors.Coral else PulseColors.Teal,
+                        color = if (status.startsWith("Could not") || status.startsWith("Impossibile")) {
+                            PulseColors.Coral
+                        } else {
+                            PulseColors.Teal
+                        },
                     )
                 }
             }
@@ -1659,12 +1671,17 @@ private fun HeartRateZonesCard(
                         }
                     }
                     val basis = zones.maxHeartRate ?: maxHeartRate
-                    val source = if (zones.fromWatch) "Watch zones" else "Computed from your max HR"
+                    val source = if (zones.fromWatch) tr("Watch zones") else tr("Computed from your max HR")
                     Text(
                         if (basis != null) {
-                            "$source $basis bpm · total ${formatElapsedTime(zones.totalSeconds)}"
+                            tr(
+                                "%s %s bpm · total %s",
+                                source,
+                                basis,
+                                formatElapsedTime(zones.totalSeconds),
+                            )
                         } else {
-                            "$source · total ${formatElapsedTime(zones.totalSeconds)}"
+                            tr("%s · total %s", source, formatElapsedTime(zones.totalSeconds))
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = PulseColors.TextMuted,
@@ -1691,7 +1708,7 @@ private fun HeartRateZonesCard(
                                 )
                                 Spacer(Modifier.width(PulseSpacing.sm))
                                 Text(
-                                    "Zone ${index + 1}",
+                                    tr("Zone %s", index + 1),
                                     modifier = Modifier.weight(1f),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = PulseColors.TextMuted,
@@ -1705,7 +1722,10 @@ private fun HeartRateZonesCard(
                         }
                     }
                     Text(
-                        "Estimated from heart-rate samples and max HR ${fallback.maxHeartRate} bpm.",
+                        tr(
+                            "Estimated from heart-rate samples and max HR %s bpm.",
+                            fallback.maxHeartRate,
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = PulseColors.TextMuted,
                     )
@@ -1750,8 +1770,12 @@ private fun PowerZonesCard(zones: ActivityZoneSet) {
             }
             Text(
                 zones.thresholdPowerW?.let {
-                    "Watch zones · FTP $it W · total ${formatElapsedTime(zones.totalSeconds)}"
-                } ?: "Watch zones · total ${formatElapsedTime(zones.totalSeconds)}",
+                    tr(
+                        "Watch zones · FTP %s W · total %s",
+                        it,
+                        formatElapsedTime(zones.totalSeconds),
+                    )
+                } ?: tr("Watch zones · total %s", formatElapsedTime(zones.totalSeconds)),
                 style = MaterialTheme.typography.labelSmall,
                 color = PulseColors.TextMuted,
             )
@@ -1773,7 +1797,7 @@ private fun ZoneRow(
         Box(Modifier.size(8.dp).clip(CircleShape).background(color))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                "Z${zone.index} · ${zone.label}",
+                tr("Z%s · %s", zone.index, tr(zone.label)),
                 style = MaterialTheme.typography.bodySmall,
                 color = PulseColors.Text,
             )
@@ -1916,16 +1940,16 @@ private fun ActivityLaps(
                 }
             }
             val units = buildList {
-                add(if (isRide) "speed in km/h" else "pace in min/km")
-                if (hasCadence) add("cadence in spm")
-                if (hasStride) add("stride in m")
-                if (hasVerticalOscillation) add("vertical oscillation in cm")
-                if (hasVerticalRatio) add("vertical ratio in %")
-                if (hasGroundContact) add("contact in ms")
-                if (hasPower) add("power in W")
+                add(if (isRide) tr("speed in km/h") else tr("pace in min/km"))
+                if (hasCadence) add(tr("cadence in spm"))
+                if (hasStride) add(tr("stride in m"))
+                if (hasVerticalOscillation) add(tr("vertical oscillation in cm"))
+                if (hasVerticalRatio) add(tr("vertical ratio in %"))
+                if (hasGroundContact) add(tr("contact in ms"))
+                if (hasPower) add(tr("power in W"))
             }
             Text(
-                "Swipe the table sideways. Units: ${units.joinToString()}.",
+                tr("Swipe the table sideways. Units: %s.", units.joinToString()),
                 style = MaterialTheme.typography.labelSmall,
                 color = PulseColors.TextMuted,
             )

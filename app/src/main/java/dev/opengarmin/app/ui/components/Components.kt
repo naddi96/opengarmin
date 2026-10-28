@@ -32,7 +32,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import dev.opengarmin.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -48,6 +48,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.opengarmin.app.i18n.AppStrings
+import dev.opengarmin.app.i18n.LocalAppLanguage
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseShapes
 import dev.opengarmin.app.ui.theme.PulseSpacing
@@ -328,7 +330,12 @@ fun IconButtonRound(
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(22.dp))
+        Icon(
+            icon,
+            contentDescription = AppStrings.translate(contentDescription, LocalAppLanguage.current),
+            tint = tint,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
 
