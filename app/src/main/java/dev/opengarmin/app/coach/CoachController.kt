@@ -358,6 +358,12 @@ class CoachController(
             suggest consulting a qualified healthcare professional. Keep answers concise (usually 2-4 sentences),
             mention the date range, and distinguish observations from general advice.
 
+            Current date and time:
+            - Call get_current_datetime whenever the answer depends on the current date or time: today,
+              yesterday, tomorrow, a weekday, "this week", the time of day, or a workout schedule.
+              Never guess or calculate the current date yourself.
+            - The tool returns the device's local date, time, weekday and time zone; use those values as-is.
+
             Format answers in Markdown. Use **bold** for the key number or finding, short bullet lists when
             comparing several items, and a small heading only for a genuinely long answer. The app renders
             normal Markdown, so use syntax such as **bold** and - bullets; do not escape it, print HTML, or

@@ -33,7 +33,9 @@ import dev.opengarmin.app.llm.LlmToolDefinition
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 import kotlin.math.abs
@@ -55,9 +57,11 @@ interface HealthTool {
 class ToolRegistry(
     private val dataSource: HealthDataSource,
     private val workoutWriter: WorkoutWriter? = null,
-    private val today: () -> LocalDate = { LocalDate.now() },
+    now: () -> ZonedDateTime = { ZonedDateTime.now() },
+    private val today: () -> LocalDate = { now().toLocalDate() },
 ) {
     val tools: List<HealthTool> = buildList {
+        add(CurrentDateTimeTool(now))
         add(DailySummaryTool(dataSource, today))
         add(StepsTool(dataSource, today))
         add(HeartRateTool(dataSource, today))
@@ -167,6 +171,43 @@ private abstract class BaseTool(
 
     protected suspend fun samples(scope: ToolScope, kind: String, from: LocalDate, to: LocalDate) =
         dataSource.samples(scope, kind, epochRange(from, to).first, epochRange(from, to).last)
+}
+
+private class CurrentDateTimeTool(
+    private val now: () -> ZonedDateTime,
+) : HealthTool {
+    override val definition = LlmToolDefinition(
+        name = "get_current_datetime",
+        description = "Current local date, time, weekday and time zone on the user's device. " +
+            "Use it to resolve relative dates such as today, yesterday, tomorrow, this week or " +
+            "next weekend, and to know the time of day. It reads no health data.",
+        parameters = schema(required = emptyList(), props = emptyMap()),
+    )
+
+    override suspend fun execute(scope: ToolScope, args: JSONObject): ToolResult {
+        val current = now()
+        val json = JSONObject().apply {
+            put("date", current.toLocalDate().toString())
+            put("time", current.format(DateTimeFormatter.ofPattern("HH:mm", Locale.US)))
+            put("timeWithSeconds", current.format(DateTimeFormatter.ofPattern("HH:mm:ss", Locale.US)))
+            put("weekday", current.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH))
+            put("timeZone", current.zone.id)
+            put("utcOffset", current.offset.id)
+            put("iso8601", current.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME))
+            put("unixSeconds", current.toEpochSecond())
+            put("partOfDay", partOfDay(current.hour))
+            put("isWeekend", current.dayOfWeek.value >= 6)
+        }
+        val label = current.format(DateTimeFormatter.ofPattern("EEE MMM d, HH:mm", Locale.US))
+        return ToolResult(json.toString(), listOf("Date & time · $label"))
+    }
+
+    private fun partOfDay(hour: Int): String = when (hour) {
+        in 5..11 -> "morning"
+        in 12..17 -> "afternoon"
+        in 18..21 -> "evening"
+        else -> "night"
+    }
 }
 
 private class DailySummaryTool(

@@ -255,6 +255,7 @@ class ChatLoop(
     }
 
     private fun toolLabel(name: String): String = when (name) {
+        "get_current_datetime" -> "date and time"
         "get_steps" -> "steps"
         "get_heart_rate" -> "heart rate"
         "get_sleep" -> "sleep data"
