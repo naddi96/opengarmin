@@ -67,6 +67,86 @@ class WorkoutPlanCodecTest {
     }
 
     @Test
+    fun `round trips step targets`() {
+        val steps = listOf(
+            PlannedStep.Single(
+                targetType = PlannedTargetType.PACE,
+                targetLow = 300,
+                targetHigh = 330,
+                secondaryTargetType = PlannedTargetType.POWER_ZONE,
+                secondaryTargetZone = 2,
+            ),
+            PlannedStep.Single(targetType = PlannedTargetType.HEART_RATE_ZONE, targetZone = 3),
+            PlannedStep.Single(
+                targetType = PlannedTargetType.CUSTOM_POWER,
+                targetLow = 220,
+                targetHigh = 260,
+            ),
+        )
+        val decoded = WorkoutPlanCodec.decode(WorkoutPlanCodec.encode(steps)).map { it as PlannedStep.Single }
+        assertEquals(PlannedTargetType.PACE, decoded[0].targetType)
+        assertEquals(300, decoded[0].targetLow)
+        assertEquals(330, decoded[0].targetHigh)
+        assertEquals(PlannedTargetType.POWER_ZONE, decoded[0].secondaryTargetType)
+        assertEquals(2, decoded[0].secondaryTargetZone)
+        assertEquals(3, decoded[1].targetZone)
+        assertEquals(PlannedTargetType.CUSTOM_POWER, decoded[2].targetType)
+        assertEquals(260, decoded[2].targetHigh)
+    }
+
+    @Test
+    fun `encodes targets with FIT units and offsets`() {
+        val pace = PlannedStep.Single(
+            targetType = PlannedTargetType.PACE,
+            targetLow = 300,
+            targetHigh = 330,
+        ).toFitStep()
+        assertEquals(FitWorkout.TARGET_SPEED, pace.targetType)
+        // Low speed is the slowest pace (330 s/km), high speed the fastest (300 s/km).
+        assertEquals(3_030L, pace.customTargetLow)
+        assertEquals(3_333L, pace.customTargetHigh)
+
+        val heartRate = PlannedStep.Single(
+            targetType = PlannedTargetType.CUSTOM_HEART_RATE,
+            targetLow = 130,
+            targetHigh = 150,
+        ).toFitStep()
+        assertEquals(FitWorkout.TARGET_HEART_RATE, heartRate.targetType)
+        assertEquals(230L, heartRate.customTargetLow)
+        assertEquals(250L, heartRate.customTargetHigh)
+
+        val power = PlannedStep.Single(
+            targetType = PlannedTargetType.CUSTOM_POWER,
+            targetLow = 220,
+            targetHigh = 260,
+        ).toFitStep()
+        assertEquals(1_220L, power.customTargetLow)
+        assertEquals(1_260L, power.customTargetHigh)
+
+        val zone = PlannedStep.Single(
+            targetType = PlannedTargetType.POWER_ZONE,
+            targetZone = 2,
+        ).toFitStep()
+        assertEquals(FitWorkout.TARGET_POWER, zone.targetType)
+        assertEquals(2, zone.targetValue)
+        assertEquals(0L, zone.customTargetLow)
+        assertEquals(0L, zone.customTargetHigh)
+
+        val dual = PlannedStep.Single(
+            targetType = PlannedTargetType.HEART_RATE_ZONE,
+            targetZone = 2,
+            secondaryTargetType = PlannedTargetType.CUSTOM_POWER,
+            secondaryTargetLow = 200,
+            secondaryTargetHigh = 250,
+        ).toFitStep()
+        assertEquals(FitWorkout.TARGET_HEART_RATE, dual.targetType)
+        assertEquals(2, dual.targetValue)
+        assertEquals(FitWorkout.TARGET_POWER, dual.secondaryTargetType)
+        assertEquals(1_200L, dual.secondaryCustomTargetLow)
+        assertEquals(1_250L, dual.secondaryCustomTargetHigh)
+    }
+
+    @Test
     fun `malformed json decodes to an empty plan`() {
         assertTrue(WorkoutPlanCodec.decode("{not json").isEmpty())
         assertTrue(WorkoutPlanCodec.decode("").isEmpty())

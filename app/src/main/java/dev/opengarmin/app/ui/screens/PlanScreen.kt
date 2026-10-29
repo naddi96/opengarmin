@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.opengarmin.app.data.PlannedDurationType
 import dev.opengarmin.app.data.PlannedStep
+import dev.opengarmin.app.data.PlannedTargetType
 import dev.opengarmin.app.data.PlannedWorkoutEntity
 import dev.opengarmin.app.data.StepRole
 import dev.opengarmin.app.data.WorkoutPlanCodec
@@ -59,6 +60,7 @@ import dev.opengarmin.app.ui.components.PulseCard
 import dev.opengarmin.app.ui.components.SectionLabel
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseSpacing
+import dev.opengarmin.app.util.formatPacePerKm
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -764,6 +766,8 @@ private fun StepRow(
                 step.summary(),
                 style = MaterialTheme.typography.labelMedium,
                 color = PulseColors.TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         ReorderButtons(onUp, onDown, onDelete)
@@ -832,7 +836,13 @@ private fun RepeatCard(
                         fontWeight = FontWeight.Bold,
                         color = PulseColors.Text,
                     )
-                    Text(child.summary(), style = MaterialTheme.typography.labelMedium, color = PulseColors.TextMuted)
+                    Text(
+                        child.summary(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = PulseColors.TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 ReorderButtons(
                     onUp = { onChildUp(child) },
@@ -884,21 +894,49 @@ private fun StepEditorDialog(
     var durationType by remember(initial.id) { mutableStateOf(initial.durationType) }
     var minutes by remember(initial.id) { mutableStateOf((initial.seconds / 60).toString()) }
     var seconds by remember(initial.id) { mutableStateOf((initial.seconds % 60).toString()) }
-    var kilometers by remember(initial.id) { mutableStateOf("%.2f".format(initial.meters / 1000.0)) }
+    var kilometers by remember(initial.id) {
+        mutableStateOf(String.format(Locale.US, "%.2f", initial.meters / 1000.0))
+    }
+    var targetType by remember(initial.id) { mutableStateOf(initial.targetType) }
+    var targetZone by remember(initial.id) { mutableStateOf(initial.targetZone) }
+    var targetLowText by remember(initial.id) {
+        mutableStateOf(targetValueText(initial.targetType, initial.targetLow))
+    }
+    var targetHighText by remember(initial.id) {
+        mutableStateOf(targetValueText(initial.targetType, initial.targetHigh))
+    }
+    var secondaryTargetType by remember(initial.id) { mutableStateOf(initial.secondaryTargetType) }
+    var secondaryTargetZone by remember(initial.id) { mutableStateOf(initial.secondaryTargetZone) }
+    var secondaryTargetLowText by remember(initial.id) {
+        mutableStateOf(targetValueText(initial.secondaryTargetType, initial.secondaryTargetLow))
+    }
+    var secondaryTargetHighText by remember(initial.id) {
+        mutableStateOf(targetValueText(initial.secondaryTargetType, initial.secondaryTargetHigh))
+    }
 
     val timeTotal = (minutes.toIntOrNull() ?: 0) * 60 + (seconds.toIntOrNull() ?: 0)
-    val distanceMeters = ((kilometers.toDoubleOrNull() ?: 0.0) * 1000).roundToInt()
-    val valid = when (durationType) {
+    val distanceMeters = ((kilometers.replace(',', '.').toDoubleOrNull() ?: 0.0) * 1000).roundToInt()
+    val targetLow = parseTargetValue(targetType, targetLowText)
+    val targetHigh = parseTargetValue(targetType, targetHighText)
+    val secondaryTargetLow = parseTargetValue(secondaryTargetType, secondaryTargetLowText)
+    val secondaryTargetHigh = parseTargetValue(secondaryTargetType, secondaryTargetHighText)
+    val durationValid = when (durationType) {
         PlannedDurationType.TIME -> timeTotal > 0
         PlannedDurationType.DISTANCE -> distanceMeters > 0
         PlannedDurationType.OPEN -> true
     }
+    val valid = durationValid &&
+        targetValid(targetType, targetZone, targetLow, targetHigh) &&
+        targetValid(secondaryTargetType, secondaryTargetZone, secondaryTargetLow, secondaryTargetHigh)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (allowDelete) "Edit step" else "Add step") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(PulseSpacing.md),
+            ) {
                 Text("Role", style = MaterialTheme.typography.labelMedium, color = PulseColors.TextMuted)
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -964,6 +1002,42 @@ private fun StepEditorDialog(
                         color = PulseColors.TextMuted,
                     )
                 }
+                TargetEditor(
+                    label = "Target",
+                    type = targetType,
+                    zone = targetZone,
+                    lowText = targetLowText,
+                    highText = targetHighText,
+                    onTypeChange = { option ->
+                        if (targetType != option) {
+                            targetType = option
+                            targetLowText = targetValueText(option, option.defaultLow)
+                            targetHighText = targetValueText(option, option.defaultHigh)
+                            targetZone = if (option == PlannedTargetType.POWER_ZONE) 1 else 2
+                        }
+                    },
+                    onZoneChange = { targetZone = it },
+                    onLowChange = { targetLowText = filterTargetInput(targetType, it) },
+                    onHighChange = { targetHighText = filterTargetInput(targetType, it) },
+                )
+                TargetEditor(
+                    label = "Secondary target",
+                    type = secondaryTargetType,
+                    zone = secondaryTargetZone,
+                    lowText = secondaryTargetLowText,
+                    highText = secondaryTargetHighText,
+                    onTypeChange = { option ->
+                        if (secondaryTargetType != option) {
+                            secondaryTargetType = option
+                            secondaryTargetLowText = targetValueText(option, option.defaultLow)
+                            secondaryTargetHighText = targetValueText(option, option.defaultHigh)
+                            secondaryTargetZone = if (option == PlannedTargetType.POWER_ZONE) 1 else 2
+                        }
+                    },
+                    onZoneChange = { secondaryTargetZone = it },
+                    onLowChange = { secondaryTargetLowText = filterTargetInput(secondaryTargetType, it) },
+                    onHighChange = { secondaryTargetHighText = filterTargetInput(secondaryTargetType, it) },
+                )
             }
         },
         confirmButton = {
@@ -976,6 +1050,36 @@ private fun StepEditorDialog(
                             durationType = durationType,
                             seconds = timeTotal.coerceAtLeast(1),
                             meters = distanceMeters.coerceAtLeast(1),
+                            targetType = targetType,
+                            targetZone = targetZone,
+                            targetLow = if (targetType.usesZone || targetType == PlannedTargetType.NONE) {
+                                0
+                            } else {
+                                targetLow ?: 0
+                            },
+                            targetHigh = if (targetType.usesZone || targetType == PlannedTargetType.NONE) {
+                                0
+                            } else {
+                                targetHigh ?: 0
+                            },
+                            secondaryTargetType = secondaryTargetType,
+                            secondaryTargetZone = secondaryTargetZone,
+                            secondaryTargetLow = if (
+                                secondaryTargetType.usesZone ||
+                                secondaryTargetType == PlannedTargetType.NONE
+                            ) {
+                                0
+                            } else {
+                                secondaryTargetLow ?: 0
+                            },
+                            secondaryTargetHigh = if (
+                                secondaryTargetType.usesZone ||
+                                secondaryTargetType == PlannedTargetType.NONE
+                            ) {
+                                0
+                            } else {
+                                secondaryTargetHigh ?: 0
+                            },
                         ),
                     )
                 },
@@ -990,6 +1094,148 @@ private fun StepEditorDialog(
             }
         },
     )
+}
+
+@Composable
+private fun TargetEditor(
+    label: String,
+    type: PlannedTargetType,
+    zone: Int,
+    lowText: String,
+    highText: String,
+    onTypeChange: (PlannedTargetType) -> Unit,
+    onZoneChange: (Int) -> Unit,
+    onLowChange: (String) -> Unit,
+    onHighChange: (String) -> Unit,
+) {
+    Text(tr(label), style = MaterialTheme.typography.labelMedium, color = PulseColors.TextMuted)
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+    ) {
+        PlannedTargetType.entries.forEach { option ->
+            SelectChip(
+                label = tr(option.label),
+                selected = type == option,
+                onClick = { onTypeChange(option) },
+            )
+        }
+    }
+    if (type.usesZone) {
+        val zoneCount = if (type == PlannedTargetType.POWER_ZONE) 7 else 5
+        Text(tr("Zone"), style = MaterialTheme.typography.labelMedium, color = PulseColors.TextMuted)
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+        ) {
+            (1..zoneCount).forEach { value ->
+                SelectChip(
+                    label = value.toString(),
+                    selected = zone == value,
+                    onClick = { onZoneChange(value) },
+                )
+            }
+        }
+    } else if (type != PlannedTargetType.NONE) {
+        Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
+            TargetValueField(
+                value = lowText,
+                label = targetFieldLabel(type, low = true),
+                type = type,
+                onValueChange = onLowChange,
+                modifier = Modifier.weight(1f),
+            )
+            TargetValueField(
+                value = highText,
+                label = targetFieldLabel(type, low = false),
+                type = type,
+                onValueChange = onHighChange,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TargetValueField(
+    value: String,
+    label: String,
+    type: PlannedTargetType,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(tr(label)) },
+        keyboardOptions = KeyboardOptions(
+            keyboardType = if (type == PlannedTargetType.PACE) KeyboardType.Text else KeyboardType.Number,
+        ),
+        singleLine = true,
+        modifier = modifier,
+    )
+}
+
+/** Initial editor text for a stored target bound. */
+private fun targetValueText(type: PlannedTargetType, value: Int): String = when {
+    type == PlannedTargetType.NONE || value <= 0 -> ""
+    type == PlannedTargetType.PACE -> formatPacePerKm(value)
+    else -> value.toString()
+}
+
+private fun filterTargetInput(type: PlannedTargetType, raw: String): String =
+    if (type == PlannedTargetType.PACE) {
+        raw.filter { it.isDigit() || it == ':' }.take(6)
+    } else {
+        raw.filter(Char::isDigit).take(5)
+    }
+
+private fun parseTargetValue(type: PlannedTargetType, text: String): Int? = when (type) {
+    PlannedTargetType.NONE -> 0
+    PlannedTargetType.PACE -> parsePaceText(text)
+    else -> text.toIntOrNull()
+}
+
+/** Accepts `mm:ss` or a bare minute count. */
+private fun parsePaceText(text: String): Int? {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return null
+    val parts = trimmed.split(':')
+    return when (parts.size) {
+        1 -> parts[0].toIntOrNull()?.takeIf { it > 0 }?.times(60)
+        2 -> {
+            val minutes = parts[0].toIntOrNull() ?: return null
+            val seconds = parts[1].toIntOrNull() ?: return null
+            if (seconds !in 0..59) null else minutes * 60 + seconds
+        }
+        else -> null
+    }
+}
+
+private fun targetValid(
+    type: PlannedTargetType,
+    zone: Int,
+    low: Int?,
+    high: Int?,
+): Boolean = when (type) {
+    PlannedTargetType.NONE -> true
+    PlannedTargetType.HEART_RATE_ZONE -> zone in 1..5
+    PlannedTargetType.POWER_ZONE -> zone in 1..7
+    PlannedTargetType.PACE -> low != null && high != null && low in 120..1200 && high in 120..1200 && low <= high
+    PlannedTargetType.CUSTOM_HEART_RATE ->
+        low != null && high != null && low in 30..240 && high in 30..240 && low <= high
+    PlannedTargetType.CADENCE ->
+        low != null && high != null && low in 30..250 && high in 30..250 && low <= high
+    PlannedTargetType.CUSTOM_POWER ->
+        low != null && high != null && low in 20..2000 && high in 20..2000 && low <= high
+}
+
+private fun targetFieldLabel(type: PlannedTargetType, low: Boolean): String = when (type) {
+    PlannedTargetType.PACE -> if (low) "Fastest (min/km)" else "Slowest (min/km)"
+    PlannedTargetType.CADENCE -> if (low) "From (spm)" else "To (spm)"
+    PlannedTargetType.CUSTOM_HEART_RATE -> if (low) "From (bpm)" else "To (bpm)"
+    PlannedTargetType.CUSTOM_POWER -> if (low) "From (W)" else "To (W)"
+    else -> ""
 }
 
 @Composable

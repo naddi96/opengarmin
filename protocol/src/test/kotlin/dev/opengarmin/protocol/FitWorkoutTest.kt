@@ -62,6 +62,51 @@ class FitWorkoutTest {
     }
 
     @Test
+    fun `encodes zone and custom step targets`() {
+        val bytes = FitWorkout.encode(
+            FitWorkout.Workout(
+                name = "Targets",
+                sport = 1,
+                entries = listOf(
+                    FitWorkout.Entry.Single(
+                        FitWorkout.Step(
+                            "HR zone",
+                            FitWorkout.Duration.Time(300),
+                            targetType = FitWorkout.TARGET_HEART_RATE,
+                            targetValue = 3,
+                            secondaryTargetType = FitWorkout.TARGET_POWER,
+                            secondaryTargetValue = 2,
+                        ),
+                    ),
+                    FitWorkout.Entry.Single(
+                        FitWorkout.Step(
+                            "Pace range",
+                            FitWorkout.Duration.Time(600),
+                            targetType = FitWorkout.TARGET_SPEED,
+                            customTargetLow = 3_030,
+                            customTargetHigh = 3_333,
+                        ),
+                    ),
+                ),
+            ),
+            nowSeconds = 1_700_000_000,
+        )
+        val steps = Fit.parse(bytes).messages.filter { it.name == "workout_step" }
+        assertEquals(2, steps.size)
+
+        assertEquals(FitWorkout.TARGET_HEART_RATE, (steps[0].fields.first { it.number == 3 }.value as Number).toInt())
+        assertEquals(3L, (steps[0].fields.first { it.number == 4 }.value as Number).toLong())
+        assertEquals(0L, (steps[0].fields.first { it.number == 5 }.value as Number).toLong())
+        assertEquals(FitWorkout.TARGET_POWER, (steps[0].fields.first { it.number == 19 }.value as Number).toInt())
+        assertEquals(2L, (steps[0].fields.first { it.number == 20 }.value as Number).toLong())
+
+        assertEquals(FitWorkout.TARGET_SPEED, (steps[1].fields.first { it.number == 3 }.value as Number).toInt())
+        assertEquals(0L, (steps[1].fields.first { it.number == 4 }.value as Number).toLong())
+        assertEquals(3_030L, (steps[1].fields.first { it.number == 5 }.value as Number).toLong())
+        assertEquals(3_333L, (steps[1].fields.first { it.number == 6 }.value as Number).toLong())
+    }
+
+    @Test
     fun `header and data CRCs are valid`() {
         val bytes = FitWorkout.encode(workout(), nowSeconds = 1_700_000_000)
         assertEquals(14, bytes[0].toInt() and 0xFF)

@@ -2,9 +2,11 @@ package dev.opengarmin.app.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import dev.opengarmin.app.util.formatPacePerKm
 import dev.opengarmin.protocol.FitWorkout
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.roundToLong
 import java.util.UUID
 
 /** A workout saved locally in the Plan tab. Steps are stored as compact JSON. */
@@ -69,6 +71,29 @@ enum class PlannedDurationType(val label: String) {
     OPEN("Open"),
 }
 
+/**
+ * Step target shown on the watch.
+ *
+ * Zone targets store a zone number in [PlannedStep.Single.targetZone]; range
+ * targets store their bounds in the type's own unit. Pace bounds are seconds
+ * per kilometre and are converted to the FIT speed scale when encoding.
+ */
+enum class PlannedTargetType(
+    val label: String,
+    val fitTargetType: Int,
+    val usesZone: Boolean = false,
+    val defaultLow: Int = 0,
+    val defaultHigh: Int = 0,
+) {
+    NONE("No target", FitWorkout.TARGET_OPEN),
+    PACE("Pace", FitWorkout.TARGET_SPEED, defaultLow = 300, defaultHigh = 330),
+    CADENCE("Cadence", FitWorkout.TARGET_CADENCE, defaultLow = 160, defaultHigh = 180),
+    HEART_RATE_ZONE("Heart rate zone", FitWorkout.TARGET_HEART_RATE, usesZone = true),
+    CUSTOM_HEART_RATE("Custom heart rate", FitWorkout.TARGET_HEART_RATE, defaultLow = 130, defaultHigh = 150),
+    POWER_ZONE("Power zone", FitWorkout.TARGET_POWER, usesZone = true),
+    CUSTOM_POWER("Custom power", FitWorkout.TARGET_POWER, defaultLow = 200, defaultHigh = 250),
+}
+
 /** The sports offered by the Plan editor, with their FIT identifiers. */
 enum class WorkoutSport(
     val label: String,
@@ -102,12 +127,37 @@ sealed class PlannedStep {
         val seconds: Int = 300,
         /** Metres when [durationType] is DISTANCE. */
         val meters: Int = 1000,
+        val targetType: PlannedTargetType = PlannedTargetType.NONE,
+        /** Zone number when [targetType] uses a zone. */
+        val targetZone: Int = 1,
+        /**
+         * Lower bound of a custom target. Seconds per kilometre for pace,
+         * steps per minute for cadence, bpm for heart rate and watts for power.
+         */
+        val targetLow: Int = 0,
+        /** Upper bound of a custom target, in the same unit as [targetLow]. */
+        val targetHigh: Int = 0,
+        /** Optional second target, for example heart rate alongside power. */
+        val secondaryTargetType: PlannedTargetType = PlannedTargetType.NONE,
+        val secondaryTargetZone: Int = 1,
+        val secondaryTargetLow: Int = 0,
+        val secondaryTargetHigh: Int = 0,
     ) : PlannedStep() {
-        fun summary(): String = when (durationType) {
-            PlannedDurationType.TIME -> WorkoutPlanCodec.formatDuration(seconds)
-            PlannedDurationType.DISTANCE -> "%.2f km".format(meters / 1000.0)
-            PlannedDurationType.OPEN -> "Open"
+        fun summary(): String = buildString {
+            append(
+                when (durationType) {
+                    PlannedDurationType.TIME -> WorkoutPlanCodec.formatDuration(seconds)
+                    PlannedDurationType.DISTANCE -> "%.2f km".format(meters / 1000.0)
+                    PlannedDurationType.OPEN -> "Open"
+                },
+            )
+            targetSummary().takeIf { it.isNotEmpty() }?.let { append(" · ").append(it) }
         }
+
+        fun targetSummary(): String = listOf(
+            summaryFor(targetType, targetZone, targetLow, targetHigh),
+            summaryFor(secondaryTargetType, secondaryTargetZone, secondaryTargetLow, secondaryTargetHigh),
+        ).filter { it.isNotEmpty() }.joinToString(" · ")
 
         fun toFitStep(): FitWorkout.Step = FitWorkout.Step(
             name = role.label,
@@ -117,8 +167,50 @@ sealed class PlannedStep {
                 PlannedDurationType.OPEN -> FitWorkout.Duration.Open
             },
             intensity = role.fitIntensity,
-            targetType = FitWorkout.TARGET_OPEN,
+            targetType = targetType.fitTargetType,
+            targetValue = if (targetType.usesZone) targetZone.coerceIn(1, 7) else 0,
+            customTargetLow = targetLowFor(targetType, targetLow, targetHigh),
+            customTargetHigh = targetHighFor(targetType, targetLow, targetHigh),
+            secondaryTargetType = secondaryTargetType.fitTargetType,
+            secondaryTargetValue = if (secondaryTargetType.usesZone) {
+                secondaryTargetZone.coerceIn(1, 7)
+            } else {
+                0
+            },
+            secondaryCustomTargetLow = targetLowFor(secondaryTargetType, secondaryTargetLow, secondaryTargetHigh),
+            secondaryCustomTargetHigh = targetHighFor(secondaryTargetType, secondaryTargetLow, secondaryTargetHigh),
         )
+
+        private fun summaryFor(type: PlannedTargetType, zone: Int, low: Int, high: Int): String = when (type) {
+            PlannedTargetType.NONE -> ""
+            PlannedTargetType.PACE -> "${formatPacePerKm(low)}–${formatPacePerKm(high)} /km"
+            PlannedTargetType.CADENCE -> "$low–$high spm"
+            PlannedTargetType.HEART_RATE_ZONE -> "HR zone $zone"
+            PlannedTargetType.CUSTOM_HEART_RATE -> "$low–$high bpm"
+            PlannedTargetType.POWER_ZONE -> "Power zone $zone"
+            PlannedTargetType.CUSTOM_POWER -> "$low–$high W"
+        }
+
+        private fun targetLowFor(type: PlannedTargetType, low: Int, high: Int): Long = when (type) {
+            PlannedTargetType.PACE -> speedRaw(high)
+            PlannedTargetType.CADENCE -> low.toLong()
+            // Absolute heart rate and power are offset on the FIT wire.
+            PlannedTargetType.CUSTOM_HEART_RATE -> (low + 100).toLong()
+            PlannedTargetType.CUSTOM_POWER -> (low + 1000).toLong()
+            else -> 0L
+        }
+
+        private fun targetHighFor(type: PlannedTargetType, low: Int, high: Int): Long = when (type) {
+            PlannedTargetType.PACE -> speedRaw(low)
+            PlannedTargetType.CADENCE -> high.toLong()
+            PlannedTargetType.CUSTOM_HEART_RATE -> (high + 100).toLong()
+            PlannedTargetType.CUSTOM_POWER -> (high + 1000).toLong()
+            else -> 0L
+        }
+
+        /** Converts a pace in seconds per kilometre to FIT speed, scaled by 1000. */
+        private fun speedRaw(secondsPerKm: Int): Long =
+            (1_000_000.0 / secondsPerKm.coerceAtLeast(1)).roundToLong()
     }
 
     data class Repeat(
@@ -166,6 +258,14 @@ object WorkoutPlanCodec {
             .put("duration", step.durationType.name)
             .put("seconds", step.seconds)
             .put("meters", step.meters)
+            .put("target", step.targetType.name)
+            .put("targetZone", step.targetZone)
+            .put("targetLow", step.targetLow)
+            .put("targetHigh", step.targetHigh)
+            .put("secondaryTarget", step.secondaryTargetType.name)
+            .put("secondaryTargetZone", step.secondaryTargetZone)
+            .put("secondaryTargetLow", step.secondaryTargetLow)
+            .put("secondaryTargetHigh", step.secondaryTargetHigh)
 
         is PlannedStep.Repeat -> JSONObject()
             .put("type", "repeat")
@@ -207,6 +307,18 @@ object WorkoutPlanCodec {
                 }.getOrDefault(PlannedDurationType.TIME),
                 seconds = obj.optInt("seconds", 300).coerceAtLeast(1),
                 meters = obj.optInt("meters", 1000).coerceAtLeast(1),
+                targetType = runCatching {
+                    PlannedTargetType.valueOf(obj.optString("target", "NONE"))
+                }.getOrDefault(PlannedTargetType.NONE),
+                targetZone = obj.optInt("targetZone", 1).coerceIn(1, 7),
+                targetLow = obj.optInt("targetLow", 0).coerceAtLeast(0),
+                targetHigh = obj.optInt("targetHigh", 0).coerceAtLeast(0),
+                secondaryTargetType = runCatching {
+                    PlannedTargetType.valueOf(obj.optString("secondaryTarget", "NONE"))
+                }.getOrDefault(PlannedTargetType.NONE),
+                secondaryTargetZone = obj.optInt("secondaryTargetZone", 1).coerceIn(1, 7),
+                secondaryTargetLow = obj.optInt("secondaryTargetLow", 0).coerceAtLeast(0),
+                secondaryTargetHigh = obj.optInt("secondaryTargetHigh", 0).coerceAtLeast(0),
             )
         }
     }

@@ -32,7 +32,13 @@ object FitWorkout : FitEncoder(profileVersion = 21184) {
     const val DURATION_REPEAT_UNTIL_STEPS_CMPLT = 6
 
     // wkt_step_target.
+    const val TARGET_SPEED = 0
+    const val TARGET_HEART_RATE = 1
     const val TARGET_OPEN = 2
+    const val TARGET_CADENCE = 3
+    const val TARGET_POWER = 4
+    const val TARGET_GRADE = 5
+    const val TARGET_RESISTANCE = 6
 
     // Intensity.
     const val INTENSITY_ACTIVE = 0
@@ -64,6 +70,10 @@ object FitWorkout : FitEncoder(profileVersion = 21184) {
         val customTargetLow: Long = 0,
         val customTargetHigh: Long = 0,
         val notes: String = "",
+        val secondaryTargetType: Int = TARGET_OPEN,
+        val secondaryTargetValue: Int = 0,
+        val secondaryCustomTargetLow: Long = 0,
+        val secondaryCustomTargetHigh: Long = 0,
     )
 
     /** A block of steps repeated [count] times. */
@@ -163,6 +173,10 @@ object FitWorkout : FitEncoder(profileVersion = 21184) {
                 FieldDef(6, 4, 0x86), // custom_target_value_high
                 FieldDef(7, 1, 0x00), // intensity
                 FieldDef(8, 80, 0x07), // notes
+                FieldDef(19, 1, 0x00), // secondary_target_type
+                FieldDef(20, 4, 0x86), // secondary_target_value
+                FieldDef(21, 4, 0x86), // secondary_custom_target_value_low
+                FieldDef(22, 4, 0x86), // secondary_custom_target_value_high
             ),
         )
         val markers = repeatMarkers.toMap()
@@ -204,6 +218,10 @@ object FitWorkout : FitEncoder(profileVersion = 21184) {
                 u32(if (marker != null) 0L else step.customTargetHigh)
                 u8(step.intensity)
                 utf8(step.notes, 80)
+                u8(if (marker != null) TARGET_OPEN else step.secondaryTargetType)
+                u32(if (marker != null) 0L else step.secondaryTargetValue.toLong())
+                u32(if (marker != null) 0L else step.secondaryCustomTargetLow)
+                u32(if (marker != null) 0L else step.secondaryCustomTargetHigh)
             }
         }
 
