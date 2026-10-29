@@ -857,8 +857,9 @@ Implemented `LegacySync` (`app/.../sync/LegacySync.kt`):
 - Product `3076` starts the legacy path directly (Garmin Connect also skips the
   capability exchange on this watch). Other watches with an empty capability
   response fall back to it too.
-- Workout/pace-plan uploads are failed with a clear message on legacy watches,
-  because they rely on GDI push.
+- ~~Workout/pace-plan uploads are failed with a clear message on legacy watches,
+  because they rely on GDI push.~~ Superseded on 2026-10-29: see the legacy
+  upload section below.
 - Fixed phone→watch GDI device replies to use `PROTOBUF_RESPONSE (5044)`.
 
 Tests cover the legacy directory parser, `DOWNLOAD_REQUEST` wire bytes,
@@ -879,3 +880,34 @@ See `docs/fr245-legacy-sync-garmin-reference.md` for the reverse-engineered
 Garmin Connect 5.19.1 implementation of this path, including the directory
 filter/flag rules that explain why an already-uploaded activity is never
 offered to a local client.
+
+## 2026-10-29 — Workout/PacePro upload on legacy watches
+
+The legacy upload code already existed for FR255 but was unreachable on the
+FR245: `SyncCoordinator.startLegacySync()` failed the queue with “This watch
+does not support workout upload”, and `WorkoutUploader` waited for GDI
+capabilities that a legacy watch never sends.
+
+Changes:
+
+- A queued workout or PacePro file now gets the watch's single transfer slot
+  **before** the legacy directory/activity sync. `legacyUploadWindow` marks
+  that phase as the upload-ready state.
+- The queue drains over `CREATE_FILE (5005)` → `UPLOAD_REQUEST (5003)` →
+  `FILE_TRANSFER_DATA (5004)` → `SYSTEM_EVENT (5030) SYNC_COMPLETE`.
+- Once the queue is empty (or an upload fails), the normal `LegacySync`
+  directory/activity sync starts in the same connection.
+- A failed legacy upload on a legacy-only watch no longer tries the
+  unsupported GDI FileAccess push; it reports the error and continues syncing.
+- GDI notifications (wellness threshold/cut, ItemAdded) are ignored during the
+  legacy upload window so they cannot compete for the transfer slot.
+- `SYNC_COMPLETE` now carries Garmin's two-byte payload `[0, 0]`.
+- Multiple queued uploads are spaced by 400 ms after `SYNC_COMPLETE`.
+
+Logs to check on hardware: `LEGACY: sending queued workout/PacePro upload
+before file transfer`, `WORKOUT legacy CREATE_FILE`, `UPLOAD_REQUEST`,
+`chunk offset=…`, `upload complete`, then `LEGACY: upload queue finished;
+starting file transfer`.
+
+Tests: existing protocol/app unit tests pass and `assembleDebug` succeeds.
+Physical verification on the FR245 is still pending.

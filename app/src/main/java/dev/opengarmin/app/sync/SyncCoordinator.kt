@@ -70,10 +70,11 @@ class SyncCoordinator(
         handler = handler,
         log = log,
         isDone = { done },
-        isSessionReady = { capabilitiesReceived },
+        isSessionReady = { capabilitiesReceived || legacyUploadWindow },
+        isLegacyOnly = { legacyUploadWindow },
         isSlotBusy = { pipe != null || wellnessTransfer },
         dispatchSmart = { handleSmart(it) },
-        onUploadFinished = { sendCutWellnessThenList() },
+        onUploadFinished = { onWorkoutUploadsFinished() },
         onUploadSent = onWorkoutSent,
         onUploadFailed = onWorkoutFailed,
     )
@@ -150,6 +151,13 @@ class SyncCoordinator(
     private var generation = 0
     private var done = false
     private var legacy: LegacySync? = null
+    /**
+     * True while queued workouts are being pushed over the legacy GFDI
+     * transfer, before the directory/activity sync starts. It also makes the
+     * uploader treat the session as ready even though the GDI capability
+     * exchange never happens on these watches.
+     */
+    private var legacyUploadWindow = false
 
     init {
         gdi.onSmart = { smart -> handler.post { handleSmart(smart) } }
@@ -275,6 +283,7 @@ class SyncCoordinator(
         done = false
         legacy?.reset()
         legacy = null
+        legacyUploadWindow = false
         reportActivityProgress()
     }
 
@@ -405,8 +414,9 @@ class SyncCoordinator(
         if (Gdi.coreFeatureCapabilitiesResponse(smart) != null) onCapabilities(smart)
         // Once the watch has told us it has no FileAccess service, the legacy
         // path owns the transfer slot. Any late GDI notifications must not
-        // start a competing pull.
-        if (legacy != null) return
+        // start a competing pull or cut while a legacy workout upload is in
+        // flight.
+        if (legacy != null || legacyUploadWindow) return
         if (Gdi.isWellnessThresholdMet(smart)) {
             // The watch uses this notification to say that a new wellness
             // file (often SLEEP_DATA after wake-up) is ready. Garmin Connect's
@@ -544,11 +554,23 @@ class SyncCoordinator(
         onUpToDate()
     }
 
+    /**
+     * Starts the legacy directory/activity sync. A queued workout or pace plan
+     * gets the watch's single transfer slot first: the legacy GFDI upload is
+     * supported on these watches, and the normal sync resumes automatically
+     * once the queue is drained (or the upload fails).
+     */
     private fun startLegacySync() {
         if (legacy != null || done) return
         if (workouts.hasPending) {
-            workouts.failPending("This watch does not support workout upload.")
+            if (!legacyUploadWindow) {
+                legacyUploadWindow = true
+                log("LEGACY: sending queued workout/PacePro upload before file transfer")
+            }
+            workouts.onSessionReady()
+            return
         }
+        legacyUploadWindow = false
         val sync = LegacySync(
             session = session,
             filesDir = filesDir,
@@ -574,6 +596,17 @@ class SyncCoordinator(
         )
         legacy = sync
         sync.start()
+    }
+
+    /** Called when the upload queue is drained or aborted. */
+    private fun onWorkoutUploadsFinished() {
+        if (legacyUploadWindow) {
+            legacyUploadWindow = false
+            log("LEGACY: upload queue finished; starting file transfer")
+            startLegacySync()
+            return
+        }
+        sendCutWellnessThenList()
     }
 
     private fun sendCapabilities() {

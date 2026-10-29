@@ -28,8 +28,14 @@ internal class WorkoutUploader(
     private val log: (String) -> Unit,
     /** True when the coordinator has finished (up to date or otherwise done). */
     private val isDone: () -> Boolean,
-    /** True once the GDI capability exchange is complete. */
+    /** True once the upload session is ready (GDI capabilities or the legacy window). */
     private val isSessionReady: () -> Boolean,
+    /**
+     * True when the watch only implements the legacy GFDI file transfer. The
+     * GDI FileAccess push is then unavailable, so a failed legacy upload must
+     * report the error instead of trying an unsupported fallback.
+     */
+    private val isLegacyOnly: () -> Boolean,
     /** True while a wellness transfer or activity pipe owns the transfer slot. */
     private val isSlotBusy: () -> Boolean,
     /** Routes GDI smart responses back through the coordinator's dispatcher. */
@@ -289,7 +295,6 @@ internal class WorkoutUploader(
                 upload.offset = GfdiFileUpload.le32(data, 1)
                 if (upload.offset >= upload.pending.bytes.size) {
                     log("WORKOUT legacy upload complete (${upload.offset} bytes)")
-                    session.sendGfdi(GfdiFileUpload.syncComplete())
                     legacyUpload = null
                     legacyGeneration++
                     pendingWorkout = null
@@ -299,9 +304,19 @@ internal class WorkoutUploader(
                         upload.pending.name,
                         upload.pending.bytes.size,
                     )
-                    handler.postDelayed({
-                        if (!isDone()) onUploadFinished()
-                    }, 800)
+                    session.sendGfdi(GfdiFileUpload.syncComplete())
+                    if (workoutQueue.isNotEmpty()) {
+                        // One SyncComplete closes the transfer, so wait for the
+                        // watch to settle before opening the next file.
+                        handler.postDelayed(
+                            { if (!isDone()) sendNextWorkout() },
+                            LEGACY_NEXT_DELAY_MS,
+                        )
+                    } else {
+                        handler.postDelayed({
+                            if (!isDone()) onUploadFinished()
+                        }, 800)
+                    }
                 } else {
                     sendLegacyChunk(upload)
                 }
@@ -340,7 +355,7 @@ internal class WorkoutUploader(
         legacyGeneration++
         workoutRequested = false
         log("WORKOUT legacy failed: $message")
-        if (!upload.pending.triedGdi) {
+        if (!upload.pending.triedGdi && !isLegacyOnly()) {
             upload.pending.triedGdi = true
             log("WORKOUT falling back to GDI push")
             startGdiPushWorkout(upload.pending)
@@ -429,5 +444,6 @@ internal class WorkoutUploader(
         private const val RETRY_DELAY_MS = 2_000L
         private const val PULL_TIMEOUT_MS = 8_000L
         private const val LEGACY_UPLOAD_TIMEOUT_MS = 10_000L
+        private const val LEGACY_NEXT_DELAY_MS = 400L
     }
 }

@@ -73,8 +73,13 @@ object GfdiFileUpload {
         return Gfdi.build(Gfdi.MessageType.FILE_TRANSFER_DATA.id, payload)
     }
 
+    /**
+     * `SYSTEM_EVENT (5030)` with the SYNC_COMPLETE event. Garmin Connect sends
+     * two bytes here (`event`, `0`), so match that layout instead of a single
+     * byte.
+     */
     fun syncComplete(): ByteArray =
-        Gfdi.build(Gfdi.MessageType.SYSTEM_EVENT.id, byteArrayOf(0))
+        Gfdi.build(Gfdi.MessageType.SYSTEM_EVENT.id, byteArrayOf(0, 0))
 
     fun le32(data: ByteArray, offset: Int): Int =
         (data[offset].toInt() and 0xFF) or

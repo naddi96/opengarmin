@@ -333,7 +333,7 @@ worth trying on the FR245 before concluding the file is gone.
 
 _Status: items 1–5 below were implemented in `LegacySync.kt`,
 `ActivityImporter.kt`, `SyncCoordinator.kt`, `SyncSessionController.kt` and
-`WatchSyncWorker.kt` on 2026-10-27._
+`WatchSyncWorker.kt` on 2026-10-27; item 6 on 2026-10-29._
 
 | Area | Garmin Connect 5.19.1 | OpenGarmin now | Impact |
 |---|---|---|---|
@@ -367,6 +367,13 @@ _Status: items 1–5 below were implemented in `LegacySync.kt`,
    that sends `DIRECTORY_FILTER = 0`, logs every entry with its flags, type and
    size, and downloads/archives nothing. Use it to check whether the FR245
    exposes archived activities at all.
+6. **Workout/PacePro upload on legacy watches.** Garmin's legacy GFDI upload
+   (`CREATE_FILE` → `UPLOAD_REQUEST` → `FILE_TRANSFER_DATA` → `SYNC_COMPLETE`)
+   now runs before the directory sync instead of failing the queue. The
+   activity sync resumes in the same connection once the queue drains. This is
+   the same protocol Garmin's `SendFileToDeviceTask` uses; see
+   `apk/apktool_out/smali_classes6/lX/o.smali` and
+   `FileManagerCompat$saveFile$1.smali`.
 
 ### Remaining known gap
 

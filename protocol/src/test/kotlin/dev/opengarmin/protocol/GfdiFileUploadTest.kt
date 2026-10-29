@@ -31,6 +31,13 @@ class GfdiFileUploadTest {
     }
 
     @Test
+    fun `sync complete carries the garmin two-byte event`() {
+        val parsed = Gfdi.parse(GfdiFileUpload.syncComplete())!!
+        assertEquals(Gfdi.MessageType.SYSTEM_EVENT.id, parsed.type)
+        assertEquals(byteArrayOf(0, 0).toList(), parsed.payload.toList())
+    }
+
+    @Test
     fun `file data chunk layout`() {
         val chunk = byteArrayOf(1, 2, 3, 4, 5)
         val parsed = Gfdi.parse(GfdiFileUpload.fileTransferData(chunk, 340, 0xC1E2))!!
