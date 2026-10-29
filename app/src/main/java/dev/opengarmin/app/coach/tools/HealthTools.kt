@@ -24,6 +24,7 @@ import dev.opengarmin.app.data.HeartRateZoneSample
 import dev.opengarmin.app.data.HeartRateZones
 import dev.opengarmin.app.data.PlannedDurationType
 import dev.opengarmin.app.data.PlannedStep
+import dev.opengarmin.app.data.PlannedTargetType
 import dev.opengarmin.app.data.PlannedWorkoutEntity
 import dev.opengarmin.app.data.StepRole
 import dev.opengarmin.app.data.WorkoutPlanCodec
@@ -1168,6 +1169,7 @@ private class CreateWorkoutTool(
         name = "create_workout",
         description = "Create a structured workout in the local Plan section. Use this ONLY when the user explicitly asks you to create, save, or plan a workout. " +
             "Steps can be time-based, distance-based or open (lap button), and a repeat block repeats its child steps. " +
+            "Each step can carry a pace, cadence, heart-rate or power target (or a secondary one), which is shown on the watch. " +
             "This saves the workout on the phone; it does NOT send it to the watch. Tell the user to review and send it from Training → Workout plan.",
         parameters = schema(
             required = listOf("name", "steps"),
@@ -1224,6 +1226,20 @@ private class CreateWorkoutTool(
                                         put("description", "Child steps for a repeat block; only plain steps, no nested repeats")
                                         put("items", JSONObject().apply { put("type", "object") })
                                     })
+                                    put("target", enumProp("Primary target shown on the watch", TARGET_TYPES, "none"))
+                                    put("target_zone", JSONObject().apply {
+                                        put("type", "integer")
+                                        put("description", "Zone 1-7, required when target is heart_rate_zone or power_zone")
+                                    })
+                                    put("target_low", targetBoundProp("Lower bound"))
+                                    put("target_high", targetBoundProp("Upper bound (the slower bound for pace)"))
+                                    put("secondary_target", enumProp("Optional second target shown on the watch", TARGET_TYPES, "none"))
+                                    put("secondary_target_zone", JSONObject().apply {
+                                        put("type", "integer")
+                                        put("description", "Zone 1-7, required when secondary_target is heart_rate_zone or power_zone")
+                                    })
+                                    put("secondary_target_low", targetBoundProp("Lower bound of the secondary target"))
+                                    put("secondary_target_high", targetBoundProp("Upper bound of the secondary target"))
                                 },
                             )
                             put("additionalProperties", false)
@@ -1371,13 +1387,129 @@ private fun parseSingleWorkoutStep(obj: JSONObject, field: String): PlannedStep.
     } else {
         1000
     }
+    val target = parseStepTarget(
+        obj = obj,
+        field = field,
+        typeKey = "target",
+        zoneKey = "target_zone",
+        lowKey = "target_low",
+        highKey = "target_high",
+    )
+    val secondaryTarget = parseStepTarget(
+        obj = obj,
+        field = field,
+        typeKey = "secondary_target",
+        zoneKey = "secondary_target_zone",
+        lowKey = "secondary_target_low",
+        highKey = "secondary_target_high",
+    )
     return PlannedStep.Single(
         id = newStepId(),
         role = role,
         durationType = durationType,
         seconds = seconds,
         meters = meters,
+        targetType = target.type,
+        targetZone = target.zone,
+        targetLow = target.low,
+        targetHigh = target.high,
+        secondaryTargetType = secondaryTarget.type,
+        secondaryTargetZone = secondaryTarget.zone,
+        secondaryTargetLow = secondaryTarget.low,
+        secondaryTargetHigh = secondaryTarget.high,
     )
+}
+
+private data class ParsedTarget(
+    val type: PlannedTargetType,
+    val zone: Int,
+    val low: Int,
+    val high: Int,
+)
+
+private val TARGET_TYPES = listOf(
+    "none",
+    "pace",
+    "cadence",
+    "heart_rate_zone",
+    "custom_heart_rate",
+    "power_zone",
+    "custom_power",
+)
+
+private fun parseStepTarget(
+    obj: JSONObject,
+    field: String,
+    typeKey: String,
+    zoneKey: String,
+    lowKey: String,
+    highKey: String,
+): ParsedTarget {
+    val rawType = if (obj.isNull(typeKey)) "" else obj.optString(typeKey)
+    if (rawType.isBlank()) return ParsedTarget(PlannedTargetType.NONE, 1, 0, 0)
+    val type = parseTargetType(rawType)
+    if (type == PlannedTargetType.NONE) return ParsedTarget(type, 1, 0, 0)
+    if (type.usesZone) {
+        val zone = obj.optInt(zoneKey, 0)
+        if (zone !in 1..7) throw ToolException("$field.$zoneKey must be between 1 and 7")
+        return ParsedTarget(type, zone, 0, 0)
+    }
+    val lowRaw = if (obj.isNull(lowKey)) null else obj.get(lowKey)
+    val highRaw = if (obj.isNull(highKey)) null else obj.get(highKey)
+    if (lowRaw == null || highRaw == null) {
+        throw ToolException("$field needs $lowKey and $highKey for a ${type.label.lowercase(Locale.US)} target")
+    }
+    val low = parseTargetBound(lowRaw, type, "$field.$lowKey")
+    val high = parseTargetBound(highRaw, type, "$field.$highKey")
+    if (low > high) throw ToolException("$field.$lowKey must not exceed $field.$highKey")
+    return ParsedTarget(type, 1, low, high)
+}
+
+private fun parseTargetType(raw: String): PlannedTargetType = when (normalizeToken(raw)) {
+    "", "none", "open", "notarget" -> PlannedTargetType.NONE
+    "pace", "speed", "tempo" -> PlannedTargetType.PACE
+    "cadence", "cadenza" -> PlannedTargetType.CADENCE
+    "heartratezone", "hrzone" -> PlannedTargetType.HEART_RATE_ZONE
+    "customheartrate", "heartrate", "bpm" -> PlannedTargetType.CUSTOM_HEART_RATE
+    "powerzone" -> PlannedTargetType.POWER_ZONE
+    "custompower", "power", "watts" -> PlannedTargetType.CUSTOM_POWER
+    else -> throw ToolException("Unknown target: $raw")
+}
+
+private fun parseTargetBound(raw: Any, type: PlannedTargetType, field: String): Int {
+    val text = raw.toString().trim().substringBefore('/').trim()
+    val value = if (type == PlannedTargetType.PACE && text.contains(":")) {
+        parsePaceToSeconds(text)
+            ?: throw ToolException("$field must be a pace such as 4:05 or seconds per km")
+    } else {
+        val number = text.toDoubleOrNull()
+            ?: throw ToolException("$field must be a number")
+        number.roundToInt()
+    }
+    val range = when (type) {
+        PlannedTargetType.PACE -> 120..1800
+        PlannedTargetType.CADENCE -> 60..250
+        PlannedTargetType.CUSTOM_HEART_RATE -> 60..240
+        PlannedTargetType.CUSTOM_POWER -> 20..2_000
+        else -> 1..Int.MAX_VALUE
+    }
+    if (value !in range) {
+        throw ToolException("$field is out of range for a ${type.label.lowercase(Locale.US)} target")
+    }
+    return value
+}
+
+/** Parses "M:SS" or "H:MM:SS" into seconds. */
+private fun parsePaceToSeconds(text: String): Int? {
+    val parts = text.split(":")
+    if (parts.size !in 2..3) return null
+    val numbers = parts.map { it.trim().toIntOrNull() ?: return null }
+    if (numbers.any { it < 0 }) return null
+    return if (numbers.size == 2) {
+        numbers[0] * 60 + numbers[1]
+    } else {
+        numbers[0] * 3600 + numbers[1] * 60 + numbers[2]
+    }
 }
 
 private fun parseStepRole(raw: String): StepRole = when (normalizeToken(raw)) {
@@ -1614,6 +1746,17 @@ private fun enumProp(description: String, values: List<String>, default: String?
         put("enum", JSONArray(values))
         if (default != null) put("default", default)
     }
+
+private fun targetBoundProp(description: String): JSONObject = JSONObject().apply {
+    put("type", "string")
+    put(
+        "description",
+        "$description of a custom target, as a decimal string: seconds per kilometre for pace " +
+            "(\"245\" or \"4:05\"; the low bound is the faster pace), steps per minute for cadence, " +
+            "bpm for heart rate, watts for power. Required when target is pace, cadence, " +
+            "custom_heart_rate or custom_power.",
+    )
+}
 
 private fun round1(value: Double): Double = (value * 10.0).roundToInt() / 10.0
 

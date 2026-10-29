@@ -17,6 +17,7 @@ import dev.opengarmin.app.coach.WorkoutDetail
 import dev.opengarmin.app.coach.WorkoutSummary
 import dev.opengarmin.app.coach.WorkoutWriter
 import dev.opengarmin.app.data.PlannedStep
+import dev.opengarmin.app.data.PlannedTargetType
 import dev.opengarmin.app.data.PlannedWorkoutEntity
 import dev.opengarmin.app.data.StepRole
 import dev.opengarmin.app.data.WorkoutPlanCodec
@@ -401,6 +402,62 @@ class HealthToolsTest {
         assertEquals(1000, repeat.children[0].meters)
         assertEquals(StepRole.RECOVERY, repeat.children[1].role)
         assertEquals("Open", (steps[2] as PlannedStep.Single).summary())
+    }
+
+    @Test
+    fun `create workout parses pace and zone targets`() = runBlocking {
+        val writer = FakeWorkoutWriter()
+        val workoutRegistry = ToolRegistry(source, writer) { today }
+
+        workoutRegistry.execute(
+            "create_workout",
+            """
+            {
+              "name": "Ripetute 5x1200",
+              "sport": "run",
+              "steps": [
+                {"role": "warmup", "minutes": 15, "target": "custom_heart_rate", "target_low": "130", "target_high": "145"},
+                {"type": "repeat", "count": 5, "steps": [
+                  {"role": "interval", "duration_type": "distance", "distance_km": 1.2, "target": "pace", "target_low": "4:05", "target_high": "4:15/km"},
+                  {"role": "recovery", "duration_type": "distance", "distance_km": 0.4, "target": "heart_rate_zone", "target_zone": 2}
+                ]}
+              ]
+            }
+            """.trimIndent(),
+            ToolScope(),
+        )
+
+        val steps = WorkoutPlanCodec.decode(writer.created.single().stepsJson)
+        val warmUp = steps[0] as PlannedStep.Single
+        assertEquals(PlannedTargetType.CUSTOM_HEART_RATE, warmUp.targetType)
+        assertEquals(130, warmUp.targetLow)
+        assertEquals(145, warmUp.targetHigh)
+
+        val repeat = steps[1] as PlannedStep.Repeat
+        val interval = repeat.children[0]
+        assertEquals(PlannedTargetType.PACE, interval.targetType)
+        assertEquals(245, interval.targetLow)
+        assertEquals(255, interval.targetHigh)
+        assertEquals("4:05–4:15 /km", interval.targetSummary())
+        assertEquals(PlannedTargetType.HEART_RATE_ZONE, repeat.children[1].targetType)
+        assertEquals(2, repeat.children[1].targetZone)
+    }
+
+    @Test
+    fun `create workout rejects targets without bounds`() = runBlocking {
+        val writer = FakeWorkoutWriter()
+        val workoutRegistry = ToolRegistry(source, writer) { today }
+
+        val error = runCatching {
+            workoutRegistry.execute(
+                "create_workout",
+                """{"name":"Bad","steps":[{"role":"active","minutes":20,"target":"pace"}]}""",
+                ToolScope(),
+            )
+        }.exceptionOrNull()
+        assertTrue(error is ToolException)
+        assertTrue(error?.message?.contains("target_low") == true)
+        assertTrue(writer.created.isEmpty())
     }
 
     @Test
