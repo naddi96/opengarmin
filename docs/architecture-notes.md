@@ -268,7 +268,22 @@ profile, and two sliders control the plan:
 
 The raw split targets are scaled so their sum is exactly the goal. The UI has
 four steps (Goal, Course, Strategy, Preview), a per-split table and elevation
-bars. Accepting a plan saves it to `pace_plans` and sends it to the watch.
+bars. The Course step accepts four elevation sources: flat, an imported
+GPX/TCX/FIT track (`PaceTrackParser`), a hand-drawn map route (osmdroid plus
+OSRM foot routing and Open-Meteo elevations in `PaceMapService`), or a recent
+run. Imported and drawn profiles are resampled onto the race distance, with a
+distance-mismatch warning in the UI.
+
+Preview splits are editable in one-second steps. `PaceSplitEditMode` decides
+how the edit is absorbed: **Free** changes the finish time, **Fixed total**
+redistributes uniformly over the other splits, and the two lock modes
+redistribute proportionally over the open side. A reset restores the generated
+plan. Accepting a plan saves it to `pace_plans` and sends it to the watch.
+
+Below the table, **Optimise with AI coach** sends only the plan, its elevation
+profile and recent race predictions to the configured provider. The model
+returns per-split second changes that must cancel out; the screen shows only the
+modified kilometres and applies them only after confirmation.
 
 Sending uses the same legacy GFDI upload as workouts, with `subType = 56`:
 

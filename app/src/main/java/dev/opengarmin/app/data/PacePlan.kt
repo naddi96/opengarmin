@@ -43,6 +43,21 @@ enum class PaceAlert(val id: String, val label: String) {
     }
 }
 
+/** How a manual split edit absorbs its time difference. */
+enum class PaceSplitEditMode {
+    /** The finish time follows the edit. */
+    FREE,
+
+    /** The finish time stays fixed; the difference is spread over all other splits. */
+    FIXED_TOTAL,
+
+    /** Earlier splits stay fixed; the difference is spread over later splits. */
+    LOCK_PREVIOUS,
+
+    /** Later splits stay fixed; the difference is spread over earlier splits. */
+    LOCK_SUCCESSIVE,
+}
+
 /** One split in a saved PacePro plan. */
 data class PacePlanSplit(
     val index: Int,
@@ -69,8 +84,17 @@ data class PaceCourse(
     val distanceMeters: Double,
     val gainsPerKm: List<Double>,
     val activityId: Long? = null,
+    val source: PaceCourseSource = PaceCourseSource.ACTIVITY,
+    val fileName: String? = null,
+    val ascentMeters: Double? = null,
+    val descentMeters: Double? = null,
+    val points: List<PaceTrackPoint> = emptyList(),
 ) {
     val totalGainMeters: Double get() = gainsPerKm.sum()
+
+    val displayAscentMeters: Double get() = ascentMeters ?: totalGainMeters
+
+    val displayDescentMeters: Double get() = descentMeters ?: 0.0
 }
 
 /**
@@ -401,6 +425,223 @@ object PacePlanCalculator {
 
     fun formatPace(secondsPerKm: Int): String = formatPacePerKm(secondsPerKm)
 
+    fun formatSignedSeconds(seconds: Int): String = when {
+        seconds > 0 -> "+${seconds}s"
+        seconds < 0 -> "${seconds}s"
+        else -> "0s"
+    }
+
+    /**
+     * Changes one split by [deltaSeconds] and spreads the opposite amount
+     * uniformly over every other split, ignoring elevation. The race total is
+     * therefore unchanged, as required by the fixed-total mode.
+     */
+    fun adjustSplit(
+        splits: List<PacePlanSplit>,
+        index: Int,
+        deltaSeconds: Int,
+        mode: PaceSplitEditMode = PaceSplitEditMode.FIXED_TOTAL,
+        baseSplits: List<PacePlanSplit> = splits,
+    ): List<PacePlanSplit> {
+        if (index !in splits.indices || deltaSeconds == 0) return splits
+        val targets = splits.map { it.targetSeconds }.toMutableList()
+        targets[index] = (targets[index] + deltaSeconds).coerceAtLeast(1)
+        val actualDelta = targets[index] - splits[index].targetSeconds
+        if (mode == PaceSplitEditMode.FREE) return rebuild(splits, targets)
+
+        val others = when (mode) {
+            PaceSplitEditMode.LOCK_PREVIOUS ->
+                (index + 1 until splits.size).toList().ifEmpty { splits.indices.filter { it != index } }
+            PaceSplitEditMode.LOCK_SUCCESSIVE ->
+                (0 until index).toList().ifEmpty { splits.indices.filter { it != index } }
+            else -> splits.indices.filter { it != index }
+        }
+        if (others.isEmpty()) return rebuild(splits, targets)
+
+        // Preserve the compensation already applied to the open side, then
+        // spread the accumulated total over that whole side. This is what makes
+        // repeated taps reach every split instead of always the first one.
+        val previousOffsets = others.map { targets[it] - baseTargetAt(baseSplits, it) }
+        val totalOffset = previousOffsets.sum() - actualDelta
+        val weights = if (mode == PaceSplitEditMode.FIXED_TOTAL) {
+            // Fixed total ignores elevation and spreads uniformly per metre.
+            others.map { splits[it].distanceMeters.coerceAtLeast(1.0) }
+        } else {
+            // Lock modes keep the pace change proportional to each split.
+            others.map { baseTargetAt(baseSplits, it).coerceAtLeast(1).toDouble() }
+        }
+        distributeWeighted(
+            group = others,
+            weights = weights,
+            totalOffset = totalOffset,
+            baseSplits = baseSplits,
+            targets = targets,
+        )
+        return rebuild(splits, targets)
+    }
+
+    private fun baseTargetAt(baseSplits: List<PacePlanSplit>, index: Int): Int =
+        baseSplits.getOrNull(index)?.targetSeconds ?: 0
+
+    /**
+     * Splits [totalOffset] whole seconds across [group] in proportion to
+     * [weights]. Largest remainders absorb the rounding so the compensation
+     * always adds up exactly.
+     */
+    private fun distributeWeighted(
+        group: List<Int>,
+        weights: List<Double>,
+        totalOffset: Int,
+        baseSplits: List<PacePlanSplit>,
+        targets: MutableList<Int>,
+    ) {
+        if (group.isEmpty()) return
+        if (totalOffset == 0) {
+            group.forEach { targets[it] = baseTargetAt(baseSplits, it).coerceAtLeast(1) }
+            return
+        }
+        val weightSum = weights.sum().coerceAtLeast(1.0)
+        val exact = weights.map { totalOffset * it / weightSum }
+        val offsets = exact.map { kotlin.math.floor(it).toInt() }.toMutableList()
+        var remainder = totalOffset - offsets.sum()
+        val order = if (remainder >= 0) {
+            exact.indices.sortedByDescending { exact[it] - kotlin.math.floor(exact[it]) }
+        } else {
+            exact.indices.sortedBy { exact[it] - kotlin.math.floor(exact[it]) }
+        }
+        var cursor = 0
+        while (remainder != 0 && order.isNotEmpty()) {
+            val position = order[cursor % order.size]
+            if (remainder > 0) {
+                offsets[position]++
+                remainder--
+            } else {
+                offsets[position]--
+                remainder++
+            }
+            cursor++
+        }
+        group.forEachIndexed { position, splitIndex ->
+            targets[splitIndex] = (baseTargetAt(baseSplits, splitIndex) + offsets[position]).coerceAtLeast(1)
+        }
+    }
+
+    /** Applies per-split second offsets, clamping each split to at least one second. */
+    fun applyOffsets(
+        splits: List<PacePlanSplit>,
+        offsets: Map<Int, Int>,
+    ): List<PacePlanSplit> {
+        if (splits.isEmpty() || offsets.isEmpty()) return splits
+        val targets = splits.mapIndexed { index, split ->
+            (split.targetSeconds + (offsets[index] ?: 0)).coerceAtLeast(1)
+        }
+        return rebuild(splits, targets)
+    }
+
+    /** Offsets that turn [base] into [splits], keyed by split index. */
+    fun offsetsFrom(base: List<PacePlanSplit>, splits: List<PacePlanSplit>): Map<Int, Int> =
+        base.indices.mapNotNull { index ->
+            val delta = (splits.getOrNull(index)?.targetSeconds ?: return@mapNotNull null) -
+                base[index].targetSeconds
+            if (delta == 0) null else index to delta
+        }.toMap()
+
+    /**
+     * Applies offsets whose sum is [targetDelta] seconds. Unlike
+     * [normalizeOffsets], this allows the AI coach to make the finish time
+     * slower or faster when the athlete explicitly asks for it.
+     */
+    fun balanceOffsets(
+        offsets: Map<Int, Int>,
+        splitCount: Int,
+        targetDelta: Int,
+        maxSeconds: Int = 3_600,
+    ): Map<Int, Int> {
+        if (splitCount <= 0) return emptyMap()
+        if (targetDelta == 0) return normalizeOffsets(offsets, splitCount, maxSeconds)
+        val clean = offsets
+            .filterKeys { it in 0 until splitCount }
+            .mapValues { (_, value) -> value.coerceIn(-maxSeconds, maxSeconds) }
+            .filterValues { it != 0 }
+            .toMutableMap()
+        if (clean.isEmpty()) {
+            // No model changes: spread the requested total over every split.
+            (0 until splitCount).forEach { clean[it] = 0 }
+        }
+        var residual = targetDelta - clean.values.sum()
+        val indexes = clean.keys.toList()
+        var cursor = 0
+        var guard = 0
+        while (residual != 0 && indexes.isNotEmpty() && guard < 100_000) {
+            val index = indexes[cursor % indexes.size]
+            val value = clean[index] ?: 0
+            if (residual > 0 && value < maxSeconds) {
+                clean[index] = value + 1
+                residual--
+            } else if (residual < 0 && value > -maxSeconds) {
+                clean[index] = value - 1
+                residual++
+            }
+            cursor++
+            guard++
+        }
+        return clean.filterValues { it != 0 }
+    }
+
+    /**
+     * Keeps an AI proposal neutral: positive and negative changes must cancel
+     * out so the finish time does not move. A residual is removed from the
+     * split with the largest absolute change.
+     */
+    fun normalizeOffsets(
+        offsets: Map<Int, Int>,
+        splitCount: Int,
+        maxSeconds: Int = 90,
+    ): Map<Int, Int> {
+        val clean = offsets
+            .filterKeys { it in 0 until splitCount }
+            .mapValues { (_, value) -> value.coerceIn(-maxSeconds, maxSeconds) }
+            .filterValues { it != 0 }
+            .toMutableMap()
+        var residual = clean.values.sum()
+        if (residual != 0 && clean.isNotEmpty()) {
+            val index = clean.entries.maxByOrNull { kotlin.math.abs(it.value) }!!.key
+            clean[index] = (clean[index]!! - residual).coerceIn(-maxSeconds, maxSeconds)
+            residual = clean.values.sum()
+        }
+        if (residual != 0) {
+            // A clamp removed part of the correction: spread the rest over the
+            // changed splits, still without touching the total time.
+            val indexes = clean.keys.toList()
+            var cursor = 0
+            var guard = 0
+            while (residual != 0 && indexes.isNotEmpty() && guard < 10_000) {
+                val index = indexes[cursor % indexes.size]
+                val value = clean[index] ?: 0
+                if (residual > 0 && value < maxSeconds) {
+                    clean[index] = value + 1
+                    residual--
+                } else if (residual < 0 && value > -maxSeconds) {
+                    clean[index] = value - 1
+                    residual++
+                }
+                cursor++
+                guard++
+            }
+        }
+        return clean.filterValues { it != 0 }
+    }
+
+    /** Rebuilds cumulative times after target seconds have been edited. */
+    fun rebuild(splits: List<PacePlanSplit>, targets: List<Int>): List<PacePlanSplit> {
+        var cumulative = 0
+        return splits.mapIndexed { index, split ->
+            val target = targets.getOrElse(index) { split.targetSeconds }
+            cumulative += target
+            split.copy(targetSeconds = target, cumulativeSeconds = cumulative)
+        }
+    }
+
     /** Elevation gain per split for drawing the preview bars. */
     fun gainsFor(plan: PacePlanEntity): List<Double> = plan.splits.map { it.gainMeters }
 
@@ -472,8 +713,22 @@ object PacePlanCalculator {
             distanceMeters = activity.distanceMeters.takeIf { it > 0.0 } ?: distance,
             gainsPerKm = gains,
             activityId = activity.id,
+            source = PaceCourseSource.ACTIVITY,
+            ascentMeters = activity.ascentMeters?.toDouble(),
+            descentMeters = activity.descentMeters?.toDouble(),
         )
     }
+
+    /** Rebuilds a lightweight course from a stored plan's gains. */
+    fun courseFromPlan(plan: PacePlanEntity): PaceCourse = PaceCourse(
+        id = "plan-${plan.id}",
+        name = plan.courseName,
+        distanceMeters = plan.distanceMeters,
+        gainsPerKm = plan.splits.map { it.gainMeters },
+        source = PaceCourseSource.PLAN,
+        ascentMeters = plan.splits.sumOf { it.gainMeters },
+        descentMeters = 0.0,
+    )
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val earthRadius = 6_371_000.0

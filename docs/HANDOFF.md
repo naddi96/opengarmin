@@ -911,3 +911,64 @@ starting file transfer`.
 
 Tests: existing protocol/app unit tests pass and `assembleDebug` succeeds.
 Physical verification on the FR245 is still pending.
+
+## 2026-10-29 — PacePro course sources, editable splits and AI coach
+
+Implemented the `PacePro · Percorso e parziali` mockup without changing the
+saved-plan schema.
+
+- **Course sources:** `ui/screens/PaceStrategyScreen.kt` now offers flat, an
+  imported track, a hand-drawn map route, or a recent run. The selected track
+  card shows the file name, distance, ascent/descent and a compact elevation
+  profile. Tracks are resampled onto the race distance and a warning shows the
+  missing or extra kilometres.
+- **Import:** `data/PaceTrack.kt` parses GPX, TCX and FIT (`Fit.parse`) with no
+  new dependency. It computes cumulative distance, ascent/descent and the
+  per-kilometre gain profile. Files are read through `OpenDocument`, so GPX,
+  TCX and FIT all work from the system picker.
+- **Draw on the map:** `ui/screens/PaceMapEditorScreen.kt` uses the existing
+  osmdroid basemap. Taps append points, undo/clear edit them, and **Follow
+  roads** replaces the straight lines with an OSRM foot route. Open-Meteo
+  provides the terrain elevations (`data/PaceMapService.kt`). A live warning
+  shows how many kilometres are missing from the race distance; elevation
+  failures can be retried or the route used without elevation.
+- **Editable splits:** `PacePlanCalculator.adjustSplit` supports Free, Fixed
+  total, Lock previous and Lock following. Free changes the finish time; Fixed
+  total redistributes uniformly and ignores elevation; the lock modes keep one
+  side fixed and spread the compensation proportionally over the open side.
+  Every edit updates pace, elapsed time and the per-split delta immediately.
+  **Ripristina** clears the edits. `buildPlan` now saves the actual edited total.
+- **Saved strategies:** `ui/screens/PacePlansScreen.kt` is the single overview,
+  opened from Training like the workout plan. It lists every saved PacePro
+  strategy with distance, split count, goal, course and sent/draft state;
+  **Nuova strategia** opens the builder and tapping a card reopens that plan.
+  Each card has rename and delete actions; both ask before changing anything.
+  The duplicate “Saved strategies” block was removed from the builder’s Goal
+  step.
+- **Save vs send:** the preview footer now has separate **Salva** and **Invia
+  all'orologio** actions. Save writes only to `pace_plans` through
+  `onSavePacePlan`; it is grey and disabled while the current plan matches the
+  saved copy. Any change to goal, course, sliders or manual splits re-enables
+  it. Sending keeps the existing save-then-upload behaviour.
+- **AI coach:** `ui/screens/PaceCoachScreen.kt` is now a chat-style surface:
+  user and assistant bubbles, typing indicator, stop/cancel, quick suggestions
+  and the same composer as the main coach. It calls the configured
+  OpenAI-compatible provider with the plan, elevation profile and recent race
+  predictions only. `coach/PaceCoachAdvisor.kt` asks for strict JSON and has a
+  fallback parser for malformed JSON or `CHANGE <split> <seconds>` lines. If the
+  provider is not configured, returns blank content, times out or sends
+  something unreadable, the screen shows a deterministic local proposal
+  (`localProposal`) instead of an empty/error-only state. Proposals keep the
+  finish time fixed by default, but an explicit request such as “add 5 minutes
+  and distribute it by elevation” sets `finishTimeDeltaSeconds` and the local
+  fallback also parses minutes/seconds and weights the added time by climb
+  metres. The proposal is shown as before/after pace for the modified
+  kilometres only, with the real old → new finish time; **Applica al piano**
+  applies it, **Scarta** leaves the plan untouched. Failures are recorded in
+  Diagnostics with the raw response (truncated) for troubleshooting.
+
+Tests: new `PaceTrackTest` cases cover GPX/TCX parsing, gain distribution, the
+four edit modes and map point sampling; `PaceCoachAdvisorTest` covers fenced
+JSON, broken JSON and the line fallback. `testDebugUnitTest` and
+`assembleDebug` pass. The UI was checked on the Pixel 10a up to the preview and
+edit modes; the AI call reached the configured provider.

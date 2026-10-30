@@ -1095,6 +1095,17 @@ object AppStrings {
         "3. Strategy" to "3. Strategia",
         "4. Preview" to "4. Anteprima",
         "Saved strategies" to "Strategie salvate",
+        "Saved split-by-split strategies" to "Strategie parziale per parziale salvate",
+        "New strategy" to "Nuova strategia",
+        "Your strategies" to "Le tue strategie",
+        "No strategies yet" to "Nessuna strategia",
+        "Create a race goal, choose the elevation source and tune the splits before sending it to the watch." to
+            "Scegli un obiettivo gara, l'origine del dislivello e regola i parziali prima di inviarla all'orologio.",
+        "Rename strategy" to "Rinomina strategia",
+        "Strategy name" to "Nome della strategia",
+        "Rename %s" to "Rinomina %s",
+        "Could not rename the strategy." to "Impossibile rinominare la strategia.",
+        "Back to PacePro plans" to "Torna alle strategie PacePro",
         "Race" to "Gara",
         "Half" to "Mezza",
         "predicted" to "previsto",
@@ -1142,6 +1153,9 @@ object AppStrings {
         "Target pace" to "Passo obiettivo",
         "Plan sent to your watch" to "Piano inviato all'orologio",
         "Plan saved on this phone" to "Piano salvato su questo telefono",
+        "Saving…" to "Salvataggio…",
+        "Saved on this phone." to "Salvato su questo telefono.",
+        "Could not save the plan." to "Impossibile salvare il piano.",
         "Keep this screen open while you preview the run." to "Tieni questa schermata aperta mentre provi la corsa.",
         "Preview run ›" to "Anteprima corsa ›",
         "Accept and send to watch" to "Accetta e invia all'orologio",
@@ -1438,5 +1452,131 @@ object AppStrings {
         "✓ on pace" to "✓ in linea",
         "Route" to "Percorso",
         "© OpenStreetMap contributors · colours muted in-app" to "© contributori OpenStreetMap · colori attenuati nell'app",
+
+        // Pace course sources and editable splits -----------------------------
+        "Elevation source" to "Origine del dislivello",
+        "Where should the elevation come from?" to "Da dove prendo il dislivello?",
+        "Load track" to "Carica traccia",
+        "GPX, TCX or FIT · import an existing route" to "GPX, TCX o FIT · importa un percorso esistente",
+        "GPX, TCX or FIT" to "File GPX, TCX o FIT",
+        "Draw on the map" to "Disegna sulla mappa",
+        "Draw the loop by hand" to "Traccia il giro a mano",
+        "New" to "Nuovo",
+        "Tap points, follow roads and read the terrain" to "Tocca i punti, segui le strade e leggi il terreno",
+        "Reading the track…" to "Lettura della traccia…",
+        "From your runs" to "Dalle tue corse",
+        "Track is %s km, race is %s km. The elevation profile is resampled to the race distance." to
+            "La traccia è di %s km, la gara di %s km. Il profilo altimetrico viene ricampionato sulla distanza della gara.",
+        "The loop is %s km short of the race. The profile is resampled to the race distance." to
+            "Il giro è %s km più corto della gara. Il profilo viene ricampionato sulla distanza della gara.",
+        "The track is %s km short of the race. The profile is resampled to the race distance." to
+            "La traccia è %s km più corta della gara. Il profilo viene ricampionato sulla distanza della gara.",
+        "%s km · +%s m / −%s m" to "%s km · +%s m / −%s m",
+        "%s km · +%s m" to "%s km · +%s m",
+        "Replace" to "Sostituisci",
+        "Elevation profile, %s metres of climbing" to "Profilo altimetrico, %s metri di salita",
+        "Splits" to "Parziali",
+        "Km" to "Km",
+        "When you change a kilometre" to "Quando cambi un km",
+        "Free" to "Libero",
+        "Fixed total" to "Totale fisso",
+        "Lock previous" to "Blocca precedenti",
+        "Lock following" to "Blocca successivi",
+        "You change a kilometre and the finish time goes up or down." to
+            "Cambi un km e il tempo totale sale o scende di conseguenza.",
+        "The finish time stays fixed; the difference is spread over the other kilometres, ignoring elevation." to
+            "Il tempo finale resta fisso; la differenza viene distribuita sugli altri km ignorando il dislivello.",
+        "Earlier kilometres stay locked; the difference is spread proportionally over the following kilometres." to
+            "I km precedenti restano bloccati; la differenza viene distribuita in proporzione sui km successivi.",
+        "Later kilometres stay locked; the difference is spread proportionally over the preceding kilometres." to
+            "I km successivi restano bloccati; la differenza viene distribuita in proporzione sui km precedenti.",
+        "Tap − or + to change a kilometre by one second. The arrival time updates immediately." to
+            "Tocca − o + per cambiare un km di un secondo. Il tempo di arrivo si aggiorna subito.",
+        "Reset" to "Ripristina",
+        "Δ" to "Δ",
+        "One second faster on split %s" to "Un secondo più veloce sul parziale %s",
+        "One second slower on split %s" to "Un secondo più lento sul parziale %s",
+        "Each tap changes a kilometre by one second. The finish time stays fixed; the difference is spread over the other splits." to
+            "Ogni tocco cambia un chilometro di un secondo. Il tempo finale resta fisso; la differenza viene distribuita sugli altri parziali.",
+        "Optimise with AI coach ›" to "Ottimizza con AI coach ›",
+        "Could not read the selected file." to "Impossibile leggere il file selezionato.",
+        "The track could not be read." to "Impossibile leggere la traccia.",
+        "Back to course" to "Torna al percorso",
+        "Tap the map to add points. %s km · %s points" to "Tocca la mappa per aggiungere punti. %s km · %s punti",
+        "Reading elevation…" to "Lettura del dislivello…",
+        "Drawn route · %s km" to "Percorso disegnato · %s km",
+        "The course could not be built." to "Impossibile creare il percorso.",
+        "Following the roads…" to "Ricerca del percorso su strada…",
+        "The route service could not be reached." to "Impossibile raggiungere il servizio di routing.",
+        "Undo" to "Annulla",
+        "Follow roads" to "Segui strade",
+        "Use without elevation" to "Usa senza dislivello",
+        "Use course" to "Usa percorso",
+        "Use this course" to "Usa questo percorso",
+        "The loop is %s km, the race is %s km. Add %s km to reach the right distance." to
+            "Il giro è di %s km, la gara è %s km. Aggiungi %s km per arrivare alla distanza giusta.",
+        "© OpenStreetMap contributors · elevations by Open-Meteo" to
+            "© contributori OpenStreetMap · quote altimetriche di Open-Meteo",
+        "Back to preview" to "Torna all'anteprima",
+        "Optimise with AI coach" to "Ottimizza con AI coach",
+        "Chat about your splits · %s · %s" to "Chat sui tuoi parziali · %s · %s",
+        "Ask the PacePro coach" to "Chiedi al coach PacePro",
+        "The AI provider is not configured. Here is a local proposal; configure a provider in Settings for AI advice." to
+            "Il provider AI non è configurato. Ecco una proposta locale; configura un provider nelle impostazioni per avere consigli AI.",
+        "The AI coach did not answer. Here is a local proposal based on your splits." to
+            "Il coach AI non ha risposto. Ecco una proposta locale basata sui tuoi parziali.",
+        "I could not read the coach response. Here is a local proposal based on your splits." to
+            "Non sono riuscito a leggere la risposta del coach. Ecco una proposta locale basata sui tuoi parziali.",
+        "Local proposal based on your splits. The finish time is unchanged." to
+            "Proposta locale basata sui tuoi parziali. Il tempo finale resta invariato.",
+        "The request was cancelled." to "Richiesta annullata.",
+        "Finish time stays at %s" to "Il tempo finale resta a %s",
+        "Proposal for your splits · %s · %s" to "Proposta per i tuoi parziali · %s · %s",
+        "%s /km" to "%s /km",
+        "Final time" to "Tempo finale",
+        "%s → %s" to "%s → %s",
+        "Ask the coach" to "Chiedi al coach",
+        "Reading your plan and preparing a proposal…" to "Lettura del piano e preparazione della proposta…",
+        "No proposal yet." to "Nessuna proposta per ora.",
+        "Before" to "Prima",
+        "After" to "Dopo",
+        "Difference" to "Differenza",
+        "Final time unchanged" to "Tempo finale invariato",
+        "Quick suggestions" to "Suggerimenti rapidi",
+        "More cautious" to "Più prudente",
+        "More aggressive" to "Più aggressivo",
+        "Handle climbs better" to "Gestisci meglio la salita",
+        "Ask the coach for a change" to "Chiedi un cambio all'AI coach",
+        "Reset question" to "Ripristina richiesta",
+        "Ask" to "Chiedi",
+        "Discard" to "Scarta",
+        "Apply to plan" to "Applica al piano",
+        "Configure an AI provider in Settings before using the coach." to
+            "Configura un provider AI nelle impostazioni prima di usare il coach.",
+        "Configure a model in Settings before using the coach." to
+            "Configura un modello nelle impostazioni prima di usare il coach.",
+        "The coach could not answer. Try again." to "Il coach non ha risposto. Riprova.",
+        "The coach did not return a usable proposal. Try again." to
+            "Il coach non ha restituito una proposta utilizzabile. Riprova.",
+        "The coach returned an invalid proposal. Try again." to
+            "Il coach ha restituito una proposta non valida. Riprova.",
+        "The coach did not suggest any changes." to "Il coach non ha suggerito modifiche.",
+        "The coach did not suggest any usable changes. Try again." to
+            "Il coach non ha suggerito modifiche utilizzabili. Riprova.",
+        "Here is a more balanced split distribution." to "Ecco una distribuzione dei parziali più equilibrata.",
+        "Add at least two points to the map." to "Aggiungi almeno due punti alla mappa.",
+        "Add at least two points first." to "Aggiungi prima almeno due punti.",
+        "The track is too short. Choose a route of at least 100 m." to
+            "La traccia è troppo corta. Scegli un percorso di almeno 100 m.",
+        "The elevation service did not answer." to "Il servizio delle quote non ha risposto.",
+        "The elevation service returned an unexpected response." to
+            "Il servizio delle quote ha restituito una risposta inattesa.",
+        "The routing service did not answer." to "Il servizio di routing non ha risposto.",
+        "The routing service returned an unexpected response." to
+            "Il servizio di routing ha restituito una risposta inattesa.",
+        "No foot route was found between those points." to
+            "Non è stato trovato un percorso a piedi tra questi punti.",
+        "No route geometry was returned." to "Non è stata restituita la geometria del percorso.",
+        "No foot route was returned." to "Non è stato restituito alcun percorso a piedi.",
     )
 }

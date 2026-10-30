@@ -1,5 +1,8 @@
 package dev.opengarmin.app.ui.screens
 
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,21 +22,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.Speed
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.outlined.Route
+import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import dev.opengarmin.app.i18n.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +51,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -56,16 +61,24 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.opengarmin.app.coach.PaceCoachContext
 import dev.opengarmin.app.data.ActivityEntity
 import dev.opengarmin.app.data.PaceAlert
 import dev.opengarmin.app.data.PaceCourse
+import dev.opengarmin.app.data.PaceCourseSource
 import dev.opengarmin.app.data.PacePlanCalculator
 import dev.opengarmin.app.data.PacePlanCodec
 import dev.opengarmin.app.data.PacePlanEntity
 import dev.opengarmin.app.data.PacePlanSendStatus
 import dev.opengarmin.app.data.PacePlanSplit
 import dev.opengarmin.app.data.PaceRace
+import dev.opengarmin.app.data.PaceSplitEditMode
+import dev.opengarmin.app.data.PaceTrackParser
+import dev.opengarmin.app.i18n.AppStrings
+import dev.opengarmin.app.i18n.LocalAppLanguage
+import dev.opengarmin.app.i18n.Text
 import dev.opengarmin.app.i18n.tr
+import dev.opengarmin.app.llm.ProviderStore
 import dev.opengarmin.app.ui.components.IconButtonRound
 import dev.opengarmin.app.ui.components.PrimaryButton
 import dev.opengarmin.app.ui.components.PulseCard
@@ -74,7 +87,10 @@ import dev.opengarmin.app.ui.components.SegmentedControl
 import dev.opengarmin.app.ui.theme.PulseColors
 import dev.opengarmin.app.ui.theme.PulseShapes
 import dev.opengarmin.app.ui.theme.PulseSpacing
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private val STEP_LABELS = listOf("1. Goal", "2. Course", "3. Strategy", "4. Preview")
@@ -86,9 +102,11 @@ fun PaceStrategyScreen(
     sendStatus: PacePlanSendStatus?,
     onBack: () -> Unit,
     onSend: (PacePlanEntity) -> Unit,
-    onDelete: (Long) -> Unit,
+    onSave: suspend (PacePlanEntity) -> PacePlanEntity?,
     loadCourse: suspend (Long) -> PaceCourse?,
     onOpenRun: (PacePlanEntity) -> Unit,
+    providerStore: ProviderStore,
+    initialPlanId: Long? = null,
     modifier: Modifier = Modifier,
 ) {
     var step by remember { mutableStateOf(0) }
@@ -98,14 +116,28 @@ fun PaceStrategyScreen(
     var goalSeconds by remember { mutableStateOf(0) }
     var activityCourseId by remember { mutableStateOf<Long?>(null) }
     var course by remember { mutableStateOf<PaceCourse?>(null) }
+    var courseSource by remember { mutableStateOf(PaceCourseSource.FLAT) }
     var courseLoading by remember { mutableStateOf(false) }
+    var courseError by remember { mutableStateOf<String?>(null) }
     var splitSlider by remember { mutableStateOf(50) }
     var hillSlider by remember { mutableStateOf(50) }
     var alert by remember { mutableStateOf(PaceAlert.KILOMETRE) }
     var acceptedPlan by remember { mutableStateOf<PacePlanEntity?>(null) }
-    var deletingPlan by remember { mutableStateOf<PacePlanEntity?>(null) }
     var goalTouched by remember { mutableStateOf(false) }
+    var manualOffsets by remember { mutableStateOf<Map<Int, Int>>(emptyMap()) }
+    var editMode by remember { mutableStateOf(PaceSplitEditMode.FREE) }
+    var loadedPlanSplits by remember { mutableStateOf<List<PacePlanSplit>?>(null) }
+    var initialPlanConsumed by remember { mutableStateOf(false) }
+    var showMapEditor by remember { mutableStateOf(false) }
+    var showCoach by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var saveStatus by remember { mutableStateOf<PacePlanSendStatus?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val language = LocalAppLanguage.current
+    val savingMessage = tr("Saving on this phone…")
+    val savedMessage = tr("Saved on this phone.")
+    val saveFailureMessage = tr("Could not save the plan.")
 
     val predictions = PacePlanCalculator.predictions(activities)
     val recentRuns = activities.filter { it.sport == 1 && it.distanceMeters >= 1_000.0 }
@@ -115,6 +147,46 @@ fun PaceStrategyScreen(
     val distanceMeters = if (customMode) customDistanceMeters ?: 0.0 else race.distanceMeters
     val raceLabel = if (customMode) "Custom" else race.label
     val estimatedGoal = PacePlanCalculator.estimateGoal(distanceMeters, predictions)
+
+    val coursePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        courseLoading = true
+        courseError = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val fileName = context.contentResolver.query(
+                        uri,
+                        arrayOf(OpenableColumns.DISPLAY_NAME),
+                        null,
+                        null,
+                        null,
+                    )?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    } ?: "track"
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: throw IllegalStateException(
+                            AppStrings.translate("Could not read the selected file.", language),
+                        )
+                    PaceTrackParser.parse(fileName, bytes)
+                }
+            }
+            courseLoading = false
+            result.onSuccess { track ->
+                course = PaceTrackParser.courseFrom(
+                    track = track,
+                    source = PaceCourseSource.IMPORTED,
+                    id = "imported-${System.currentTimeMillis()}",
+                )
+                activityCourseId = null
+                courseSource = PaceCourseSource.IMPORTED
+                courseError = null
+            }.onFailure { failure ->
+                courseError = failure.message
+                    ?: AppStrings.translate("The track could not be read.", language)
+            }
+        }
+    }
 
     LaunchedEffect(race, customMode, customDistanceMeters) {
         if (!goalTouched) {
@@ -133,14 +205,24 @@ fun PaceStrategyScreen(
         alert = PaceAlert.from(plan.alert)
         acceptedPlan = plan
         activityCourseId = plan.courseActivityId
+        manualOffsets = emptyMap()
+        courseError = null
         if (plan.courseActivityId == null) {
-            course = null
+            course = if (plan.courseName == "Flat, no course") {
+                null
+            } else {
+                PacePlanCalculator.courseFromPlan(plan)
+            }
+            courseSource = if (course == null) PaceCourseSource.FLAT else PaceCourseSource.PLAN
+            loadedPlanSplits = plan.splits
             step = 3
         } else {
             courseLoading = true
             scope.launch {
                 course = loadCourse(plan.courseActivityId)
+                courseSource = if (course == null) PaceCourseSource.FLAT else PaceCourseSource.ACTIVITY
                 courseLoading = false
+                loadedPlanSplits = plan.splits
                 step = 3
             }
         }
@@ -149,13 +231,23 @@ fun PaceStrategyScreen(
     fun pickActivityCourse(activity: ActivityEntity) {
         activityCourseId = activity.id
         courseLoading = true
+        courseError = null
         scope.launch {
             course = loadCourse(activity.id)
+            courseSource = if (course == null) PaceCourseSource.FLAT else PaceCourseSource.ACTIVITY
             courseLoading = false
         }
     }
 
-    val splits = remember(distanceMeters, goalSeconds, splitSlider, hillSlider, course, alert) {
+    LaunchedEffect(initialPlanId, plans) {
+        val id = initialPlanId ?: return@LaunchedEffect
+        if (initialPlanConsumed) return@LaunchedEffect
+        val plan = plans.firstOrNull { it.id == id } ?: return@LaunchedEffect
+        initialPlanConsumed = true
+        loadPlan(plan)
+    }
+
+    val baseSplits = remember(distanceMeters, goalSeconds, splitSlider, hillSlider, course, alert) {
         if (goalSeconds > 0 && distanceMeters > 0.0) {
             PacePlanCalculator.buildSplits(
                 raceDistanceMeters = distanceMeters,
@@ -169,6 +261,22 @@ fun PaceStrategyScreen(
             emptyList()
         }
     }
+    val splits = remember(baseSplits, manualOffsets) {
+        PacePlanCalculator.applyOffsets(baseSplits, manualOffsets)
+    }
+
+    LaunchedEffect(distanceMeters, goalSeconds, splitSlider, hillSlider, course?.id, alert) {
+        manualOffsets = emptyMap()
+    }
+
+    // Restore the edits saved in a strategy after its course finishes loading.
+    LaunchedEffect(loadedPlanSplits, baseSplits) {
+        val saved = loadedPlanSplits ?: return@LaunchedEffect
+        if (saved.size == baseSplits.size) {
+            manualOffsets = PacePlanCalculator.offsetsFrom(baseSplits, saved)
+        }
+        loadedPlanSplits = null
+    }
 
     fun buildPlan(): PacePlanEntity {
         val now = System.currentTimeMillis() / 1000
@@ -178,9 +286,9 @@ fun PaceStrategyScreen(
             name = "$raceLabel PacePro",
             race = if (customMode) "Custom" else race.id,
             distanceMeters = distanceMeters,
-            goalSeconds = goalSeconds,
+            goalSeconds = splits.sumOf { it.targetSeconds }.takeIf { it > 0 } ?: goalSeconds,
             courseName = course?.name ?: "Flat, no course",
-            courseActivityId = activityCourseId,
+            courseActivityId = course?.activityId ?: activityCourseId,
             splitSlider = splitSlider,
             hillSlider = hillSlider,
             alert = alert.id,
@@ -198,6 +306,39 @@ fun PaceStrategyScreen(
         onSend(plan)
     }
 
+    fun save() {
+        if (saving || goalSeconds <= 0 || splits.isEmpty()) return
+        saving = true
+        val plan = buildPlan()
+        val planId = acceptedPlan?.id ?: 0L
+        saveStatus = PacePlanSendStatus(
+            planId = planId,
+            name = plan.name,
+            sending = true,
+            message = savingMessage,
+        )
+        scope.launch {
+            val saved = onSave(plan)
+            saving = false
+            if (saved != null) {
+                acceptedPlan = saved
+                saveStatus = PacePlanSendStatus(
+                    planId = saved.id,
+                    name = saved.name,
+                    success = true,
+                    message = savedMessage,
+                )
+            } else {
+                saveStatus = PacePlanSendStatus(
+                    planId = planId,
+                    name = plan.name,
+                    success = false,
+                    message = saveFailureMessage,
+                )
+            }
+        }
+    }
+
     val statusForPlan = sendStatus?.takeIf { status ->
         acceptedPlan != null &&
             (status.planId == acceptedPlan?.id || status.name == acceptedPlan?.name)
@@ -206,8 +347,51 @@ fun PaceStrategyScreen(
         val savedId = statusForPlan?.planId ?: return@LaunchedEffect
         if (savedId != 0L) acceptedPlan = acceptedPlan?.copy(id = savedId)
     }
+    val totalSeconds = splits.sumOf { it.targetSeconds }.takeIf { it > 0 } ?: goalSeconds
+    val hasUnsavedChanges = acceptedPlan?.let { saved ->
+        saved.id == 0L || !saved.sameContentAs(buildPlan())
+    } ?: true
 
-    Column(modifier = modifier.fillMaxSize()) {
+    LaunchedEffect(splits, distanceMeters, goalSeconds, splitSlider, hillSlider, course?.id, alert) {
+        saveStatus = null
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        if (showCoach) {
+            val coachContext = PaceCoachContext(
+                raceLabel = raceLabel,
+                distanceMeters = distanceMeters,
+                goalSeconds = totalSeconds,
+                splits = splits,
+                predictions = predictions.mapKeys { it.key.label }.mapValues { it.value },
+                recentClimbMeters = recentRuns.firstOrNull()?.ascentMeters,
+            )
+            PaceCoachScreen(
+                context = coachContext,
+                baseSplits = baseSplits,
+                currentSplits = splits,
+                providerStore = providerStore,
+                onApply = { offsets ->
+                    manualOffsets = offsets
+                    showCoach = false
+                },
+                onDiscard = { showCoach = false },
+            )
+        } else if (showMapEditor) {
+            PaceMapEditorScreen(
+                initialPoints = course?.points.orEmpty(),
+                raceDistanceMeters = distanceMeters,
+                onCancel = { showMapEditor = false },
+                onConfirm = { drawn ->
+                    course = drawn
+                    courseSource = PaceCourseSource.DRAWN
+                    activityCourseId = null
+                    courseError = null
+                    showMapEditor = false
+                },
+            )
+        } else {
+    Column(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -216,7 +400,11 @@ fun PaceStrategyScreen(
             verticalArrangement = Arrangement.spacedBy(PulseSpacing.lg),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButtonRound(Icons.AutoMirrored.Outlined.ArrowBack, "Back to training", onBack)
+                IconButtonRound(
+                    Icons.AutoMirrored.Outlined.ArrowBack,
+                    tr("Back to PacePro plans"),
+                    onBack,
+                )
                 Spacer(Modifier.width(PulseSpacing.sm))
                 Column {
                     Text("PacePro strategy", style = MaterialTheme.typography.headlineLarge, color = PulseColors.Text)
@@ -267,18 +455,40 @@ fun PaceStrategyScreen(
                         val fallback = if (customMode) estimatedGoal ?: 1_800 else predictions[race] ?: 1_800
                         goalSeconds = (if (goalSeconds <= 0) fallback else goalSeconds + 15)
                     },
-                    plans = plans,
-                    onLoadPlan = { loadPlan(it) },
-                    onDeletePlan = { deletingPlan = it },
                 )
                 1 -> CourseStep(
                     course = course,
+                    courseSource = courseSource,
                     activityCourseId = activityCourseId,
                     recentRuns = recentRuns,
                     loading = courseLoading,
+                    error = courseError,
+                    raceDistanceMeters = distanceMeters,
                     onFlat = {
                         activityCourseId = null
                         course = null
+                        courseSource = PaceCourseSource.FLAT
+                        courseError = null
+                    },
+                    onLoadTrack = {
+                        coursePicker.launch(
+                            arrayOf(
+                                "application/gpx+xml",
+                                "application/vnd.garmin.tcx+xml",
+                                "application/xml",
+                                "text/xml",
+                                "application/octet-stream",
+                                "*/*",
+                            ),
+                        )
+                    },
+                    onDraw = { showMapEditor = true },
+                    onReplaceTrack = {
+                        if (courseSource == PaceCourseSource.DRAWN) {
+                            showMapEditor = true
+                        } else {
+                            coursePicker.launch(arrayOf("*/*"))
+                        }
                     },
                     onActivity = { pickActivityCourse(it) },
                 )
@@ -295,11 +505,31 @@ fun PaceStrategyScreen(
                     distanceMeters = distanceMeters,
                     course = course,
                     goalSeconds = goalSeconds,
+                    baseSplits = baseSplits,
                     splits = splits,
                     alert = alert,
                     splitSlider = splitSlider,
                     hillSlider = hillSlider,
+                    manualEdits = manualOffsets.isNotEmpty(),
+                    editMode = editMode,
+                    onMode = { editMode = it },
+                    onAdjust = { index, delta ->
+                        val edited = PacePlanCalculator.adjustSplit(
+                            splits = splits,
+                            index = index,
+                            deltaSeconds = delta,
+                            mode = editMode,
+                            baseSplits = baseSplits,
+                        )
+                        manualOffsets = PacePlanCalculator.offsetsFrom(baseSplits, edited)
+                    },
+                    onReset = { manualOffsets = emptyMap() },
+                    onOpenCoach = { showCoach = true },
                 )
+            }
+
+            saveStatus?.let { status ->
+                SendStatusCard(status = status)
             }
 
             statusForPlan?.let { status ->
@@ -362,40 +592,34 @@ fun PaceStrategyScreen(
                     enabled = step != 0 || (goalSeconds > 0 && splits.isNotEmpty()),
                     modifier = Modifier.weight(2f),
                 )
-                else -> PrimaryButton(
-                    text = if (statusForPlan?.sending == true) "Sending…" else "Accept and send to watch",
-                    onClick = { if (statusForPlan?.sending != true) accept() },
-                    enabled = goalSeconds > 0 && splits.isNotEmpty() && statusForPlan?.sending != true,
-                    modifier = Modifier.weight(2f),
-                )
+                else -> {
+                    PaceSecondaryButton(
+                        label = if (saving) tr("Saving…") else tr("Save"),
+                        onClick = { save() },
+                        enabled = hasUnsavedChanges && !saving &&
+                            goalSeconds > 0 && splits.isNotEmpty(),
+                        modifier = Modifier.weight(1f),
+                    )
+                    PrimaryButton(
+                        text = if (statusForPlan?.sending == true) {
+                            tr("Sending…")
+                        } else {
+                            tr("Send to watch")
+                        },
+                        onClick = {
+                            if (!saving && statusForPlan?.sending != true) accept()
+                        },
+                        enabled = goalSeconds > 0 && splits.isNotEmpty() &&
+                            !saving && statusForPlan?.sending != true,
+                        modifier = Modifier.weight(1.5f),
+                    )
+                }
             }
         }
     }
-
-    deletingPlan?.let { plan ->
-        AlertDialog(
-            onDismissRequest = { deletingPlan = null },
-            title = { Text("Delete strategy?") },
-            text = {
-                Text(
-                    tr(
-                        "%s will be removed from this phone. A copy already on the watch is not changed.",
-                        plan.name,
-                    ),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    onDelete(plan.id)
-                    if (acceptedPlan?.id == plan.id) acceptedPlan = null
-                    deletingPlan = null
-                }) { Text("Delete", color = PulseColors.Coral) }
-            },
-            dismissButton = {
-                TextButton(onClick = { deletingPlan = null }) { Text("Cancel") }
-            },
-        )
+        }
     }
+
 }
 
 @Composable
@@ -452,60 +676,8 @@ private fun GoalStep(
     onCustomDistance: (String) -> Unit,
     onGoalMinus: () -> Unit,
     onGoalPlus: () -> Unit,
-    plans: List<PacePlanEntity>,
-    onLoadPlan: (PacePlanEntity) -> Unit,
-    onDeletePlan: (PacePlanEntity) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.lg)) {
-        if (plans.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
-                SectionLabel("Saved strategies")
-                plans.take(3).forEach { plan ->
-                    PulseCard(modifier = Modifier.fillMaxWidth(), onClick = { onLoadPlan(plan) }) {
-                        Row(
-                            modifier = Modifier.padding(PulseSpacing.lg),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Outlined.Speed,
-                                contentDescription = null,
-                                tint = PulseColors.Accent,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Spacer(Modifier.width(PulseSpacing.md))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    plan.name,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = PulseColors.Text,
-                                    translate = false,
-                                )
-                                Text(
-                                    plan.summary(),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = PulseColors.TextMuted,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            Text(tr("Open strategy"), style = MaterialTheme.typography.labelLarge, color = PulseColors.Accent)
-                            Spacer(Modifier.width(PulseSpacing.sm))
-                            Icon(
-                                Icons.Outlined.DeleteOutline,
-                                contentDescription = tr("Delete %s", plan.name),
-                                tint = PulseColors.TextMuted,
-                                modifier = Modifier
-                                    .size(PulseSpacing.touchTarget)
-                                    .clip(CircleShape)
-                                    .clickable(role = Role.Button) { onDeletePlan(plan) }
-                                    .padding(PulseSpacing.md),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
         SectionLabel("Race")
         Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
             PaceRace.entries.chunked(2).forEach { row ->
@@ -642,35 +814,105 @@ private fun GoalStepButton(label: String, description: String, onClick: () -> Un
 @Composable
 private fun CourseStep(
     course: PaceCourse?,
+    courseSource: PaceCourseSource,
     activityCourseId: Long?,
     recentRuns: List<ActivityEntity>,
     loading: Boolean,
+    error: String?,
+    raceDistanceMeters: Double,
     onFlat: () -> Unit,
+    onLoadTrack: () -> Unit,
+    onDraw: () -> Unit,
+    onReplaceTrack: () -> Unit,
     onActivity: (ActivityEntity) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
-        SectionLabel("Course")
+        SectionLabel("Where should the elevation come from?")
         CourseRow(
             name = "Flat, no course",
             sub = "Assumes flat ground",
-            selected = activityCourseId == null,
+            selected = courseSource == PaceCourseSource.FLAT,
             onClick = onFlat,
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
+            CourseSourceCard(
+                title = "Load track",
+                sub = "GPX, TCX or FIT",
+                icon = Icons.Outlined.UploadFile,
+                selected = courseSource == PaceCourseSource.IMPORTED,
+                onClick = onLoadTrack,
+                modifier = Modifier.weight(1f),
+            )
+            CourseSourceCard(
+                title = "Draw on the map",
+                sub = "Draw the loop by hand",
+                icon = Icons.Outlined.Route,
+                selected = courseSource == PaceCourseSource.DRAWN,
+                onClick = onDraw,
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        if (loading) {
+            Text(
+                if (courseSource == PaceCourseSource.ACTIVITY) {
+                    tr("Reading elevation from the activity…")
+                } else {
+                    tr("Reading the track…")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = PulseColors.TextMuted,
+            )
+        }
+        error?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = PulseColors.Coral)
+        }
+        if (course != null &&
+            (courseSource == PaceCourseSource.IMPORTED ||
+                courseSource == PaceCourseSource.DRAWN ||
+                courseSource == PaceCourseSource.PLAN)
+        ) {
+            TrackCard(course = course, onReplace = onReplaceTrack)
+        }
+        if (course != null && courseSource != PaceCourseSource.FLAT &&
+            raceDistanceMeters > 0.0 && course.distanceMeters > 0.0 &&
+            abs(course.distanceMeters - raceDistanceMeters) / raceDistanceMeters > 0.02
+        ) {
+            val missingKm = (raceDistanceMeters - course.distanceMeters) / 1_000.0
+            Text(
+                if (missingKm > 0.0) {
+                    if (courseSource == PaceCourseSource.DRAWN) {
+                        tr(
+                            "The loop is %s km short of the race. The profile is resampled to the race distance.",
+                            "%.2f".format(missingKm),
+                        )
+                    } else {
+                        tr(
+                            "The track is %s km short of the race. The profile is resampled to the race distance.",
+                            "%.2f".format(missingKm),
+                        )
+                    }
+                } else {
+                    tr(
+                        "Track is %s km, race is %s km. The elevation profile is resampled to the race distance.",
+                        "%.2f".format(course.distanceMeters / 1_000.0),
+                        "%.2f".format(raceDistanceMeters / 1_000.0),
+                    )
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = PulseColors.Coral,
+            )
+        }
+
+        SectionLabel("From your runs")
         recentRuns.forEach { activity ->
             val distance = "%.1f".format(activity.distanceMeters / 1000.0)
             val climb = activity.ascentMeters?.let { tr(" · %s m climb", it) } ?: ""
             CourseRow(
                 name = tr("Run · %s", formatDate(activity.startTime)),
                 sub = tr("%s km%s", distance, climb),
-                selected = activityCourseId == activity.id,
+                selected = courseSource == PaceCourseSource.ACTIVITY && activityCourseId == activity.id,
                 onClick = { onActivity(activity) },
-            )
-        }
-        if (loading) {
-            Text(
-                "Reading elevation from the activity…",
-                style = MaterialTheme.typography.bodySmall,
-                color = PulseColors.TextMuted,
             )
         }
         if (activityCourseId != null && course == null && !loading) {
@@ -685,6 +927,153 @@ private fun CourseStep(
             style = MaterialTheme.typography.labelMedium,
             color = PulseColors.TextMuted,
         )
+    }
+}
+
+@Composable
+private fun CourseSourceCard(
+    title: String,
+    sub: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .heightIn(min = 128.dp)
+            .clip(PulseShapes.medium)
+            .background(PulseColors.Surface)
+            .border(
+                1.dp,
+                if (selected) PulseColors.Accent else PulseColors.BorderStrong,
+                PulseShapes.medium,
+            )
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(PulseSpacing.lg),
+        verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(PulseColors.SurfaceElevated),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = PulseColors.Accent,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(PulseColors.Accent.copy(alpha = 0.16f))
+                    .padding(horizontal = PulseSpacing.sm, vertical = 3.dp),
+            ) {
+                Text(
+                    tr("New"),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = PulseColors.Accent,
+                )
+            }
+        }
+        Text(
+            tr(title),
+            style = MaterialTheme.typography.titleSmall,
+            color = PulseColors.Text,
+        )
+        Text(
+            tr(sub),
+            style = MaterialTheme.typography.labelMedium,
+            color = PulseColors.TextMuted,
+        )
+    }
+}
+
+@Composable
+private fun TrackCard(course: PaceCourse, onReplace: () -> Unit) {
+    PulseCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(PulseSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        course.fileName ?: course.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = PulseColors.Text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        if (course.displayDescentMeters > 0.0) {
+                            tr(
+                                "%s km · +%s m / −%s m",
+                                "%.2f".format(course.distanceMeters / 1_000.0),
+                                course.displayAscentMeters.roundToInt(),
+                                course.displayDescentMeters.roundToInt(),
+                            )
+                        } else {
+                            tr(
+                                "%s km · +%s m",
+                                "%.2f".format(course.distanceMeters / 1_000.0),
+                                course.displayAscentMeters.roundToInt(),
+                            )
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = PulseColors.TextMuted,
+                    )
+                }
+                Text(
+                    tr("Replace"),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = PulseColors.Accent,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable(role = Role.Button, onClick = onReplace)
+                        .padding(horizontal = PulseSpacing.md, vertical = PulseSpacing.sm),
+                )
+            }
+            if (course.gainsPerKm.isNotEmpty()) {
+                CourseElevationBars(gains = course.gainsPerKm)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CourseElevationBars(gains: List<Double>) {
+    val maxGain = (gains.maxOrNull() ?: 0.0).coerceAtLeast(1.0)
+    val description = tr(
+        "Elevation profile, %s metres of climbing",
+        gains.sum().roundToInt(),
+    )
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .semantics { contentDescription = description },
+    ) {
+        if (gains.isEmpty()) return@Canvas
+        val slot = size.width / gains.size
+        val barWidth = (slot * 0.62f).coerceAtLeast(2f)
+        gains.forEachIndexed { index, gain ->
+            val fraction = (gain / maxGain).toFloat().coerceIn(0f, 1f)
+            val barHeight = (size.height * fraction).coerceAtLeast(3f)
+            drawRoundRect(
+                color = if (gain >= 20.0) PulseColors.Zone4 else PulseColors.Teal,
+                topLeft = Offset(slot * index + (slot - barWidth) / 2f, size.height - barHeight),
+                size = Size(barWidth, barHeight),
+                cornerRadius = CornerRadius(2f, 2f),
+            )
+        }
     }
 }
 
@@ -817,13 +1206,21 @@ private fun PreviewStep(
     distanceMeters: Double,
     course: PaceCourse?,
     goalSeconds: Int,
+    baseSplits: List<PacePlanSplit>,
     splits: List<PacePlanSplit>,
     alert: PaceAlert,
     splitSlider: Int,
     hillSlider: Int,
+    manualEdits: Boolean,
+    editMode: PaceSplitEditMode,
+    onMode: (PaceSplitEditMode) -> Unit,
+    onAdjust: (Int, Int) -> Unit,
+    onReset: () -> Unit,
+    onOpenCoach: () -> Unit,
 ) {
+    val totalSeconds = splits.sumOf { it.targetSeconds }.takeIf { it > 0 } ?: goalSeconds
     val avgPace = if (splits.isNotEmpty()) {
-        (goalSeconds / (splits.sumOf { it.distanceMeters } / 1000.0)).roundToInt()
+        (totalSeconds / (splits.sumOf { it.distanceMeters } / 1000.0)).roundToInt()
     } else {
         0
     }
@@ -854,7 +1251,7 @@ private fun PreviewStep(
                 Text(
                     tr(
                         "%s finish · avg %s /km",
-                        PacePlanCalculator.formatClock(goalSeconds),
+                        PacePlanCalculator.formatClock(totalSeconds),
                         PacePlanCalculator.formatPace(avgPace),
                     ),
                     style = MaterialTheme.typography.titleLarge,
@@ -870,55 +1267,142 @@ private fun PreviewStep(
         }
 
         PulseCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(PulseSpacing.xl),
+                verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        tr("When you change a kilometre"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PulseColors.TextMuted,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        tr(editMode.label()),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = PulseColors.Accent,
+                    )
+                }
+                SplitModeSlider(selected = editMode, onSelect = onMode)
+                Text(
+                    tr(editMode.help()),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = PulseColors.TextMuted,
+                )
+            }
+        }
+
+        PulseCard(modifier = Modifier.fillMaxWidth()) {
             Column {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = PulseSpacing.xl, end = PulseSpacing.xl, top = PulseSpacing.md, bottom = PulseSpacing.sm),
-                    horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TableHeader("Split", 0.7f)
-                    TableHeader("Target pace", 1f)
-                    TableHeader("Elapsed", 1f)
-                    TableHeader("Climb", 0.8f, TextAlign.End)
+                    Text(
+                        tr("Splits"),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = PulseColors.Text,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (manualEdits) {
+                        TextButton(onClick = onReset) {
+                            Text(tr("Reset"), color = PulseColors.Accent)
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = PulseSpacing.xl, end = PulseSpacing.xl, bottom = PulseSpacing.sm),
+                    horizontalArrangement = Arrangement.spacedBy(PulseSpacing.xs),
+                ) {
+                    TableHeader("Km", 0.4f)
+                    TableHeader("Target pace", 1.45f)
+                    TableHeader("Elapsed", 0.9f)
+                    TableHeader("Climb", 0.6f, TextAlign.End)
                 }
                 splits.forEach { split ->
+                    val base = baseSplits.getOrNull(split.index)
+                    val delta = base?.let { split.targetSeconds - it.targetSeconds } ?: 0
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = PulseSpacing.xl, vertical = PulseSpacing.sm),
-                        horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+                            .padding(horizontal = PulseSpacing.xl, vertical = PulseSpacing.xs),
+                        horizontalArrangement = Arrangement.spacedBy(PulseSpacing.xs),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             "${split.index + 1}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = PulseColors.TextMuted,
-                            modifier = Modifier.weight(0.7f),
+                            modifier = Modifier.weight(0.4f),
                         )
-                        Text(
-                            "${PacePlanCalculator.formatPace(split.paceSecondsPerKm())} /km",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = PulseColors.Text,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(
-                            PacePlanCalculator.formatClock(split.cumulativeSeconds),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = PulseColors.Text,
-                            modifier = Modifier.weight(1f),
-                        )
+                        Row(
+                            modifier = Modifier.weight(1.45f),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            // The minus starts under the "P" of the column header.
+                            SplitAdjustButton(
+                                label = "−",
+                                description = tr("One second faster on split %s", split.index + 1),
+                                onClick = { onAdjust(split.index, -1) },
+                            )
+                            Text(
+                                PacePlanCalculator.formatPace(split.paceSecondsPerKm()),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = PulseColors.Text,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.width(40.dp),
+                            )
+                            SplitAdjustButton(
+                                label = "+",
+                                description = tr("One second slower on split %s", split.index + 1),
+                                onClick = { onAdjust(split.index, 1) },
+                            )
+                        }
+                        Column(modifier = Modifier.weight(0.9f)) {
+                            Text(
+                                PacePlanCalculator.formatClock(split.cumulativeSeconds),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = PulseColors.Text,
+                            )
+                            if (delta != 0) {
+                                Text(
+                                    PacePlanCalculator.formatSignedSeconds(delta),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (delta < 0) PulseColors.Teal else PulseColors.Coral,
+                                )
+                            }
+                        }
                         Text(
                             "${split.gainMeters.roundToInt()} m",
                             style = MaterialTheme.typography.bodyMedium,
                             color = PulseColors.TextMuted,
                             textAlign = TextAlign.End,
-                            modifier = Modifier.weight(0.8f),
+                            modifier = Modifier.weight(0.6f),
                         )
                     }
                 }
+                Text(
+                    tr("Tap − or + to change a kilometre by one second. The arrival time updates immediately."),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PulseColors.TextMuted,
+                    modifier = Modifier.padding(horizontal = PulseSpacing.xl, vertical = PulseSpacing.md),
+                )
             }
         }
+
+        PaceSecondaryButton(
+            label = tr("Optimise with AI coach ›"),
+            onClick = onOpenCoach,
+            modifier = Modifier.fillMaxWidth(),
+        )
 
         Text(
             tr(
@@ -929,6 +1413,91 @@ private fun PreviewStep(
             ),
             style = MaterialTheme.typography.labelMedium,
             color = PulseColors.TextMuted,
+        )
+    }
+}
+
+@Composable
+private fun SplitModeSlider(
+    selected: PaceSplitEditMode,
+    onSelect: (PaceSplitEditMode) -> Unit,
+) {
+    val modes = PaceSplitEditMode.entries
+    Column {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp),
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                val step = size.width / modes.size
+                val centerY = size.height / 2f
+                drawLine(
+                    color = PulseColors.BorderStrong,
+                    start = Offset(step / 2f, centerY),
+                    end = Offset(size.width - step / 2f, centerY),
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round,
+                )
+                modes.forEachIndexed { index, mode ->
+                    val center = Offset(step * (index + 0.5f), centerY)
+                    if (mode == selected) {
+                        drawCircle(PulseColors.Accent, 8.dp.toPx(), center)
+                    } else {
+                        drawCircle(PulseColors.BorderStrong, 5.dp.toPx(), center)
+                    }
+                }
+            }
+            Row(Modifier.fillMaxSize()) {
+                modes.forEach { mode ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .selectable(
+                                selected = mode == selected,
+                                role = Role.RadioButton,
+                                onClick = { onSelect(mode) },
+                            ),
+                    )
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            modes.forEach { mode ->
+                Text(
+                    tr(mode.label()),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    color = if (mode == selected) PulseColors.Accent else PulseColors.TextMuted,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SplitAdjustButton(
+    label: String,
+    description: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(PulseColors.SurfaceElevated)
+            .border(1.dp, PulseColors.BorderStrong, CircleShape)
+            .clickable(role = Role.Button, onClickLabel = description, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = PulseColors.Text,
         )
     }
 }
@@ -1006,17 +1575,60 @@ private fun SendStatusCard(status: PacePlanSendStatus) {
 }
 
 @Composable
-private fun PaceSecondaryButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun PaceSecondaryButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
     Box(
         modifier = modifier
             .height(PulseSpacing.touchTarget)
             .clip(CircleShape)
-            .border(1.dp, PulseColors.BorderStrong, CircleShape)
-            .clickable(role = Role.Button, onClick = onClick),
+            .border(
+                1.dp,
+                if (enabled) PulseColors.BorderStrong else PulseColors.Border,
+                CircleShape,
+            )
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = MaterialTheme.typography.labelLarge, color = PulseColors.Text)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (enabled) PulseColors.Text else PulseColors.TextMuted,
+        )
     }
+}
+
+private fun PacePlanEntity.sameContentAs(other: PacePlanEntity): Boolean =
+    name == other.name &&
+        race == other.race &&
+        distanceMeters == other.distanceMeters &&
+        goalSeconds == other.goalSeconds &&
+        courseName == other.courseName &&
+        courseActivityId == other.courseActivityId &&
+        splitSlider == other.splitSlider &&
+        hillSlider == other.hillSlider &&
+        alert == other.alert &&
+        splitsJson == other.splitsJson
+
+private fun PaceSplitEditMode.label(): String = when (this) {
+    PaceSplitEditMode.FREE -> "Free"
+    PaceSplitEditMode.FIXED_TOTAL -> "Fixed total"
+    PaceSplitEditMode.LOCK_PREVIOUS -> "Lock previous"
+    PaceSplitEditMode.LOCK_SUCCESSIVE -> "Lock following"
+}
+
+private fun PaceSplitEditMode.help(): String = when (this) {
+    PaceSplitEditMode.FREE ->
+        "You change a kilometre and the finish time goes up or down."
+    PaceSplitEditMode.FIXED_TOTAL ->
+        "The finish time stays fixed; the difference is spread over the other kilometres, ignoring elevation."
+    PaceSplitEditMode.LOCK_PREVIOUS ->
+        "Earlier kilometres stay locked; the difference is spread proportionally over the following kilometres."
+    PaceSplitEditMode.LOCK_SUCCESSIVE ->
+        "Later kilometres stay locked; the difference is spread proportionally over the preceding kilometres."
 }
 
 private fun formatDate(timestamp: Long): String =

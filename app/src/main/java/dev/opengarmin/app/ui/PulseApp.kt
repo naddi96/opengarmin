@@ -70,6 +70,7 @@ import dev.opengarmin.app.ui.screens.DiagnosticsScreen
 import dev.opengarmin.app.ui.screens.HealthMetric
 import dev.opengarmin.app.ui.screens.HealthMetricScreen
 import dev.opengarmin.app.ui.screens.HealthScreen
+import dev.opengarmin.app.ui.screens.PacePlansScreen
 import dev.opengarmin.app.ui.screens.PaceRunScreen
 import dev.opengarmin.app.ui.screens.PaceStrategyScreen
 import dev.opengarmin.app.ui.screens.PlanScreen
@@ -86,7 +87,7 @@ import java.util.Locale
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 
-private enum class AppRoute { Tabs, Trends, Detail, Plan, PacePro, PaceRun, Settings, Provider, Data, Log, HealthMetric, Diagnostics }
+private enum class AppRoute { Tabs, Trends, Detail, Plan, PacePlans, PacePro, PaceRun, Settings, Provider, Data, Log, HealthMetric, Diagnostics }
 
 @Composable
 fun PulseApp(
@@ -145,6 +146,7 @@ fun PulseApp(
     onDeleteWorkout: (Long) -> Unit,
     onSendWorkout: (PlannedWorkoutEntity) -> Unit,
     onSendPacePlan: (PacePlanEntity) -> Unit,
+    onSavePacePlan: suspend (PacePlanEntity) -> PacePlanEntity?,
     onDeletePacePlan: (Long) -> Unit,
     loadPaceCourse: suspend (Long) -> PaceCourse?,
     backupStatus: String?,
@@ -167,6 +169,7 @@ fun PulseApp(
     var healthMetricName by rememberSaveable { mutableStateOf(HealthMetric.BODY_BATTERY.name) }
     var healthReturnTabName by rememberSaveable { mutableStateOf(PulseTab.Health.name) }
     var paceRunPlan by remember { mutableStateOf<PacePlanEntity?>(null) }
+    var pacePlanInitialId by rememberSaveable { mutableStateOf(0L) }
     var providerReturnName by rememberSaveable { mutableStateOf(AppRoute.Settings.name) }
     var providerVersion by remember { mutableIntStateOf(0) }
     val tab = PulseTab.entries.firstOrNull { it.name == tabName } ?: PulseTab.Today
@@ -235,7 +238,8 @@ fun PulseApp(
                 routeName = AppRoute.Tabs.name
             }
             AppRoute.Plan -> routeName = AppRoute.Tabs.name
-            AppRoute.PacePro -> routeName = AppRoute.Tabs.name
+            AppRoute.PacePlans -> routeName = AppRoute.Tabs.name
+            AppRoute.PacePro -> routeName = AppRoute.PacePlans.name
             AppRoute.PaceRun -> {
                 paceRunPlan = null
                 tabName = PulseTab.Training.name
@@ -302,7 +306,7 @@ fun PulseApp(
                                 onAskCoach = { tabName = PulseTab.Coach.name },
                                 onOpenPlan = { routeName = AppRoute.Plan.name },
                                 plannedWorkoutsSummary = planSummary,
-                                onOpenPace = { routeName = AppRoute.PacePro.name },
+                                onOpenPace = { routeName = AppRoute.PacePlans.name },
                                 pacePlanSummary = paceSummary,
                                 racePredictions = racePredictions,
                                 onOpenVo2Max = { openHealthMetric(HealthMetric.VO2_MAX, PulseTab.Training) },
@@ -364,14 +368,31 @@ fun PulseApp(
                 onDelete = onDeleteWorkout,
                 onSend = onSendWorkout,
             )
+            AppRoute.PacePlans -> PacePlansScreen(
+                plans = pacePlans,
+                sendStatus = pacePlanSendStatus,
+                onBack = { routeName = AppRoute.Tabs.name },
+                onNew = {
+                    pacePlanInitialId = 0L
+                    routeName = AppRoute.PacePro.name
+                },
+                onOpen = { plan ->
+                    pacePlanInitialId = plan.id
+                    routeName = AppRoute.PacePro.name
+                },
+                onDelete = onDeletePacePlan,
+                onRename = onSavePacePlan,
+            )
             AppRoute.PacePro -> PaceStrategyScreen(
                 plans = pacePlans,
                 activities = activities,
                 sendStatus = pacePlanSendStatus,
-                onBack = { routeName = AppRoute.Tabs.name },
+                onBack = { routeName = AppRoute.PacePlans.name },
                 onSend = onSendPacePlan,
-                onDelete = onDeletePacePlan,
+                onSave = onSavePacePlan,
                 loadCourse = loadPaceCourse,
+                providerStore = providerStore,
+                initialPlanId = pacePlanInitialId.takeIf { it != 0L },
                 onOpenRun = { plan ->
                     paceRunPlan = plan
                     routeName = AppRoute.PaceRun.name

@@ -160,10 +160,12 @@ You can also run the workflow manually from the Actions tab and supply a version
 - **Plan:** build workouts from timed, distance or open steps and repeat blocks,
   save drafts, schedule sessions, and push generated FIT workouts directly to the
   watch over BLE.
-- **PacePro:** create a strategy for 5K, 10K, half, marathon or a custom distance,
-  optionally using a recent GPS run's elevation profile. Split and hill-effort
-  sliders recalculate every split; **Accept and send to watch** writes a
-  `FIT_TYPE_56` pace-band file over BLE.
+- **PacePro:** create a strategy for 5K, 10K, half, marathon or a custom
+  distance. Use a flat course, import a GPX/TCX/FIT track, draw a route on the
+  map, or pick a recent GPS run; split and hill-effort sliders recalculate every
+  split. Edit individual kilometres in the preview (free, fixed total, or lock
+  one side) and ask the AI coach for a neutral proposal before **Accept and send
+  to watch** writes a `FIT_TYPE_56` pace-band file over BLE.
 - **PacePro run:** live on-phone pacing with GPS distance, current/overall pace
   versus target, split status, finish estimate, elevation and manual laps. Live
   heart rate requires the watch's Broadcast Heart Rate mode.

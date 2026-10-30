@@ -311,6 +311,11 @@ class MainActivity : ComponentActivity() {
                         onDeleteWorkout = { id -> deleteWorkout(id) },
                         onSendWorkout = { workout -> syncController.sendWorkout(workout) },
                         onSendPacePlan = { plan -> syncController.sendPacePlan(plan) },
+                        onSavePacePlan = { plan ->
+                            withContext(Dispatchers.IO) {
+                                runCatching { repository.savePacePlan(plan) }.getOrNull()
+                            }
+                        },
                         onDeletePacePlan = { id -> deletePacePlan(id) },
                         loadPaceCourse = { id ->
                             withContext(Dispatchers.IO) { repository.paceCourse(id) }
