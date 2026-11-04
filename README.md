@@ -306,6 +306,7 @@ details.
 |---|---|
 | [`docs/architecture-notes.md`](docs/architecture-notes.md) | Current stack, data model, storage, ingestion, backup/restore and coverage gaps. |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | Recovered GFDI/GDI/Multi-Link wire format. |
+| [`docs/fr255-19.18-firmware-audit.md`](docs/fr255-19.18-firmware-audit.md) | FR255 19.18 package analysis and protocol audit findings. |
 | [`docs/HANDOFF.md`](docs/HANDOFF.md) | Protocol findings and chronological implementation notes. |
 | [`docs/garmin-connect-gap-analysis.md`](docs/garmin-connect-gap-analysis.md) | Comparison with Garmin Connect, missing features, non-goals and differentiators. |
 | [`docs/providers.md`](docs/providers.md) | Provider setup, presets, environment config, keys, streaming and troubleshooting. |

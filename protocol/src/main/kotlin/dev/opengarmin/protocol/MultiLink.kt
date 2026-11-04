@@ -102,6 +102,13 @@ class GarminSession(
         private set
 
     var autoHandshake: Boolean = true
+
+    /** Host identity reported in the DEVICE_INFORMATION handshake. */
+    var hostFriendlyName: String = "opengarmin"
+    var hostManufacturer: String = "OpenGarmin"
+    var hostModel: String = "Android"
+    var hostAppVersion: Int = 1
+
     var onGfdiMessage: ((Gfdi.Frame) -> Unit)? = null
     var onProtobuf: ((Gfdi.Frame) -> Unit)? = null
     var onMlrFrame: ((ByteArray) -> Unit)? = null
@@ -426,7 +433,14 @@ class GarminSession(
 
     private fun respondToHandshake(frame: Gfdi.Frame) {
         val reply: ByteArray? = when (frame.type) {
-            Gfdi.MessageType.DEVICE_INFORMATION.id -> Handshake.deviceInformation(frame.payload, frame.seq)
+            Gfdi.MessageType.DEVICE_INFORMATION.id -> Handshake.deviceInformation(
+                frame.payload,
+                frame.seq,
+                appVersion = hostAppVersion,
+                friendlyName = hostFriendlyName,
+                manufacturer = hostManufacturer,
+                model = hostModel,
+            )
             Gfdi.MessageType.CONFIGURATION.id -> Handshake.configuration(frame.payload, frame.seq)
             Gfdi.MessageType.AUTH_NEGOTIATION.id -> Handshake.authNegotiation(frame.payload, frame.seq)
             Gfdi.MessageType.CURRENT_TIME_REQUEST.id -> {

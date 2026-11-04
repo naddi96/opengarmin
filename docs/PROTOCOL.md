@@ -287,7 +287,7 @@ the watch treat it as a valid companion:
 
 | Watch → | Phone reply |
 |---|---|
-| `DEVICE_INFORMATION (5024)` | echo protocol version/flags + host strings ("Android" etc.) |
+| `DEVICE_INFORMATION (5024)` | `[0x96 or 0x71][0xffff][0xffffffff][appVersion:u16][0xffff][friendlyName][manufacturer][model][1]` |
 | `CONFIGURATION (5050)` | echo capability bytes back as `CONFIGURATION` |
 | `AUTH_NEGOTIATION (5101)` | `RESPONSE ACK` with `0,0` (no PIN auth on these models) |
 | `CURRENT_TIME_REQUEST (5052)` | `RESPONSE` with `ref_id`, Garmin-epoch time, local offset |
@@ -296,6 +296,12 @@ the watch treat it as a valid companion:
 
 The phone also sends `DEVICE_SETTINGS (5026)` to enable auto-upload/weather, and a
 `SYSTEM_EVENT (5030)` `SYNC_READY` to nudge a sync.
+
+`DEVICE_INFORMATION` is not an echo of the watch's bytes. Garmin Connect answers
+protocol `0x96` when the watch reports `>= 0x96` (otherwise `0x71`), writes its
+own app version, then host friendly name, `Build.MANUFACTURER`, `Build.MODEL`,
+and a trailing `1`. See `nX.a.g` in the APK and
+[`fr255-19.18-firmware-audit.md`](fr255-19.18-firmware-audit.md).
 
 **Garmin epoch** = `1989-12-31T00:00:00Z` (unix `631065600`).
 
@@ -595,7 +601,8 @@ uncompressed FIT length; the transfer itself is not compressed.
 
 The chunk CRC is the running CRC-16 (same polynomial/table as GFDI framing,
 no final XOR) over all bytes sent so far, seeded with `crcSeed` from the
-upload response. Chunks observed working on the FR255 are 340 bytes
+upload response (the FR255 returns `0`, but the seed must be applied rather
+than assumed). Chunks observed working on the FR255 are 340 bytes
 (`maxPacketSize - 13`); the watch acknowledges each chunk with the next
 accepted offset. Send `SYNC_COMPLETE` after the last chunk.
 

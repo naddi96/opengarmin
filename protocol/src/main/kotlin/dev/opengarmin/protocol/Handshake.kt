@@ -12,26 +12,38 @@ import java.nio.ByteOrder
  */
 object Handshake {
 
-    /** Reply to DEVICE_INFORMATION (5024). */
+    /**
+     * Reply to DEVICE_INFORMATION (5024).
+     *
+     * Layout (verified against Garmin Connect's `nX.a.g`):
+     * `[protocol:u16][0xffff][0xffffffff][appVersion:u16][0xffff]`
+     * `[friendlyName:str][manufacturer:str][model:str][1]`.
+     *
+     * Garmin only advertises protocol 0x96 (or 0x71 on older watches) even when
+     * the watch itself reports a newer revision. Echoing the watch's 0x97 makes
+     * the phone claim protocol features it does not implement.
+     */
     fun deviceInformation(
         payload: ByteArray,
         seq: Int? = null,
-        hostName: String = "opengarmin",
-        platform: String = "Android",
+        appVersion: Int = 1,
+        friendlyName: String = "opengarmin",
+        manufacturer: String = "OpenGarmin",
+        model: String = "Android",
     ): ByteArray {
-        val protocolVersion = if (payload.size >= 2) Gfdi.le16(payload, 0) else 150
-        val protocolFlags = if (protocolVersion / 100 == 1) 1 else 0
+        val deviceProtocol = if (payload.size >= 2) Gfdi.le16(payload, 0) else 0
+        val protocolVersion = if (deviceProtocol >= 0x96) 0x96 else 0x71
 
         val body = ByteBuffer.allocate(512).order(ByteOrder.LITTLE_ENDIAN)
         body.putShort(protocolVersion.toShort())
         body.putShort(0xFFFF.toShort())
         body.putInt(0xFFFFFFFF.toInt())
-        body.putShort(7791.toShort())
+        body.putShort(appVersion.toShort())
         body.putShort(0xFFFF.toShort())
-        putString(body, hostName)
-        putString(body, platform)
-        putString(body, hostName)
-        body.put(protocolFlags.toByte())
+        putString(body, friendlyName)
+        putString(body, manufacturer)
+        putString(body, model)
+        body.put(1)
 
         return Gfdi.buildResponse(Gfdi.MessageType.DEVICE_INFORMATION.id, Gfdi.Status.ACK.code, body.trimmed(), seq)
     }

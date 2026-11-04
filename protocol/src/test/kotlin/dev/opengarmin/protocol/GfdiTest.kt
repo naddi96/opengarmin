@@ -69,6 +69,51 @@ class GfdiTest {
     }
 }
 
+class DeviceInformationHandshakeTest {
+    @Test
+    fun `uses Garmin's negotiated protocol and host identity layout`() {
+        // The watch reports 0x97 (151), but Garmin Connect still answers 0x96.
+        val message = Handshake.deviceInformation(
+            payload = Hex.decode("9700"),
+            appVersion = 0x1234,
+            friendlyName = "phone",
+            manufacturer = "Acme",
+            model = "Model 1",
+        )
+        val frame = assertNotNull(Gfdi.parse(message))
+        val response = assertNotNull(Gfdi.parseResponse(frame))
+        assertEquals(5024, response.originalType)
+        assertEquals(0, response.status)
+
+        val buf = java.nio.ByteBuffer.wrap(response.data).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        assertEquals(0x96, buf.short.toInt() and 0xFFFF)
+        assertEquals(0xFFFF, buf.short.toInt() and 0xFFFF)
+        assertEquals(-1, buf.int)
+        assertEquals(0x1234, buf.short.toInt() and 0xFFFF)
+        assertEquals(0xFFFF, buf.short.toInt() and 0xFFFF)
+        fun string(): String {
+            val length = buf.get().toInt() and 0xFF
+            val bytes = ByteArray(length)
+            buf.get(bytes)
+            return String(bytes, Charsets.UTF_8)
+        }
+        assertEquals("phone", string())
+        assertEquals("Acme", string())
+        assertEquals("Model 1", string())
+        assertEquals(1, buf.get().toInt() and 0xFF)
+        assertEquals(0, buf.remaining())
+    }
+
+    @Test
+    fun `falls back to protocol 0x71 for older watches`() {
+        val message = Handshake.deviceInformation(payload = Hex.decode("7100"))
+        val frame = assertNotNull(Gfdi.parse(message))
+        val response = assertNotNull(Gfdi.parseResponse(frame))
+        val buf = java.nio.ByteBuffer.wrap(response.data).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        assertEquals(0x71, buf.short.toInt() and 0xFFFF)
+    }
+}
+
 class CurrentTimeHandshakeTest {
     @Test
     fun `current time reply includes offset and dst transitions`() {

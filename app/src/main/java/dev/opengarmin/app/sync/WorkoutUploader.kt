@@ -62,6 +62,7 @@ internal class WorkoutUploader(
         var fileIndex: Int = 0
         var offset: Int = 0
         var crc: Int = 0
+        var crcSeed: Int = 0
         var stage: Stage = Stage.CREATE
     }
 
@@ -272,10 +273,14 @@ internal class WorkoutUploader(
                     return
                 }
                 upload.offset = GfdiFileUpload.le32(data, 1)
+                // The running CRC must start from the seed the watch returns
+                // in UPLOAD_REQUEST, not from zero.
+                upload.crcSeed = Gfdi.le16(data, 9)
+                upload.crc = upload.crcSeed
                 upload.stage = Stage.DATA
                 log(
                     "WORKOUT legacy upload accepted offset=${upload.offset} " +
-                        "max=${GfdiFileUpload.le32(data, 5)} seed=${Gfdi.le16(data, 9)}",
+                        "max=${GfdiFileUpload.le32(data, 5)} seed=${upload.crcSeed}",
                 )
                 sendLegacyChunk(upload)
             }

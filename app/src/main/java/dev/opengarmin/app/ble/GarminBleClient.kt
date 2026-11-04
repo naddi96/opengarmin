@@ -19,6 +19,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import java.util.ArrayDeque
+import dev.opengarmin.app.BuildConfig
 import dev.opengarmin.protocol.GarminSession
 import dev.opengarmin.protocol.Hex
 import dev.opengarmin.protocol.Uuids
@@ -48,7 +49,14 @@ class GarminBleClient(
     private var writeInFlight = false
     private var writeGeneration = 0
 
-    val session = GarminSession(clientId = 1L, sink = { bytes -> write(bytes) }, log = onLog)
+    val session = GarminSession(clientId = 1L, sink = { bytes -> write(bytes) }, log = onLog).apply {
+        // Match Garmin Connect's handshake identity: friendly name, then the
+        // Android manufacturer and model, plus this app's version code.
+        hostFriendlyName = Build.MODEL ?: "opengarmin"
+        hostManufacturer = Build.MANUFACTURER ?: "OpenGarmin"
+        hostModel = Build.MODEL ?: "Android"
+        hostAppVersion = BuildConfig.VERSION_CODE
+    }
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
