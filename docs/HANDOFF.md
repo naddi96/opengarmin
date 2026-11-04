@@ -253,10 +253,13 @@ Daily steps/heart rate are not in the FileAccess directory. The flow is:
 3. Pull `FIT_TYPE_32`. It contains daily `monitoring` totals,
    `monitoring_hr_data` (resting HR), `stress_level`, `spo2_data` and
    `respiration_rate`.
-4. Parse it into `wellness_days` + `wellness_samples`. Steps are stored in the
-   `monitoring.cycles_16` field: **steps = 2 × cycles_16**. HR samples use
-   `timestamp_16` (16-bit truncated seconds) resolved against the last full
-   timestamp.
+4. Parse it into `wellness_days` + `wellness_samples`. Steps come from the
+   `monitoring` total fields: field 3 is the `steps` subfield for
+   walking/running (our generic decoder exposes it as `cycles`, scale 2), while
+   field 9 (`cycles_16`) is already `2 * cycles (steps)` with scale 1, so its
+   raw value is the step count. Cycling and swimming store strokes there and
+   must not be added. HR samples use `timestamp_16` (16-bit truncated seconds)
+   resolved against the last full timestamp.
 5. Re-cutting the same day updates the totals. Samples are merged by
    `(day, kind, timestamp)` so repeated cuts accumulate history.
 
@@ -317,15 +320,19 @@ pairing port (pairing needs the 6-digit code).
   `imported_activity_files` ledger records every UID pulled (not just the one on
   the activity row) so a watch re-index or a different watch cannot make an
   existing activity download again.
-- Room DB is version 10: `itemUid` (1→2), `laps` (2→3), record
+- Room DB is version 14: `itemUid` (1→2), `laps` (2→3), record
   `latitude`/`longitude` (3→4), `fit_messages` (4→5), wellness tables (5→6),
   sleep/HRV/Body Battery columns + `sleep_stages` +
   `imported_wellness_files` (6→7), `planned_workouts` (7→8), `pace_plans`
-  (8→9), and `imported_activity_files` (9→10) migrations live in `AppDatabase`.
+  (8→9), `imported_activity_files` (9→10), `activity_analyses` (10→11),
+  `hrvBaselineLowUpper` (11→12), `failed_activity_files` (12→13), and
+  `wellness_days.monitoringAt` (13→14) migrations live in `AppDatabase`.
 - Daily wellness comes from `CutWellnessFilesRequest` → `ItemAddedNotification`
-  (FIT_TYPE_32). Use `cycles_16 * 2` for steps and resolve `timestamp_16`
-  against the last full timestamp. The watch may ignore a re-cut within its
-  cooldown (response status 1); previous samples stay stored.
+  (FIT_TYPE_32). `cycles_16` is already steps (do not double it); field 3
+  `cycles` needs `* 2` for walking/running, and cycling/swimming strokes are
+  excluded from steps. Resolve `timestamp_16` against the last full timestamp.
+  The watch may ignore a re-cut within its cooldown (response status 1);
+  previous samples stay stored.
 - `Fit.parse` retains every message/field (7,931 messages for the sample
   activity, ~18 message types). `FitProfile.kt` is generated from the public
   FIT SDK profile (via `fitdecode`); unknown messages/fields fall back to

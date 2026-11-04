@@ -22,8 +22,10 @@ and feeds it to the normal local importer.
    one year. A progress bar shows how many days have been read and the import can
    be cancelled. This reads steps, distance, active calories, active minutes,
    resting heart rate, stress and Body Battery from Garmin Connect and merges
-   them into the local wellness rows. Cumulative values are raised only when
-   Garmin has a larger total; existing watch data is never lowered.
+   them into the local wellness rows. Watch monitoring data is authoritative:
+   days already imported from the watch keep their counters, while cloud values
+   fill or raise days the watch never provided. A later watch sync replaces a
+   cloud total for the same day.
 
 Imported files go through `ActivityImporter.importFitBytes`, so they get the
 same parsing, duplicate detection, local storage, sync log entry, and automatic

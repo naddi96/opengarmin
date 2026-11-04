@@ -69,9 +69,19 @@ data class WellnessDayDraft(
     val vigorousMinutes: Int?,
     val samples: List<WellnessSampleDraft>,
     val sleepStages: List<SleepStageDraft>,
+    /** Newest watch monitoring timestamp for this date, or 0 without monitoring. */
+    val monitoringAt: Long = 0,
 )
 
 object WellnessParser {
+
+    /**
+     * FIT `activity_type` values that use field 3/`cycles_16` for strokes, not
+     * steps. Adding them to a step total would count pedal strokes or swim
+     * strokes as walking.
+     */
+    private const val ACTIVITY_CYCLING = 2
+    private const val ACTIVITY_SWIMMING = 5
 
     /** FIT event value the watch writes at the start and end of a sleep session. */
     private const val SLEEP_EVENT = 74
@@ -105,6 +115,7 @@ object WellnessParser {
         val bodyBatteryByDate: Map<String, MutableList<Int>>,
         val hrvSummaryByDate: Map<String, Fit.Message>,
         val lhaByDate: Map<String, Fit.Message>,
+        val monitoringAtByDate: Map<String, Long>,
         val sleepTransitions: List<Pair<Long, Stage>>,
         val sleepAssessments: List<Pair<Long, Int?>>,
         val sleepEvents: List<Pair<Long, Int>>,
@@ -125,6 +136,7 @@ object WellnessParser {
         val bodyBatteryByDate = HashMap<String, MutableList<Int>>()
         val hrvSummaryByDate = HashMap<String, Fit.Message>()
         val lhaByDate = HashMap<String, Fit.Message>()
+        val monitoringAtByDate = HashMap<String, Long>()
         val sleepTransitions = ArrayList<Pair<Long, Stage>>()
         val sleepAssessments = ArrayList<Pair<Long, Int?>>()
         val sleepEvents = ArrayList<Pair<Long, Int>>()
@@ -137,6 +149,7 @@ object WellnessParser {
                     val timestamp = messageTimestamp(message, referenceTimestamp)
                     val date = messageDate(message, referenceTimestamp, zone)
                     monitoringByDate.getOrPut(date) { ArrayList() }.add(message)
+                    monitoringAtByDate[date] = maxOf(monitoringAtByDate[date] ?: 0L, timestamp)
                     int(message, "heart_rate")?.takeIf { it in 1..250 }?.let {
                         addSample(samplesByDate, date, timestamp, "hr", it.toDouble())
                     }
@@ -240,6 +253,7 @@ object WellnessParser {
             bodyBatteryByDate = bodyBatteryByDate,
             hrvSummaryByDate = hrvSummaryByDate,
             lhaByDate = lhaByDate,
+            monitoringAtByDate = monitoringAtByDate,
             sleepTransitions = sleepTransitions,
             sleepAssessments = sleepAssessments,
             sleepEvents = sleepEvents,
@@ -261,10 +275,7 @@ object WellnessParser {
                 val type = int(message, "activity_type") ?: 0
                 val totals = byType.getOrPut(type) { MonitoringTotals() }
 
-                val steps = int(message, "steps")
-                    ?: int(message, "cycles_16")?.times(2)
-                    ?: double(message, "cycles")?.times(2)?.roundToInt()
-                if (steps != null) totals.steps = steps
+                stepsFor(message, type)?.let { totals.steps = it }
 
                 double(message, "distance")?.let { totals.distance = it }
                 (int(message, "active_calories") ?: int(message, "calories"))
@@ -363,6 +374,7 @@ object WellnessParser {
                 vigorousMinutes = intensity?.second,
                 samples = samples,
                 sleepStages = sleep?.stages.orEmpty(),
+                monitoringAt = raw.monitoringAtByDate[date] ?: 0L,
             )
         }
     }
@@ -398,6 +410,29 @@ object WellnessParser {
                 ?.let { return dateOfWallClock(it) }
         }
         return dateOf(messageTimestamp(message, referenceTimestamp), zone)
+    }
+
+    /**
+     * Daily steps carried by one monitoring message.
+     *
+     * Garmin's FIT profile stores steps in field 3 only through the
+     * `activity_type` subfield: walking/running declare it as `steps` (scale
+     * 1), while cycling/swimming declare `strokes` (scale 2). Our generic FIT
+     * decoder does not resolve subfields, so field 3 comes back as `cycles`
+     * (raw / 2). Multiplying by 2 recovers the walking/running steps.
+     *
+     * Field 9 (`cycles_16`) is already labelled `2 * cycles (steps)` with scale
+     * 1: for walking/running the raw value is the step count, so it must not be
+     * doubled. For non-stroke activities it is also 2 * cycles, i.e. the same
+     * step count as field 3. Cycling/swimming are excluded because their value
+     * counts strokes.
+     */
+    private fun stepsFor(message: Fit.Message, activityType: Int): Int? {
+        if (activityType == ACTIVITY_CYCLING || activityType == ACTIVITY_SWIMMING) return null
+        int(message, "steps")?.let { return it }
+        int(message, "cycles_16")?.let { return it }
+        double(message, "cycles")?.let { return (it * 2).roundToInt() }
+        return null
     }
 
     private class MonitoringTotals {

@@ -4,6 +4,8 @@
 *.apk
 
 # User-space toolchain (huge; keep only the setup scripts)
+__pycache__/
+*.pyc
 /tools/dl/
 /tools/jdk/
 /tools/jadx/

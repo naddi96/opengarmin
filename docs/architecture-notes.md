@@ -118,7 +118,7 @@ a separate ViewModel layer; the Coach has its own `CoachController`.
 | `records` | Per-sample activity records | `activityId`, timestamp, distance, HR, speed, altitude, cadence, lat/lon, Body Battery |
 | `laps` | FIT laps | `activityId`, lap index, duration, distance, HR, speed, calories, ascent/descent |
 | `fit_messages` | Every parsed FIT message/field | `activityId`, `messageName`, timestamp, `fieldsJson`, `unitsJson` |
-| `wellness_days` | Daily wellness roll-up | unique local `date`, steps, distance, active calories/seconds, HR, stress, SpO2, respiration, Body Battery, sleep, HRV, intensity minutes |
+| `wellness_days` | Daily wellness roll-up | unique local `date`, steps, distance, active calories/seconds, HR, stress, SpO2, respiration, Body Battery, sleep, HRV, intensity minutes, newest watch `monitoringAt` |
 | `wellness_samples` | Intraday wellness samples | `dayId`, timestamp, `kind` (`hr`, `stress`, `spo2`, `respiration`, `body_battery`, `hrv`), value |
 | `sleep_stages` | Sleep-stage transitions | `date`, `startTime`, `endTime`, `stage` |
 | `imported_wellness_files` | Imported watch file UIDs | `itemUid` primary key, `type`, `importedAt` |

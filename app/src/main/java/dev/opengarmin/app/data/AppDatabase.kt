@@ -192,6 +192,13 @@ data class WellnessDayEntity(
     val spo2Avg: Int?,
     val respirationAvg: Double?,
     val updatedAt: Long,
+    /**
+     * Timestamp (Unix seconds) of the newest watch monitoring snapshot merged
+     * into this row; 0 when the row has no watch monitoring data. Cloud
+     * recovery must not overwrite a row with watch data, and a newer watch
+     * snapshot may lower the counters again.
+     */
+    val monitoringAt: Long = 0,
     // Body Battery (from stress_level field 3 and/or activity records).
     val bodyBatteryStart: Int? = null,
     val bodyBatteryMin: Int? = null,
@@ -550,7 +557,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "opengarmin.db"
-        const val SCHEMA_VERSION = 13
+        const val SCHEMA_VERSION = 14
 
         @Volatile
         private var instance: AppDatabase? = null
@@ -804,6 +811,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `wellness_days` ADD COLUMN `monitoringAt` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -823,6 +836,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_10_11,
                     MIGRATION_11_12,
                     MIGRATION_12_13,
+                    MIGRATION_13_14,
                 ).build().also { instance = it }
             }
 
@@ -956,9 +970,12 @@ class ActivityRepository(private val database: () -> AppDatabase) {
     /**
      * Merge Garmin Connect daily summaries into local wellness rows.
      *
-     * Monitoring counters are cumulative for a day, so an older or partial
-     * source can only raise them. Resting HR, stress and Body Battery are
-     * filled only when the local watch import did not provide them.
+     * Watch monitoring data is authoritative: a day that has a watch snapshot
+     * keeps the watch counters even when Garmin Connect reports a larger total
+     * (cloud steps can include other devices, or a different timezone). Cloud
+     * values only raise rows that the watch never provided, which is the
+     * historical-recovery case. Resting HR, stress and Body Battery are filled
+     * only when the local watch import did not provide them.
      */
     suspend fun mergeGarminDailySummaries(summaries: List<GarminDailySummary>): Int {
         var updated = 0
@@ -983,11 +1000,24 @@ class ActivityRepository(private val database: () -> AppDatabase) {
                     bodyBatteryLatest = summary.bodyBatteryLatest,
                 )
             } else {
+                val hasWatchMonitoring = existing.monitoringAt > 0L
                 existing.copy(
-                    steps = maxOf(existing.steps, summary.steps),
-                    distanceMeters = maxOf(existing.distanceMeters, summary.distanceMeters),
-                    activeCalories = maxOf(existing.activeCalories, summary.activeCalories),
-                    activeSeconds = maxOf(existing.activeSeconds, summary.activeSeconds),
+                    steps = if (hasWatchMonitoring) existing.steps else maxOf(existing.steps, summary.steps),
+                    distanceMeters = if (hasWatchMonitoring) {
+                        existing.distanceMeters
+                    } else {
+                        maxOf(existing.distanceMeters, summary.distanceMeters)
+                    },
+                    activeCalories = if (hasWatchMonitoring) {
+                        existing.activeCalories
+                    } else {
+                        maxOf(existing.activeCalories, summary.activeCalories)
+                    },
+                    activeSeconds = if (hasWatchMonitoring) {
+                        existing.activeSeconds
+                    } else {
+                        maxOf(existing.activeSeconds, summary.activeSeconds)
+                    },
                     restingHeartRate = existing.restingHeartRate ?: summary.restingHeartRate,
                     stressAvg = existing.stressAvg ?: summary.stressAvg,
                     bodyBatteryMin = existing.bodyBatteryMin ?: summary.bodyBatteryMin,
@@ -1310,6 +1340,7 @@ class ActivityRepository(private val database: () -> AppDatabase) {
         spo2Avg = spo2Avg,
         respirationAvg = respirationAvg,
         updatedAt = nowSeconds(),
+        monitoringAt = monitoringAt,
         bodyBatteryStart = bodyBatteryStart,
         bodyBatteryMin = bodyBatteryMin,
         bodyBatteryMax = bodyBatteryMax,
@@ -1340,46 +1371,53 @@ class ActivityRepository(private val database: () -> AppDatabase) {
      * Separate wellness files carry separate metrics. Only replace a value
      * when this file actually contains one; never zero-fill.
      */
-    private fun WellnessDayEntity.mergedWith(draft: WellnessDayDraft): WellnessDayEntity = copy(
-        // Monitoring counters are cumulative for the day. Overlapping cuts can
-        // arrive out of order (the watch rewrites them), so never let an older
-        // or partial file lower a value already stored for that day.
-        steps = if (draft.hasMonitoring) maxOf(steps, draft.steps) else steps,
-        distanceMeters = if (draft.hasMonitoring) maxOf(distanceMeters, draft.distanceMeters) else distanceMeters,
-        activeCalories = if (draft.hasMonitoring) maxOf(activeCalories, draft.activeCalories) else activeCalories,
-        activeSeconds = if (draft.hasMonitoring) maxOf(activeSeconds, draft.activeSeconds) else activeSeconds,
-        restingHeartRate = draft.restingHeartRate ?: restingHeartRate,
-        avgHeartRate = draft.avgHeartRate ?: avgHeartRate,
-        maxHeartRate = draft.maxHeartRate ?: maxHeartRate,
-        stressAvg = draft.stressAvg ?: stressAvg,
-        spo2Avg = draft.spo2Avg ?: spo2Avg,
-        respirationAvg = draft.respirationAvg ?: respirationAvg,
-        bodyBatteryStart = draft.bodyBatteryStart ?: bodyBatteryStart,
-        bodyBatteryMin = draft.bodyBatteryMin ?: bodyBatteryMin,
-        bodyBatteryMax = draft.bodyBatteryMax ?: bodyBatteryMax,
-        bodyBatteryLatest = draft.bodyBatteryLatest ?: bodyBatteryLatest,
-        sleepStart = draft.sleepStart ?: sleepStart,
-        sleepEnd = draft.sleepEnd ?: sleepEnd,
-        sleepScore = draft.sleepScore ?: sleepScore,
-        sleepQuality = draft.sleepQuality ?: sleepQuality,
-        deepSleepSeconds = draft.deepSleepSeconds ?: deepSleepSeconds,
-        lightSleepSeconds = draft.lightSleepSeconds ?: lightSleepSeconds,
-        remSleepSeconds = draft.remSleepSeconds ?: remSleepSeconds,
-        awakeSleepSeconds = draft.awakeSleepSeconds ?: awakeSleepSeconds,
-        sleepAvgSpo2 = draft.sleepAvgSpo2 ?: sleepAvgSpo2,
-        sleepLowestSpo2 = draft.sleepLowestSpo2 ?: sleepLowestSpo2,
-        sleepAvgRespiration = draft.sleepAvgRespiration ?: sleepAvgRespiration,
-        sleepLowestHeartRate = draft.sleepLowestHeartRate ?: sleepLowestHeartRate,
-        hrvLastNight = draft.hrvLastNight ?: hrvLastNight,
-        hrvWeeklyAvg = draft.hrvWeeklyAvg ?: hrvWeeklyAvg,
-        hrvStatus = draft.hrvStatus ?: hrvStatus,
-        hrvBaselineLow = draft.hrvBaselineLow ?: hrvBaselineLow,
-        hrvBaselineHigh = draft.hrvBaselineHigh ?: hrvBaselineHigh,
-        hrvBaselineLowUpper = draft.hrvBaselineLowUpper ?: hrvBaselineLowUpper,
-        moderateMinutes = draft.moderateMinutes ?: moderateMinutes,
-        vigorousMinutes = draft.vigorousMinutes ?: vigorousMinutes,
-        updatedAt = nowSeconds(),
-    )
+    private fun WellnessDayEntity.mergedWith(draft: WellnessDayDraft): WellnessDayEntity {
+        // Monitoring counters are cumulative snapshots. A newer watch snapshot
+        // is authoritative and may lower a value (for example after a cloud
+        // recovery imported a larger total, or when the watch corrects a
+        // count). An older/backfilled file must not overwrite a newer one, so
+        // compare the watch monitoring timestamp rather than taking max().
+        val replaceMonitoring = draft.hasMonitoring &&
+            (monitoringAt == 0L || draft.monitoringAt > monitoringAt)
+        return copy(
+            steps = if (replaceMonitoring) draft.steps else steps,
+            distanceMeters = if (replaceMonitoring) draft.distanceMeters else distanceMeters,
+            activeCalories = if (replaceMonitoring) draft.activeCalories else activeCalories,
+            activeSeconds = if (replaceMonitoring) draft.activeSeconds else activeSeconds,
+            monitoringAt = if (draft.hasMonitoring) maxOf(monitoringAt, draft.monitoringAt) else monitoringAt,
+            restingHeartRate = draft.restingHeartRate ?: restingHeartRate,
+            avgHeartRate = draft.avgHeartRate ?: avgHeartRate,
+            maxHeartRate = draft.maxHeartRate ?: maxHeartRate,
+            stressAvg = draft.stressAvg ?: stressAvg,
+            spo2Avg = draft.spo2Avg ?: spo2Avg,
+            respirationAvg = draft.respirationAvg ?: respirationAvg,
+            bodyBatteryStart = draft.bodyBatteryStart ?: bodyBatteryStart,
+            bodyBatteryMin = draft.bodyBatteryMin ?: bodyBatteryMin,
+            bodyBatteryMax = draft.bodyBatteryMax ?: bodyBatteryMax,
+            bodyBatteryLatest = draft.bodyBatteryLatest ?: bodyBatteryLatest,
+            sleepStart = draft.sleepStart ?: sleepStart,
+            sleepEnd = draft.sleepEnd ?: sleepEnd,
+            sleepScore = draft.sleepScore ?: sleepScore,
+            sleepQuality = draft.sleepQuality ?: sleepQuality,
+            deepSleepSeconds = draft.deepSleepSeconds ?: deepSleepSeconds,
+            lightSleepSeconds = draft.lightSleepSeconds ?: lightSleepSeconds,
+            remSleepSeconds = draft.remSleepSeconds ?: remSleepSeconds,
+            awakeSleepSeconds = draft.awakeSleepSeconds ?: awakeSleepSeconds,
+            sleepAvgSpo2 = draft.sleepAvgSpo2 ?: sleepAvgSpo2,
+            sleepLowestSpo2 = draft.sleepLowestSpo2 ?: sleepLowestSpo2,
+            sleepAvgRespiration = draft.sleepAvgRespiration ?: sleepAvgRespiration,
+            sleepLowestHeartRate = draft.sleepLowestHeartRate ?: sleepLowestHeartRate,
+            hrvLastNight = draft.hrvLastNight ?: hrvLastNight,
+            hrvWeeklyAvg = draft.hrvWeeklyAvg ?: hrvWeeklyAvg,
+            hrvStatus = draft.hrvStatus ?: hrvStatus,
+            hrvBaselineLow = draft.hrvBaselineLow ?: hrvBaselineLow,
+            hrvBaselineHigh = draft.hrvBaselineHigh ?: hrvBaselineHigh,
+            hrvBaselineLowUpper = draft.hrvBaselineLowUpper ?: hrvBaselineLowUpper,
+            moderateMinutes = draft.moderateMinutes ?: moderateMinutes,
+            vigorousMinutes = draft.vigorousMinutes ?: vigorousMinutes,
+            updatedAt = nowSeconds(),
+        )
+    }
 
     private suspend fun mergeWellnessSamples(dayId: Long, samples: List<WellnessSampleDraft>) {
         if (samples.isEmpty()) return

@@ -40,7 +40,7 @@ class WellnessParserTest {
         val day = WellnessParser.parse(messages, zone).single()
 
         assertEquals("2026-10-17", day.date)
-        assertEquals(4_000, day.steps)
+        assertEquals(2_000, day.steps)
         assertEquals(5_000.0, day.distanceMeters, 0.01)
         assertEquals(1_200, day.activeSeconds)
         assertEquals(100, day.activeCalories)
@@ -163,7 +163,7 @@ class WellnessParserTest {
         ).single()
 
         assertEquals("2026-10-18", day.date)
-        assertEquals(1_000, day.steps)
+        assertEquals(500, day.steps)
     }
 
     @Test
@@ -187,7 +187,7 @@ class WellnessParserTest {
         val day = WellnessParser.parse(messages, zone).single()
 
         assertEquals("2026-10-27", day.date)
-        assertEquals(2_000, day.steps)
+        assertEquals(1_000, day.steps)
         assertEquals(2_500.0, day.distanceMeters, 0.01)
         assertEquals(600, day.activeSeconds)
         assertEquals(50, day.activeCalories)
@@ -223,10 +223,80 @@ class WellnessParserTest {
 
         val day = WellnessParser.parse(messages, zone).single()
 
-        assertEquals(2_000 + 3_842 + 16, day.steps)
+        assertEquals(1_000 + 3_842 + 16, day.steps)
         assertEquals(2_500.0 + 3_059.04 + 19.11, day.distanceMeters, 0.01)
         assertEquals(600 + 1_818 + 4, day.activeSeconds)
         assertEquals(50 + 69, day.activeCalories)
+    }
+
+    @Test
+    fun `cycles_16 is already a step count for walking and running`() {
+        val messages = listOf(
+            monitoring(
+                epoch(2026, 10, 27, 8, 0),
+                cycles16 = 1_234,
+                distance = 1_000.0,
+                activeSeconds = 300.0,
+                calories = 20,
+                activityType = 6,
+            ),
+            monitoring(
+                epoch(2026, 10, 27, 9, 0),
+                cycles16 = 56,
+                distance = 100.0,
+                activeSeconds = 30.0,
+                calories = 2,
+                activityType = 1,
+            ),
+        )
+
+        val day = WellnessParser.parse(messages, zone).single()
+
+        // Field 9 is "2 * cycles (steps)" and its raw value is already steps.
+        assertEquals(1_234 + 56, day.steps)
+    }
+
+    @Test
+    fun `cycling and swimming strokes are not counted as steps`() {
+        val messages = listOf(
+            message(
+                "monitoring",
+                epoch(2026, 10, 27, 8, 0),
+                field(5, "activity_type", 6),
+                field(3, "cycles", 1_000.0),
+            ),
+            message(
+                "monitoring",
+                epoch(2026, 10, 27, 9, 0),
+                field(5, "activity_type", 2),
+                field(3, "cycles", 500.0),
+            ),
+            message(
+                "monitoring",
+                epoch(2026, 10, 27, 10, 0),
+                field(5, "activity_type", 5),
+                field(9, "cycles_16", 700),
+            ),
+        )
+
+        val day = WellnessParser.parse(messages, zone).single()
+
+        assertEquals(2_000, day.steps)
+    }
+
+    @Test
+    fun `records the newest watch monitoring timestamp`() {
+        val older = epoch(2026, 10, 27, 8, 0)
+        val newer = epoch(2026, 10, 27, 12, 0)
+        val messages = listOf(
+            monitoring(older, cycles16 = 1_000, distance = 2_500.0, activeSeconds = 600.0, calories = 50),
+            monitoring(newer, cycles16 = 2_000, distance = 5_000.0, activeSeconds = 1_200.0, calories = 100),
+        )
+
+        val day = WellnessParser.parse(messages, zone).single()
+
+        assertEquals(newer, day.monitoringAt)
+        assertEquals(2_000, day.steps)
     }
 
     @Test
@@ -270,7 +340,7 @@ class WellnessParserTest {
 
         val day = drafts.single()
         assertEquals("2026-10-18", day.date)
-        assertEquals(400, day.steps)
+        assertEquals(200, day.steps)
     }
 
     @Test
@@ -317,10 +387,11 @@ class WellnessParserTest {
         distance: Double,
         activeSeconds: Double,
         calories: Int,
+        activityType: Int = 0,
     ) = message(
         "monitoring",
         timestamp,
-        field(5, "activity_type", 0),
+        field(5, "activity_type", activityType),
         field(9, "cycles_16", cycles16),
         field(2, "distance", distance),
         field(4, "active_time", activeSeconds),
