@@ -21,11 +21,17 @@ and feeds it to the normal local importer.
    exposes. Use the 7/30/90 shortcuts or the slider to choose any period up to
    one year. A progress bar shows how many days have been read and the import can
    be cancelled. This reads steps, distance, active calories, active minutes,
-   resting heart rate, stress and Body Battery from Garmin Connect and merges
-   them into the local wellness rows. Watch monitoring data is authoritative:
-   days already imported from the watch keep their counters, while cloud values
-   fill or raise days the watch never provided. A later watch sync replaces a
-   cloud total for the same day.
+   resting heart rate, stress, Body Battery, **sleep and HRV** from Garmin
+   Connect and merges them into the local wellness rows. Watch monitoring data
+   is authoritative: days already imported from the watch keep their counters,
+   while cloud values fill or raise days the watch never provided. Sleep and HRV
+   fill only fields the watch did not store. A later watch sync replaces a cloud
+   total for the same day.
+
+Daily recovery stores sleep score, stage totals, sleep window, SpO₂,
+respiration and the overnight HRV value, status and baseline. A day that has
+no Garmin sleep/HRV record keeps its existing values; nulls are never written
+over watch data.
 
 Imported files go through `ActivityImporter.importFitBytes`, so they get the
 same parsing, duplicate detection, local storage, sync log entry, and automatic
@@ -54,6 +60,8 @@ Endpoints used:
 | Original FIT | `GET /download-service/files/activity/{activityId}` |
 | Profile display name | `GET /userprofile-service/socialProfile` |
 | Daily wellness summary | `GET /usersummary-service/usersummary/daily/{displayName}?calendarDate=YYYY-MM-DD` |
+| Sleep | `GET /sleep-service/sleep/dailySleepData?date=YYYY-MM-DD&nonSleepBufferMinutes=60` |
+| HRV range | `GET /hrv-service/hrv/daily/{fromDate}/{toDate}` |
 
 Bulk import requests 50 activities per page, downloads originals one at a
 time, and uses the local Garmin activity id as the activity UID so a re-run

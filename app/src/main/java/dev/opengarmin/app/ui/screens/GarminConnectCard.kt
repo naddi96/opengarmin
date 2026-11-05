@@ -221,18 +221,18 @@ fun GarminConnectCard(
         showWellnessImport = false
         wellnessBusy = true
         wellnessProgress = 0 to days
-        status = l("Importing daily data from Garmin Connect…")
+        status = l("Importing daily data, sleep and HRV from Garmin Connect…")
         statusIsError = false
         val today = LocalDate.now()
         val dates = (0 until days).map { offset -> today.minusDays(offset.toLong()).toString() }
         wellnessJob = scope.launch {
             try {
-                val summaries = client.dailySummaries(dates) { done, total ->
+                val summaries = client.dailyWellness(dates) { done, total ->
                     wellnessProgress = done to total
                 }
                 val updated = onImportWellness(summaries)
                 status = if (updated > 0) {
-                    l("Recovered %s day(s) from Garmin Connect.", updated)
+                    l("Recovered %s day(s) of wellness, sleep and HRV from Garmin Connect.", updated)
                 } else {
                     l("Garmin Connect returned no daily data for this range.")
                 }
@@ -475,7 +475,7 @@ fun GarminConnectCard(
                         importingId == null && !wellnessBusy,
                 )
                 Text(
-                    "Recover steps, distance, calories, active minutes, resting heart rate, stress and Body Battery for recent days. Watch data already stored locally is never lowered.",
+                    "Recover steps, distance, calories, active minutes, resting heart rate, stress, Body Battery, sleep and HRV for recent days. Watch data already stored locally is never lowered.",
                     style = MaterialTheme.typography.labelSmall,
                     color = PulseColors.TextMuted,
                 )
@@ -575,7 +575,8 @@ fun GarminConnectCard(
                 Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.md)) {
                     Text(
                         "Choose how many recent days to read from Garmin Connect. " +
-                            "Values already imported from the watch are kept when they are higher.",
+                            "Steps and activity totals already imported from the watch are kept " +
+                            "when they are higher; sleep and HRV values already stored are kept.",
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
                         listOf(7, 30, 90).forEach { option ->

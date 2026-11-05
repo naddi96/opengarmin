@@ -182,8 +182,9 @@ You can also run the workflow manually from the Actions tab and supply a version
 - **Backup:** export a single ZIP with a consistent snapshot of the Room database
   and coach conversations. Import validates the archive and schema before
   replacing local data; older raw SQLite exports are accepted.
-- **Recovery:** import a local FIT activity the watch no longer exposes, without
-  Garmin Connect or any API.
+- **Recovery:** import a local FIT activity the watch no longer exposes, or
+  optionally sign in to Garmin Connect to recover original FITs and daily
+  wellness, sleep and HRV. Watch data remains authoritative.
 - **Profile:** step goal, max heart rate, height, weight, optional birth year,
   biological sex and training limitations. The profile is sent to the coach only
   during chat so advice can account for body size and constraints.
@@ -336,8 +337,8 @@ Known limitations:
   shows the contributing factors instead of inventing a score.
 - Live heart rate during a PacePro run requires the watch's Broadcast Heart Rate
   mode.
-- There is no Garmin Connect import or cloud sync by design; the watch and local
-  backups are the sources of truth.
+- Garmin Connect import is optional and only runs when you sign in; there is no
+  background cloud sync. The watch and local backups remain the sources of truth.
 - The release signing key is public for reproducible CI builds. Build from source
   if you require a private trust chain.
 

@@ -606,7 +606,7 @@ class MainActivity : ComponentActivity() {
         val updated = withContext(Dispatchers.IO) {
             repository.mergeGarminDailySummaries(summaries)
         }
-        if (updated > 0) log("GARMIN wellness: $updated day(s) merged")
+        if (updated > 0) log("GARMIN wellness: $updated day(s) merged (daily + sleep/HRV)")
         return updated
     }
 

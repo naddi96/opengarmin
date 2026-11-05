@@ -21,9 +21,12 @@ import org.json.JSONTokener
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.time.LocalDate
 import java.util.Base64
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
+import kotlin.math.roundToInt
 
 /**
  * Minimal Garmin Connect client for the unofficial mobile API.
@@ -280,6 +283,94 @@ class GarminConnectClient(
     }
 
     /**
+     * Overnight sleep aggregate for one wake-up date. Returns null when Garmin
+     * has no confirmed sleep window for the date.
+     */
+    suspend fun dailySleep(date: String): GarminSleepSummary? {
+        val url = "$apiBase/sleep-service/sleep/dailySleepData".toHttpUrl().newBuilder()
+            .addQueryParameter("date", date)
+            .addQueryParameter("nonSleepBufferMinutes", "60")
+            .build()
+        val payload = authorizedGetOptional(url) ?: return null
+        val json = parseJson(payload) ?: throw GarminException(
+            GarminException.Kind.Malformed,
+            "Garmin returned an unexpected sleep summary.",
+        )
+        return parseSleep(json.optJSONObject("dailySleepDTO") ?: json, date)
+    }
+
+    /**
+     * Overnight HRV summaries for a date range. Garmin exposes the whole range
+     * in one response, so this avoids one HRV request per recovered day.
+     */
+    suspend fun hrvSummaries(
+        fromDate: String,
+        toDate: String,
+    ): Map<String, GarminHrvSummary> {
+        val start = runCatching { LocalDate.parse(fromDate) }.getOrNull() ?: return emptyMap()
+        val end = runCatching { LocalDate.parse(toDate) }.getOrNull() ?: return emptyMap()
+        if (start.isAfter(end)) return emptyMap()
+
+        val result = mutableMapOf<String, GarminHrvSummary>()
+        var chunkStart = start
+        while (!chunkStart.isAfter(end)) {
+            val chunkEnd = minOf(chunkStart.plusDays(29), end)
+            val url = "$apiBase/hrv-service/hrv/daily/${chunkStart}/${chunkEnd}".toHttpUrl()
+            val payload = authorizedGetOptional(url)
+            if (payload != null) parseHrvRange(payload, result)
+            if (summaryDelayMillis > 0 && chunkEnd.isBefore(end)) delay(summaryDelayMillis)
+            chunkStart = chunkEnd.plusDays(1)
+        }
+        return result
+    }
+
+    /**
+     * Daily wellness including the sleep and HRV data that the daily summary
+     * endpoint does not expose. A day is returned when any of the three sources
+     * has data; missing metrics remain null.
+     */
+    suspend fun dailyWellness(
+        dates: List<String>,
+        onProgress: ((done: Int, total: Int) -> Unit)? = null,
+    ): List<GarminDailySummary> {
+        if (dates.isEmpty()) return emptyList()
+        val parsedDates = dates.mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val hrvByDate = if (parsedDates.isEmpty()) {
+            emptyMap()
+        } else {
+            hrvSummaries(
+                fromDate = parsedDates.minOrNull().toString(),
+                toDate = parsedDates.maxOrNull().toString(),
+            )
+        }
+        val result = mutableListOf<GarminDailySummary>()
+        onProgress?.invoke(0, dates.size)
+        dates.forEachIndexed { index, date ->
+            val summary = dailySummary(date)
+            val sleep = dailySleep(date)
+            val hrv = hrvByDate[date]
+            if (summary != null || sleep != null || hrv != null) {
+                val base = summary ?: GarminDailySummary(
+                    date = date,
+                    steps = 0,
+                    distanceMeters = 0.0,
+                    activeCalories = 0,
+                    activeSeconds = 0,
+                    restingHeartRate = null,
+                    stressAvg = null,
+                    bodyBatteryMin = null,
+                    bodyBatteryMax = null,
+                    bodyBatteryLatest = null,
+                )
+                result += base.copy(sleep = sleep ?: base.sleep, hrv = hrv ?: base.hrv)
+            }
+            onProgress?.invoke(index + 1, dates.size)
+            if (summaryDelayMillis > 0 && index < dates.lastIndex) delay(summaryDelayMillis)
+        }
+        return result
+    }
+
+    /**
      * Fetch daily summaries newest-first, skipping days Garmin does not have.
      * Requests are spaced out to stay clear of Garmin's rate limiter.
      */
@@ -295,6 +386,115 @@ class GarminConnectClient(
             if (summaryDelayMillis > 0 && index < dates.lastIndex) delay(summaryDelayMillis)
         }
         return result
+    }
+
+    private fun parseSleep(dto: JSONObject, date: String): GarminSleepSummary? {
+        val scoreObject = dto.optJSONObject("sleepScores")?.optJSONObject("overall")
+        val score = scoreObject?.let { numberOrNull(it, "value") }?.roundToInt()
+        val qualifier = scoreObject?.optString("qualifierKey")
+        val start = dto.epochSeconds("sleepStartTimestampGMT")
+        val end = dto.epochSeconds("sleepEndTimestampGMT")
+        val deep = dto.intOrNull("deepSleepSeconds")?.takeIf { it >= 0 }
+        val light = dto.intOrNull("lightSleepSeconds")?.takeIf { it >= 0 }
+        val rem = dto.intOrNull("remSleepSeconds")?.takeIf { it >= 0 }
+        val awake = dto.intOrNull("awakeSleepSeconds")?.takeIf { it >= 0 }
+        val avgSpo2 = dto.intOrNull("averageSpO2Value")?.takeIf { it in 1..100 }
+        val lowestSpo2 = dto.intOrNull("lowestSpO2Value")?.takeIf { it in 1..100 }
+        val respiration = dto.let { numberOrNull(it, "averageRespirationValue") }?.takeIf { it > 0.0 }
+
+        val hasValue = start != null || end != null || score != null || deep != null ||
+            light != null || rem != null || awake != null
+        if (!hasValue) return null
+
+        return GarminSleepSummary(
+            date = date,
+            start = start,
+            end = end,
+            score = score,
+            quality = sleepQuality(score, qualifier),
+            deepSeconds = deep,
+            lightSeconds = light,
+            remSeconds = rem,
+            awakeSeconds = awake,
+            avgSpo2 = avgSpo2,
+            lowestSpo2 = lowestSpo2,
+            avgRespiration = respiration,
+        )
+    }
+
+    private fun parseHrvRange(payload: ByteArray, target: MutableMap<String, GarminHrvSummary>) {
+        val json = parseJson(payload) ?: return
+        val array = json.optJSONArray("hrvSummaries") ?: return
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val date = item.optString("calendarDate").takeIf { it.isNotBlank() } ?: continue
+            parseHrv(item, date)?.let { target[date] = it }
+        }
+    }
+
+    private fun parseHrv(json: JSONObject, date: String): GarminHrvSummary? {
+        val baseline = json.optJSONObject("baseline")
+        val lastNight = numberOrNull(json, "lastNightAvg")?.takeIf { it > 0.0 }
+        val weekly = numberOrNull(json, "weeklyAvg")?.takeIf { it > 0.0 }
+        val low = baseline?.let { numberOrNull(it, "balancedLow") }?.takeIf { it > 0.0 }
+        val high = baseline?.let { numberOrNull(it, "balancedUpper") }?.takeIf { it > 0.0 }
+        val lowUpper = baseline?.let { numberOrNull(it, "lowUpper") }?.takeIf { it > 0.0 }
+        val status = json.optString("status")
+            .takeIf { it.isNotBlank() }
+            ?.let(::hrvStatusLabel)
+
+        if (lastNight == null && weekly == null && low == null && high == null &&
+            lowUpper == null && status == null
+        ) {
+            return null
+        }
+        return GarminHrvSummary(
+            date = date,
+            lastNightAvg = lastNight,
+            weeklyAvg = weekly,
+            status = status,
+            baselineLow = low,
+            baselineHigh = high,
+            baselineLowUpper = lowUpper,
+        )
+    }
+
+    private fun sleepQuality(score: Int?, qualifier: String?): String? {
+        val mapped = when (qualifier?.uppercase(Locale.US)) {
+            "EXCELLENT" -> "Excellent"
+            "GOOD" -> "Good"
+            "FAIR" -> "Fair"
+            "POOR" -> "Poor"
+            else -> null
+        }
+        if (mapped != null) return mapped
+        return when {
+            score == null -> null
+            score >= 90 -> "Excellent"
+            score >= 80 -> "Good"
+            score >= 60 -> "Fair"
+            else -> "Poor"
+        }
+    }
+
+    private fun hrvStatusLabel(value: String): String? = when (value.uppercase(Locale.US)) {
+        "BALANCED" -> "Balanced"
+        "UNBALANCED" -> "Unbalanced"
+        "LOW" -> "Low"
+        "POOR" -> "Poor"
+        else -> null
+    }
+
+    private fun numberOrNull(json: JSONObject, name: String): Double? =
+        (json.opt(name) as? Number)?.toDouble()?.takeIf { it.isFinite() }
+
+    private fun JSONObject.intOrNull(name: String): Int? =
+        (opt(name) as? Number)?.toInt()
+
+    private fun JSONObject.epochSeconds(name: String): Long? {
+        val raw = (opt(name) as? Number)?.toLong() ?: return null
+        if (raw <= 0L) return null
+        return if (raw > 10_000_000_000L) raw / 1000L else raw
     }
 
     /**

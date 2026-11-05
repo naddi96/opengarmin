@@ -237,6 +237,110 @@ class GarminConnectClientTest {
     }
 
     @Test
+    fun `daily wellness combines summary sleep and hrv`() = runBlocking {
+        tokens.tokens = GarminTokens(
+            accessToken = "access-token",
+            refreshToken = null,
+            clientId = "client",
+            expiresAtMillis = Long.MAX_VALUE,
+        )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """{
+                        "hrvSummaries": [{
+                            "calendarDate": "2026-11-04",
+                            "weeklyAvg": 41,
+                            "lastNightAvg": 46,
+                            "baseline": {
+                                "lowUpper": 31,
+                                "balancedLow": 33,
+                                "balancedUpper": 48
+                            },
+                            "status": "BALANCED"
+                        }]
+                    }""",
+                ),
+        )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"displayName":"runner42"}"""),
+        )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """{
+                        "totalSteps": 9201,
+                        "totalDistanceMeters": 7500.0,
+                        "activeKilocalories": 893,
+                        "activeSeconds": 10740,
+                        "restingHeartRate": 60
+                    }""",
+                ),
+        )
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """{
+                        "dailySleepDTO": {
+                            "calendarDate": "2026-11-04",
+                            "sleepStartTimestampGMT": 1793775000000,
+                            "sleepEndTimestampGMT": 1793800000000,
+                            "deepSleepSeconds": 5400,
+                            "lightSleepSeconds": 14400,
+                            "remSleepSeconds": 3600,
+                            "awakeSleepSeconds": 600,
+                            "averageSpO2Value": 96,
+                            "lowestSpO2Value": 91,
+                            "averageRespirationValue": 14.2,
+                            "sleepScores": {
+                                "overall": {"value": 78.0, "qualifierKey": "GOOD"}
+                            }
+                        }
+                    }""",
+                ),
+        )
+
+        val days = client().dailyWellness(listOf("2026-11-04"))
+
+        assertEquals(1, days.size)
+        val day = days.single()
+        val sleep = day.sleep!!
+        val hrvSummary = day.hrv!!
+        assertEquals(9201, day.steps)
+        assertEquals(1793775000L, sleep.start)
+        assertEquals(1793800000L, sleep.end)
+        assertEquals(78, sleep.score)
+        assertEquals("Good", sleep.quality)
+        assertEquals(5400, sleep.deepSeconds)
+        assertEquals(14400, sleep.lightSeconds)
+        assertEquals(46.0, hrvSummary.lastNightAvg!!, 0.01)
+        assertEquals(41.0, hrvSummary.weeklyAvg!!, 0.01)
+        assertEquals("Balanced", hrvSummary.status)
+        assertEquals(33.0, hrvSummary.baselineLow!!, 0.01)
+        assertEquals(48.0, hrvSummary.baselineHigh!!, 0.01)
+        assertEquals(31.0, hrvSummary.baselineLowUpper!!, 0.01)
+
+        val hrv = server.takeRequest()
+        assertEquals("/api/hrv-service/hrv/daily/2026-11-04/2026-11-04", hrv.path)
+        server.takeRequest() // profile display name
+        val summary = server.takeRequest()
+        assertEquals(
+            "/api/usersummary-service/usersummary/daily/runner42?calendarDate=2026-11-04",
+            summary.path,
+        )
+        val sleepRequest = server.takeRequest()
+        assertEquals(
+            "/api/sleep-service/sleep/dailySleepData?date=2026-11-04&nonSleepBufferMinutes=60",
+            sleepRequest.path,
+        )
+    }
+
+    @Test
     fun `missing daily summary is skipped and empty days are not invented`() = runBlocking {
         tokens.tokens = GarminTokens(
             accessToken = "access-token",

@@ -1,7 +1,27 @@
 # Handoff — OpenGarmin offline sync
 
-_Last updated: 2026-10-26. Written so a fresh session can continue without the
+_Last updated: 2026-11-05. Written so a fresh session can continue without the
 original chat context._
+
+## Garmin Connect sleep/HRV recovery (2026-11-05)
+
+The optional Garmin Connect recovery now fills sleep and HRV as well as the
+existing daily counters. Garmin's watch directory can omit SLEEP_DATA/HRV files
+after Garmin Connect has already consumed them; this path recovers the same
+data from the account.
+
+- `GarminConnectClient.dailySleep` calls
+  `/sleep-service/sleep/dailySleepData?date=YYYY-MM-DD&nonSleepBufferMinutes=60`
+  and reads `dailySleepDTO` (window, score, stages, SpO₂, respiration).
+- `GarminConnectClient.hrvSummaries` reads
+  `/hrv-service/hrv/daily/{from}/{to}` in 30-day chunks and returns
+  `lastNightAvg`, `weeklyAvg`, `status` and the baseline range.
+- `dailyWellness` combines the existing daily summary, sleep and HRV. Upgrade
+  recovery stores sleep/HRV only into fields the watch did not provide; watch
+  snapshots remain authoritative.
+- Verified on the Pixel 10a + FR255 with a real 7-day recovery: 2026-11-04 and
+  2026-11-05 sleep/HRV appeared locally after Garmin Connect had hidden the
+  watch files. Unit coverage is in `GarminConnectClientTest`.
 
 ## Current state — 2026-10-26
 

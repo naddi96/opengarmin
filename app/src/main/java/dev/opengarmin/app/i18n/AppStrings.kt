@@ -1265,10 +1265,10 @@ object AppStrings {
         "Recover daily data" to "Recupera dati giornalieri",
         "Importing daily data…" to "Importazione dati giornalieri…",
         "Recover daily data?" to "Recuperare i dati giornalieri?",
-        "Choose how many recent days to read from Garmin Connect. Values already imported from the watch are kept when they are higher." to
-            "Scegli quanti giorni recenti leggere da Garmin Connect. I valori già importati dall'orologio vengono mantenuti quando sono più alti.",
-        "Recover steps, distance, calories, active minutes, resting heart rate, stress and Body Battery for recent days. Watch data already stored locally is never lowered." to
-            "Recupera passi, distanza, calorie, minuti attivi, frequenza cardiaca a riposo, stress e Body Battery per i giorni recenti. I dati dell'orologio già salvati non vengono mai abbassati.",
+        "Choose how many recent days to read from Garmin Connect. Steps and activity totals already imported from the watch are kept when they are higher; sleep and HRV values already stored are kept." to
+            "Scegli quanti giorni recenti leggere da Garmin Connect. I totali di passi e attività già importati dall'orologio vengono mantenuti quando sono più alti; i valori di sonno e HRV già salvati vengono conservati.",
+        "Recover steps, distance, calories, active minutes, resting heart rate, stress, Body Battery, sleep and HRV for recent days. Watch data already stored locally is never lowered." to
+            "Recupera passi, distanza, calorie, minuti attivi, frequenza cardiaca a riposo, stress, Body Battery, sonno e HRV per i giorni recenti. I dati dell'orologio già salvati non vengono mai abbassati.",
         "Import %s days" to "Importa %s giorni",
         "Days to recover: %s" to "Giorni da recuperare: %s",
         "From %s to %s" to "Dal %s al %s",
@@ -1277,10 +1277,10 @@ object AppStrings {
         "Importing %s of %s days…" to "Importazione di %s giorni su %s…",
         "Cancel import" to "Annulla importazione",
         "Import cancelled." to "Importazione annullata.",
-        "Importing daily data from Garmin Connect…" to
-            "Importazione dei dati giornalieri da Garmin Connect…",
-        "Recovered %s day(s) from Garmin Connect." to
-            "Recuperati %s giorni da Garmin Connect.",
+        "Importing daily data, sleep and HRV from Garmin Connect…" to
+            "Importazione di dati giornalieri, sonno e HRV da Garmin Connect…",
+        "Recovered %s day(s) of wellness, sleep and HRV from Garmin Connect." to
+            "Recuperati %s giorni di benessere, sonno e HRV da Garmin Connect.",
         "Garmin Connect returned no daily data for this range." to
             "Garmin Connect non ha restituito dati giornalieri per questo intervallo.",
         "Garmin returned an unexpected profile." to "Garmin ha restituito un profilo inatteso.",
