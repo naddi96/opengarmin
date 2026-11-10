@@ -10,10 +10,17 @@ cd "$TOOLS"
 say() { printf '\n=== %s ===\n' "$*"; }
 
 # ---------- JDK 21 (Temurin) via Adoptium API ----------
-if [ ! -x "$TOOLS/jdk/bin/java" ]; then
+case "$(uname -m)" in
+  x86_64) JDK_ARCH=x64 ;;
+  aarch64|arm64) JDK_ARCH=aarch64 ;;
+  *) printf 'Unsupported JDK architecture: %s\n' "$(uname -m)" >&2; exit 1 ;;
+esac
+
+if [ ! -x "$TOOLS/jdk/bin/java" ] || ! "$TOOLS/jdk/bin/java" -version >/dev/null 2>&1; then
   say "Downloading Temurin JDK 21"
+  rm -rf "$TOOLS/jdk"
   curl -fsSL -o dl/jdk21.tar.gz \
-    "https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jdk/hotspot/normal/eclipse"
+    "https://api.adoptium.net/v3/binary/latest/21/ga/linux/${JDK_ARCH}/jdk/hotspot/normal/eclipse"
   mkdir -p jdk
   tar -xzf dl/jdk21.tar.gz -C jdk --strip-components=1
 fi
